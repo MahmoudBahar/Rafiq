@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Rafiq",
+    "slug": "Rafiq",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/ios-icon-light.png",
+    "owner": "rafiq-elmuslim",
+    "scheme": "rafiq",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#fbf8f1",
+    "ios": {
+      "icon": {
+        "light": "./assets/images/ios-icon-light.png",
+        "dark": "./assets/images/ios-icon-dark.png",
+        "tinted": "./assets/images/ios-icon-tinted.png"
+      },
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "ar"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E8DCC3",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "package": "com.rafiq_elmuslim.Rafiq"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F0E7D2",
+          "image": "./assets/images/splash-icon-light.png",
+          "imageWidth": 200,
+          "dark": {
+            "backgroundColor": "#0A2B26",
+            "image": "./assets/images/splash-icon-dark.png"
+          }
+        }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportsRTL": true,
+          "forcesRTL": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "03183269-da10-45fd-a92a-44a97860f6d2"
+      }
+    }
+  }
+}
