@@ -2,10 +2,11 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COUNTRY, DEFAULT_CITY } from '@/features/prayer/cities';
+import { COUNTRY, DEFAULT_CITY } from '@/features/prayer/engine';
 import { PrayerList } from '@/features/prayer/PrayerList';
 import { SunArc } from '@/features/prayer/SunArc';
 import { useCountdown } from '@/features/prayer/useCountdown';
+import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatCountdown, formatTime12 } from '@/shared/lib/arabic';
 import { hijriString } from '@/shared/lib/hijri';
 import { useSettings } from '@/shared/storage/settings';
@@ -24,7 +25,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
   const { settings } = useSettings();
-  const { now, next, h, m, s } = useCountdown(settings.madhab);
+  const cfg = usePrayerConfig();
+  const { now, day, next, h, m, s } = useCountdown(cfg);
 
   const [toast, setToast] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,6 +41,8 @@ export default function HomeScreen() {
 
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
+  const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
+  const place = country ? `${city}، ${country}` : city;
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
@@ -48,12 +52,12 @@ export default function HomeScreen() {
           <View style={styles.cityWrap}>
             <PinIcon size={13} color={c.tm} />
             <Text size={13.5} weight="semi">
-              {city}، {COUNTRY}
+              {place}
             </Text>
           </View>
           <View style={styles.topEnd}>
             <Text size={12} weight="medium" color={c.tm}>
-              {hijriString(now)}
+              {hijriString(now, day.byKey.maghrib)}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -73,10 +77,10 @@ export default function HomeScreen() {
             {formatCountdown(h, m, s)}
           </Text>
           <Text size={12.5} weight="medium" color={c.ts}>
-            الأذان الساعة {formatTime12(next.at.getHours(), next.at.getMinutes())}
+            الأذان الساعة {formatTime12(next.at)}
           </Text>
         </View>
-        <SunArc now={now} madhab={settings.madhab} />
+        <SunArc now={now} day={day} />
         <View style={styles.headerSpacer} />
       </View>
 
@@ -85,7 +89,7 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: tabBottom + TAB_BAR_HEIGHT + 16 }]}
         showsVerticalScrollIndicator={false}
       >
-        <PrayerList now={now} madhab={settings.madhab} nextKey={next.key} />
+        <PrayerList times={day.times} nextKey={next.key} />
       </ScrollView>
 
       <TabBar bottom={tabBottom} onComingSoon={showToast} />

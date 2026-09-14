@@ -3,12 +3,35 @@ import { kv } from './kv';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type Madhab = 'shafii' | 'hanafi';
-export type Method = 'egypt' | 'mwl' | 'ummalqura' | 'karachi';
+export type Method =
+  | 'egypt'
+  | 'mwl'
+  | 'ummalqura'
+  | 'karachi'
+  | 'isna'
+  | 'moonsighting'
+  | 'dubai'
+  | 'kuwait'
+  | 'qatar'
+  | 'turkey'
+  | 'singapore'
+  | 'tehran'
+  | 'jafari';
 export type LocationMode = 'auto' | 'manual';
+
+export interface Coords {
+  latitude: number;
+  longitude: number;
+}
 
 export interface Settings {
   onboarded: boolean;
+  /** Display label for the current place, in both location modes. */
   city: string | null;
+  /** Geocoded country in auto mode; null when unknown. */
+  country: string | null;
+  /** Last device fix in auto mode. */
+  coords: Coords | null;
   locationMode: LocationMode;
   method: Method;
   madhab: Madhab;
@@ -18,6 +41,8 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   onboarded: false,
   city: null,
+  country: null,
+  coords: null,
   locationMode: 'auto',
   method: 'egypt',
   madhab: 'shafii',

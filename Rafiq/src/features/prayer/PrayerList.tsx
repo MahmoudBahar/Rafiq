@@ -1,22 +1,20 @@
 import { StyleSheet, View } from 'react-native';
-import type { Madhab } from '@/shared/storage/settings';
 import { formatTime12 } from '@/shared/lib/arabic';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
-import { getTimes, type PrayerKey } from './prayerTimes';
+import type { PrayerKey, PrayerTime } from './engine';
 
 interface PrayerListProps {
-  now: Date;
-  madhab: Madhab;
+  times: readonly PrayerTime[];
   nextKey: PrayerKey;
 }
 
-export function PrayerList({ now, madhab, nextKey }: PrayerListProps) {
+export function PrayerList({ times, nextKey }: PrayerListProps) {
   const { c } = useTheme();
   return (
     <View style={styles.list}>
-      {getTimes(madhab, now).map((p) => {
+      {times.map((p) => {
         const isNext = p.key === nextKey;
         const nameColor = isNext ? c.herotext : p.isPrayer ? c.tp : c.tm;
         const timeColor = isNext ? c.herotext : p.isPrayer ? c.ts : c.tm;
@@ -24,7 +22,7 @@ export function PrayerList({ now, madhab, nextKey }: PrayerListProps) {
         return (
           <View
             key={p.key}
-            accessibilityLabel={`${p.name} ${formatTime12(p.hm[0], p.hm[1])}`}
+            accessibilityLabel={`${p.name} ${formatTime12(p.at)}`}
             style={[
               styles.row,
               isNext
@@ -46,7 +44,7 @@ export function PrayerList({ now, madhab, nextKey }: PrayerListProps) {
               </Text>
             </View>
             <Text size={14.5} weight={weight} color={timeColor} style={styles.time}>
-              {formatTime12(p.hm[0], p.hm[1])}
+              {formatTime12(p.at)}
             </Text>
           </View>
         );

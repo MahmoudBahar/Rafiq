@@ -10,11 +10,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, G, Path } from 'react-native-svg';
-import type { Madhab } from '@/shared/storage/settings';
 import { formatTimeShort } from '@/shared/lib/arabic';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
-import { dateAt, timeFor } from './prayerTimes';
+import type { DayTimes } from './engine';
 import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, sunArc } from './sunArc';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -33,19 +32,17 @@ const MOON_D = 'M2.4 -6.2a7 7 0 1 0 4.4 11.4 5.6 5.6 0 0 1 -4.4 -11.4z';
 
 interface SunArcProps {
   now: Date;
-  madhab: Madhab;
+  day: DayTimes;
 }
 
-export function SunArc({ now, madhab }: SunArcProps) {
+export function SunArc({ now, day }: SunArcProps) {
   const { c } = useTheme();
-  const fajrHM = timeFor('fajr', madhab);
-  const maghribHM = timeFor('maghrib', madhab);
   const pos = sunArc({
     now,
-    fajr: dateAt(now, fajrHM),
-    maghrib: dateAt(now, maghribHM),
-    prevMaghrib: dateAt(now, maghribHM, -1),
-    nextFajr: dateAt(now, fajrHM, 1),
+    fajr: day.byKey.fajr,
+    maghrib: day.byKey.maghrib,
+    prevMaghrib: day.prevMaghrib,
+    nextFajr: day.nextFajr,
   });
 
   // Pulsing halo: 0 → 1 → 0, drives radius and opacity. Reanimated honours
@@ -94,10 +91,10 @@ export function SunArc({ now, madhab }: SunArcProps) {
       </Svg>
       <View style={styles.labels}>
         <Text size={10} weight="semi" color={c.tm}>
-          الفجر {formatTimeShort(fajrHM[0], fajrHM[1])}
+          الفجر {formatTimeShort(day.byKey.fajr)}
         </Text>
         <Text size={10} weight="semi" color={c.tm}>
-          المغرب {formatTimeShort(maghribHM[0], maghribHM[1])}
+          المغرب {formatTimeShort(day.byKey.maghrib)}
         </Text>
       </View>
     </View>

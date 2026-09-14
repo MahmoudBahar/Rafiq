@@ -18,11 +18,12 @@ const HIJRI_MONTHS = [
 
 /**
  * Hijri date in Arabic, e.g. `١٢ ربيع الأول ١٤٤٨`.
- * TODO(hijri): roll the day over at Maghrib once real prayer times land.
+ * The Hijri day begins at sunset, so once `maghrib` has passed the next day is shown.
  */
-export function hijriString(date: Date = new Date()): string {
+export function hijriString(date: Date = new Date(), maghrib?: Date): string {
   try {
-    const h = uq(date);
+    const effective = maghrib && date.getTime() >= maghrib.getTime() ? new Date(date.getTime() + 86_400_000) : date;
+    const h = uq(effective);
     const month = HIJRI_MONTHS[h.hm - 1] ?? '';
     return `${toArabicIndic(h.hd)} ${month} ${toArabicIndic(h.hy)}`;
   } catch {

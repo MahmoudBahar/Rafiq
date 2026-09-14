@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CITIES, DEFAULT_CITY, METHODS } from '@/features/prayer/cities';
-import { timeFor } from '@/features/prayer/prayerTimes';
+import { CITIES, DEFAULT_CITY, METHODS, timeFor } from '@/features/prayer/engine';
+import { useLocate } from '@/features/prayer/useLocate';
+import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
 import { useSettings, type Madhab, type ThemeMode } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -21,10 +22,13 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
   const { settings, update } = useSettings();
+  const cfg = usePrayerConfig();
+  const { locating, error, locate } = useLocate();
 
   const manual = settings.locationMode === 'manual';
   const city = settings.city ?? DEFAULT_CITY;
-  const asr = timeFor('asr', settings.madhab);
+  const asr = timeFor('asr', cfg, new Date());
+  const autoSub = locating ? 'جارٍ تحديد موقعك…' : !manual && settings.coords ? `${city} · مفعّل` : 'استخدام GPS';
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
@@ -50,21 +54,21 @@ export default function SettingsScreen() {
       >
         <View style={styles.section}>
           <SectionLabel>الموقع</SectionLabel>
-          <RadioCard
-            title="تحديد الموقع تلقائياً"
-            sub={manual ? 'استخدام GPS' : `${city} · مفعّل`}
-            selected={!manual}
-            onPress={() => update({ locationMode: 'auto', city: DEFAULT_CITY })}
-          />
+          <RadioCard title="تحديد الموقع تلقائياً" sub={autoSub} selected={!manual} onPress={() => locate()} />
           <RadioCard
             title="اختيار المدينة يدوياً"
             sub={manual ? city : 'اختر مدينتك من القائمة'}
             selected={manual}
-            onPress={() => update({ locationMode: 'manual' })}
+            onPress={() => update({ locationMode: 'manual', city: manual ? city : DEFAULT_CITY })}
           />
+          {error ? (
+            <Text size={12} color={c.tm} style={styles.caption}>
+              {error}
+            </Text>
+          ) : null}
           {manual ? (
             <View style={styles.chips}>
-              {CITIES.map((name) => (
+              {CITIES.map(({ name }) => (
                 <Chip
                   key={name}
                   label={name}
@@ -100,7 +104,7 @@ export default function SettingsScreen() {
             ]}
           />
           <Text size={12} color={c.tm} style={styles.caption}>
-            وقت العصر اليوم: {formatTime12(asr[0], asr[1])}
+            وقت العصر اليوم: {formatTime12(asr)}
           </Text>
         </View>
 
