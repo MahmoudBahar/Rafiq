@@ -15,11 +15,12 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { bump, settle as settleHaptic, tap, tick } from '@/shared/lib/haptics';
+import { click, detent, stop } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon } from './Icons';
+import { useClick } from './PressScale';
 import { Text } from './Text';
 
 export interface DrumItem {
@@ -49,14 +50,18 @@ const PAD = ITEM_H * 2;
 const MAX_PANEL_W = 360;
 const SPRING = { damping: 16, stiffness: 190, mass: 0.9 };
 
-// Wheel physics. The finger drives a raw offset; detents pull the displayed
-// offset toward the nearest row (cogging), the ends rubber-band, and a flick
-// decays exponentially to a projected stop that is snapped to a row.
-const COG_AMPLITUDE = ITEM_H * 0.1;
+// Wheel physics. The finger drives a raw offset through a gear ratio; detents
+// pull the displayed offset toward the nearest row (cogging), the ends
+// rubber-band, and a flick decays exponentially to a projected stop that is
+// snapped to a row. Together they make the wheel feel heavy: each row costs
+// a deliberate push and a flick carries only a handful of rows.
+const DRAG_GAIN = 0.85;
+// Below ITEM_H / 2π (≈ 0.159) the raw→displayed mapping stays monotonic.
+const COG_AMPLITUDE = ITEM_H * 0.14;
 const RUBBER = 0.35;
-const DECAY_PER_MS = 0.994;
-const MAX_FLICK_ROWS = 12;
-const SNAP_SPRING = { damping: 20, stiffness: 240, mass: 0.8 };
+const DECAY_PER_MS = 0.992;
+const MAX_FLICK_ROWS = 8;
+const SNAP_SPRING = { damping: 24, stiffness: 260, mass: 0.8 };
 const EDGE_SPRING = { damping: 22, stiffness: 260 };
 const TAU = Math.PI * 2;
 // Rows further than this from the lens are fully outside the visible wheel.
@@ -123,7 +128,7 @@ export function DrumPicker({
 
   const onDetent = useCallback(
     (index: number) => {
-      tick();
+      detent();
       setCenter(index);
       onFocusChange?.(index);
     },
@@ -137,13 +142,8 @@ export function DrumPicker({
     },
     [items, onSelect, selectedKey],
   );
-  const land = useCallback(
-    (index: number) => {
-      settleHaptic();
-      settle(index);
-    },
-    [settle],
-  );
+  // Landing is silent: the last detent already clicked.
+  const land = settle;
 
   useEffect(() => {
     if (visible) {
@@ -193,7 +193,7 @@ export function DrumPicker({
         })
         .onUpdate((e) => {
           dragged.set(true);
-          const raw = dragStart.get() - e.translationY;
+          const raw = dragStart.get() - e.translationY * DRAG_GAIN;
           let y: number;
           if (raw < 0) {
             y = raw * RUBBER;
@@ -205,7 +205,7 @@ export function DrumPicker({
           const outside = raw < 0 || raw > maxY;
           if (outside && !overEdge.get()) {
             overEdge.set(true);
-            scheduleOnRN(bump);
+            scheduleOnRN(stop);
           } else if (!outside && overEdge.get()) {
             overEdge.set(false);
           }
@@ -247,7 +247,7 @@ export function DrumPicker({
           if (Math.abs(target - y) < ITEM_H) {
             scrollY.set(withSpring(target, { ...SNAP_SPRING, velocity: v }, done));
           } else {
-            const duration = Math.max(220, Math.min(720, 180 + Math.abs(target - y) * 0.9));
+            const duration = Math.max(240, Math.min(800, 200 + Math.abs(target - y) * 1.1));
             scrollY.set(withTiming(target, { duration, easing: Easing.out(Easing.poly(4)) }, done));
           }
         }),
@@ -274,8 +274,10 @@ export function DrumPicker({
 
   if (!mounted) return null;
 
+  // Rows click on release: a finger often rests on the wheel before turning it.
   const onRowPress = (item: DrumItem, index: number) => {
     if (dragged.get()) return;
+    click();
     if (item.key === selectedKey && index === Math.round(scrollY.get() / ITEM_H)) {
       onClose();
       return;
@@ -286,15 +288,9 @@ export function DrumPicker({
     const target = index * ITEM_H;
     if (reduced) {
       scrollY.set(target);
-      settleHaptic();
       return;
     }
-    scrollY.set(
-      withTiming(target, { duration: 280, easing: Easing.out(Easing.cubic) }, (finished) => {
-        'worklet';
-        if (finished) scheduleOnRN(settleHaptic);
-      }),
-    );
+    scrollY.set(withTiming(target, { duration: 280, easing: Easing.out(Easing.cubic) }));
   };
 
   return (
@@ -357,13 +353,9 @@ export function DrumPicker({
 }
 
 function PressableDone({ onPress, color }: { onPress: () => void; color: string }) {
+  const press = useClick();
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPressIn={tap}
-      onPress={onPress}
-      style={styles.done}
-    >
+    <Pressable accessibilityRole="button" {...press} onPress={onPress} style={styles.done}>
       <Text size={13.5} weight="bold" color={color}>
         تم
       </Text>
