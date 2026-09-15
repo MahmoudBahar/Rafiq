@@ -24,6 +24,9 @@ export interface MoonState {
   t: number;
   /** Next moonrise after `now` (when not up). */
   nextRise: Date | null;
+  /** Moonrise / moonset falling on the local calendar day of `now`; null when the day has none. */
+  dayRise: Date | null;
+  daySet: Date | null;
   /** 0 new → 0.25 first quarter → 0.5 full → 0.75 last quarter → 1. */
   phase: number;
   /** Illuminated fraction 0..1. */
@@ -126,6 +129,13 @@ export function moonState(coords: Coords, now: Date): MoonState {
   const up = altitude(coords, nowMs) > h0;
 
   const evs = events(coords, nowMs);
+  const sameDay = (ms: number) => {
+    const a = new Date(ms);
+    return a.getFullYear() === now.getFullYear() && a.getMonth() === now.getMonth() && a.getDate() === now.getDate();
+  };
+  const dayRise = evs.find((e) => e.kind === 'rise' && sameDay(e.at)) ?? null;
+  const daySet = evs.find((e) => e.kind === 'set' && sameDay(e.at)) ?? null;
+  const dayTimes = { dayRise: dayRise ? new Date(dayRise.at) : null, daySet: daySet ? new Date(daySet.at) : null };
   const lastRise = [...evs].reverse().find((e) => e.kind === 'rise' && e.at <= nowMs) ?? null;
   const nextSet = evs.find((e) => e.kind === 'set' && e.at > nowMs) ?? null;
   const nextRise = evs.find((e) => e.kind === 'rise' && e.at > nowMs) ?? null;
@@ -138,6 +148,7 @@ export function moonState(coords: Coords, now: Date): MoonState {
       set: new Date(nextSet.at),
       t: Math.min(1, Math.max(0, t)),
       nextRise: null,
+      ...dayTimes,
       phase,
       fraction,
     };
@@ -148,6 +159,7 @@ export function moonState(coords: Coords, now: Date): MoonState {
     set: null,
     t: up ? 0.5 : 0, // circumpolar fallback: park it at the apex
     nextRise: up ? null : nextRise ? new Date(nextRise.at) : null,
+    ...dayTimes,
     phase,
     fraction,
   };

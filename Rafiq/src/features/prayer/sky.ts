@@ -63,6 +63,9 @@ export interface SkyMoon {
   y: number;
   phase: number;
   fraction: number;
+  /** Today's moonrise / moonset (null when the day has none). */
+  rise: Date | null;
+  set: Date | null;
 }
 
 export interface SkyState {
@@ -121,7 +124,15 @@ export function skyState({ now, day, moon }: SkyInputs): SkyState {
   }
 
   const mp = quad(moon.t);
-  const moonOut: SkyMoon = { visible: moon.up, x: r1(mp.x), y: r1(mp.y), phase: moon.phase, fraction: moon.fraction };
+  const moonOut: SkyMoon = {
+    visible: moon.up,
+    x: r1(mp.x),
+    y: r1(mp.y),
+    phase: moon.phase,
+    fraction: moon.fraction,
+    rise: moon.dayRise,
+    set: moon.daySet,
+  };
 
   const empty = !sun.visible && !moon.up;
   let next: SkyState['next'] = null;

@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, G, Mask, Path, Rect } from 'react-native-svg';
-import { toArabicIndic } from '@/shared/lib/arabic';
+import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
@@ -129,14 +129,48 @@ export function SkyArc({ sky, day }: SkyArcProps) {
         ) : null}
       </Svg>
 
-      <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
-        طول النهار {dayLength}
-      </Text>
+      <View style={styles.footer}>
+        <EndTimes sun={day.byKey.sunrise} moon={sky.moon.rise} />
+        <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
+          طول النهار {dayLength}
+        </Text>
+        <EndTimes sun={day.sunset} moon={sky.moon.set} />
+      </View>
+    </View>
+  );
+}
+
+interface EndTimesProps {
+  sun: Date;
+  moon: Date | null;
+}
+
+/** Rise or set times of both bodies under one arc end. */
+function EndTimes({ sun, moon }: EndTimesProps) {
+  const { c } = useTheme();
+  return (
+    <View style={styles.endTimes}>
+      <View style={styles.endRow}>
+        <View style={[styles.dot, { backgroundColor: c.accent }]} />
+        <Text size={10} weight="semi" color={c.tm}>
+          {formatTimeShort(sun)}
+        </Text>
+      </View>
+      <View style={styles.endRow}>
+        <View style={[styles.dot, { backgroundColor: c.moon }]} />
+        <Text size={10} weight="semi" color={c.tm}>
+          {moon ? formatTimeShort(moon) : '—'}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { marginHorizontal: 6, marginTop: 6 },
+  footer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 6 },
   dayLength: { marginTop: 2, opacity: 0.9 },
+  endTimes: { gap: 1 },
+  endRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dot: { width: 5, height: 5, borderRadius: 999, opacity: 0.9 },
 });
