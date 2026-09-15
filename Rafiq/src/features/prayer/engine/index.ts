@@ -2,7 +2,7 @@
  * Prayer-time engine: pure, React-free, deterministic for (config, date).
  * UI code imports from here and never from `adhan` directly.
  */
-export { computeDay, computeMonth, getTimes, nextPrayer, nextPrayerIn, timeFor } from './calculate';
+export { computeDay, computeMonth, computeRange, getTimes, nextPrayer, nextPrayerIn, timeFor } from './calculate';
 export { CITIES, COUNTRY, DEFAULT_CITY, cityByName, distanceKm, nearestCity, type City } from './cities';
 export { METHODS, METHOD_BY_ID, type MethodDef } from './methods';
 export {

@@ -70,15 +70,23 @@ export function nextPrayer(now: Date, cfg: PrayerConfig): NextPrayer {
   return nextPrayerIn(computeDay(cfg, now), now);
 }
 
-/** Every day of a Gregorian month (`month0` is 0-based). */
-export function computeMonth(cfg: PrayerConfig, year: number, month0: number): DayRow[] {
-  const count = new Date(year, month0 + 1, 0).getDate();
+/** Every calendar day from `first` to `last` inclusive (local dates; time parts ignored). */
+export function computeRange(cfg: PrayerConfig, first: Date, last: Date): DayRow[] {
   const rows: DayRow[] = [];
-  for (let day = 1; day <= count; day++) {
-    const date = new Date(year, month0, day);
+  const end = new Date(last.getFullYear(), last.getMonth(), last.getDate()).getTime();
+  for (
+    let date = new Date(first.getFullYear(), first.getMonth(), first.getDate());
+    date.getTime() <= end;
+    date = shiftDays(date, 1)
+  ) {
     const pt = build(cfg, date);
     const byKey = Object.fromEntries(PRAYERS.map((p) => [p.key, pt[p.key]])) as Record<PrayerKey, Date>;
-    rows.push({ date, day, weekday: date.getDay(), byKey });
+    rows.push({ date, day: date.getDate(), weekday: date.getDay(), byKey });
   }
   return rows;
+}
+
+/** Every day of a Gregorian month (`month0` is 0-based). */
+export function computeMonth(cfg: PrayerConfig, year: number, month0: number): DayRow[] {
+  return computeRange(cfg, new Date(year, month0, 1), new Date(year, month0 + 1, 0));
 }

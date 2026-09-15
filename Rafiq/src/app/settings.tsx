@@ -1,6 +1,6 @@
 import { BlurTargetView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, timeFor } from '@/features/prayer/engine';
@@ -8,6 +8,7 @@ import { FineTune } from '@/features/prayer/FineTune';
 import { useLocate } from '@/features/prayer/useLocate';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
+import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { useSettings, type Madhab, type Method, type ThemeMode } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -19,7 +20,7 @@ import { RadioCard } from '@/shared/ui/RadioCard';
 import { SectionLabel } from '@/shared/ui/SectionLabel';
 import { Segmented } from '@/shared/ui/Segmented';
 import { Display, Text } from '@/shared/ui/Text';
-import { WheelSheet, type WheelItem } from '@/shared/ui/WheelSheet';
+import { DrumPicker, type DrumItem } from '@/shared/ui/DrumPicker';
 
 const APP_VERSION = '1.0';
 
@@ -33,13 +34,16 @@ export default function SettingsScreen() {
 
   const [sheet, setSheet] = useState(false);
   const blurTarget = useRef<View | null>(null);
+  const closeSheet = useCallback(() => setSheet(false), []);
+  // Hardware / system back closes the picker instead of popping the screen.
+  usePreventBack(sheet, closeSheet);
 
   const manual = settings.locationMode === 'manual';
   const city = settings.city ?? DEFAULT_CITY;
   const asr = timeFor('asr', cfg, new Date());
   const autoSub = locating ? 'جارٍ تحديد موقعك…' : !manual && settings.coords ? `${city} · مفعّل` : 'استخدام GPS';
   const method = METHOD_BY_ID[settings.method] ?? METHOD_BY_ID.egypt;
-  const methodItems = useMemo<WheelItem[]>(() => METHODS.map((m) => ({ key: m.id, title: m.name, sub: m.sub })), []);
+  const methodItems = useMemo<DrumItem[]>(() => METHODS.map((m) => ({ key: m.id, title: m.name, sub: m.sub })), []);
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
@@ -172,13 +176,13 @@ export default function SettingsScreen() {
         </ScrollView>
       </BlurTargetView>
 
-      <WheelSheet
+      <DrumPicker
         visible={sheet}
         title="طريقة الحساب"
         items={methodItems}
         selectedKey={settings.method}
         onSelect={(id) => update({ method: id as Method })}
-        onClose={() => setSheet(false)}
+        onClose={closeSheet}
         onFocusChange={() => {
           // TODO(haptics): expo-haptics selectionAsync() per wheel tick.
         }}

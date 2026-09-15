@@ -71,7 +71,7 @@ function RootStack() {
         <Stack.Protected guard={settings.onboarded}>
           <Stack.Screen name="index" />
           <Stack.Screen name="settings" />
-          <Stack.Screen name="month" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="month" options={{ animation: 'fade' }} />
         </Stack.Protected>
         <Stack.Protected guard={!settings.onboarded}>
           <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
