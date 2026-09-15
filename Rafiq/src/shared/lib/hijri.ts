@@ -16,11 +16,6 @@ const HIJRI_MONTHS = [
   'ذو الحجة',
 ];
 
-/** Arabic name of a Hijri month (1–12). */
-export function hijriMonthName(hm: number): string {
-  return HIJRI_MONTHS[hm - 1] ?? '';
-}
-
 /**
  * Hijri date in Arabic, e.g. `١٢ ربيع الأول ١٤٤٨`.
  * The Hijri day begins at sunset, so once `maghrib` has passed the next day is shown.

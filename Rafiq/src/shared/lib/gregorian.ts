@@ -28,17 +28,6 @@ export const dayMonthString = (date: Date): string => `${toArabicIndic(date.getD
 /** `١٥ سبتمبر ٢٠٢٦` */
 export const gregorianString = (date: Date): string => `${dayMonthString(date)} ${toArabicIndic(date.getFullYear())}`;
 
-/** `١٢ سبتمبر – ١١ أكتوبر ٢٠٢٦`, collapsing the month when both ends share it. */
-export function gregorianRange(first: Date, last: Date): string {
-  const sameYear = first.getFullYear() === last.getFullYear();
-  const sameMonth = sameYear && first.getMonth() === last.getMonth();
-  if (sameMonth) {
-    return `${toArabicIndic(first.getDate())} – ${toArabicIndic(last.getDate())} ${monthName(first.getMonth())} ${toArabicIndic(first.getFullYear())}`;
-  }
-  if (sameYear) return `${dayMonthString(first)} – ${dayMonthString(last)} ${toArabicIndic(first.getFullYear())}`;
-  return `${gregorianString(first)} – ${gregorianString(last)}`;
-}
-
 export const daysInMonth = (year: number, month0: number): number => new Date(year, month0 + 1, 0).getDate();
 
 /** Calendar-day arithmetic that survives DST changes. */

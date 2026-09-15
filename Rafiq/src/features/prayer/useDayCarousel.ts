@@ -1,15 +1,23 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { I18nManager, useWindowDimensions } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
-import { Easing, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
+import {
+  Easing,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { useMotion } from '@/shared/lib/motion';
 
 export const COL_PAD = 20;
-const PEEK = 10;
 const COMMIT_FRACTION = 0.22;
 const COMMIT_VELOCITY = 650;
+const NUDGE_PX = 34;
 const SPRING = { damping: 20, stiffness: 220 };
+const NUDGE_SPRING = { damping: 14, stiffness: 180 };
 
 export interface CarouselValues {
   /** Day offset currently centred, as seen by the UI thread. */
@@ -21,12 +29,10 @@ export interface CarouselValues {
   /** +1 under RTL (next day sits to the left), −1 under LTR. */
   dir: number;
   width: number;
-  /** Parallax strength: neighbours rest `P * width` px inside the screen edge. */
-  P: number;
 }
 
 /**
- * Horizontal day carousel with peeking neighbours.
+ * Full-width horizontal day pager.
  *
  * Three columns form a ring buffer; their on-screen position is computed on
  * the UI thread from `center` and `tx`. A commit advances `center` and resets
@@ -40,7 +46,6 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
   const { width } = useWindowDimensions();
   const { reduced } = useMotion();
   const dir = I18nManager.isRTL ? 1 : -1;
-  const P = (COL_PAD + PEEK) / width;
 
   const center = useSharedValue(offset);
   const tx = useSharedValue(0);
@@ -104,6 +109,7 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
         .activeOffsetX([-14, 14])
         .failOffsetY([-12, 12])
         .onUpdate((e) => {
+          // A plain assignment also cancels a running nudge.
           if (!busy.get()) tx.set(Math.max(-width, Math.min(width, e.translationX)));
         })
         .onEnd((e) => {
@@ -119,12 +125,24 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
     [busy, commitPage, dir, tx, width],
   );
 
-  const values: CarouselValues = useMemo(
-    () => ({ center, tx, op, dir, width, P }),
-    [center, tx, op, dir, width, P],
-  );
+  const values: CarouselValues = useMemo(() => ({ center, tx, op, dir, width }), [center, tx, op, dir, width]);
 
   const go = (delta: number) => scheduleOnUI(commitPage, delta);
 
-  return { gesture, values, go };
+  /** Discoverability hint: slide a little toward tomorrow and spring back. */
+  const nudge = useCallback(() => {
+    if (reduced) return;
+    scheduleOnUI(() => {
+      'worklet';
+      if (busy.get()) return;
+      tx.set(
+        withSequence(
+          withTiming(dir * NUDGE_PX, { duration: 240, easing: Easing.out(Easing.cubic) }),
+          withSpring(0, NUDGE_SPRING),
+        ),
+      );
+    });
+  }, [busy, dir, reduced, tx]);
+
+  return { gesture, values, go, nudge };
 }

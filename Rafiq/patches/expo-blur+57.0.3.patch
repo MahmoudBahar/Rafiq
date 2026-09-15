@@ -1,0 +1,33 @@
+diff --git a/node_modules/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurTargetView.kt b/node_modules/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurTargetView.kt
+index 7089679..6816908 100644
+--- a/node_modules/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurTargetView.kt
++++ b/node_modules/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurTargetView.kt
+@@ -81,6 +81,28 @@ class ExpoBlurTargetView(context: Context, appContext: AppContext) : ExpoView(co
+     blurTargetView.removeView(view)
+   }
+ 
++  /**
++   * react-native-screens keeps the content of a dismissed screen visible during the pop
++   * animation by calling startViewTransition/endViewTransition on every ancestor. Our children
++   * really live in `blurTargetView`, so forward those calls; otherwise Android ignores them
++   * (the view's parent is not `this`) and the content vanishes on the first frame of the pop.
++   */
++  override fun startViewTransition(view: View) {
++    if (view === blurTargetView) {
++      super.startViewTransition(view)
++      return
++    }
++    blurTargetView.startViewTransition(view)
++  }
++
++  override fun endViewTransition(view: View) {
++    if (view === blurTargetView) {
++      super.endViewTransition(view)
++      return
++    }
++    blurTargetView.endViewTransition(view)
++  }
++
+   override fun removeViewAt(index: Int) = blurTargetView.removeViewAt(index)
+ 
+   override fun removeViews(start: Int, count: Int) = blurTargetView.removeViews(start, count)

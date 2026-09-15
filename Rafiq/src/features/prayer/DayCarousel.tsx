@@ -9,7 +9,7 @@ interface DaySwipeSurfaceProps {
   children: ReactNode;
 }
 
-/** Gesture surface for the carousel; wraps the whole vertical list area. */
+/** Gesture surface for the pager; wraps the whole vertical list area. */
 export function DaySwipeSurface({ gesture, children }: DaySwipeSurfaceProps) {
   return (
     <GestureDetector gesture={gesture}>
@@ -49,13 +49,11 @@ interface ColumnProps {
 }
 
 function Column({ d, inFlow, values, children }: ColumnProps) {
-  const { center, tx, op, dir, width, P } = values;
-  const style = useAnimatedStyle(() => {
-    const x = dir * (center.get() - d) * width + tx.get();
-    const k = Math.min(Math.abs(x), width) / width;
-    // Neighbours rest `P * width` inside the edge and move slightly slower (parallax).
-    return { opacity: op.get(), transform: [{ translateX: x - Math.sign(x) * P * width * k * k }] };
-  });
+  const { center, tx, op, dir, width } = values;
+  const style = useAnimatedStyle(() => ({
+    opacity: op.get(),
+    transform: [{ translateX: dir * (center.get() - d) * width + tx.get() }],
+  }));
   return (
     <Animated.View style={[styles.column, { width }, inFlow ? null : styles.floating, style]}>{children}</Animated.View>
   );

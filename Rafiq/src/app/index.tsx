@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { LinearTransition } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DayCarousel, DaySwipeSurface } from '@/features/prayer/DayCarousel';
+import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
 import { COUNTRY, DEFAULT_CITY, getTimes, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
 import { PrayerList } from '@/features/prayer/PrayerList';
 import { SunArc } from '@/features/prayer/SunArc';
@@ -11,37 +12,70 @@ import { useCountdown } from '@/features/prayer/useCountdown';
 import { useDayCarousel } from '@/features/prayer/useDayCarousel';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatCountdown, formatTime12 } from '@/shared/lib/arabic';
-import { dayMonthString, weekdayName } from '@/shared/lib/gregorian';
+import { gregorianString } from '@/shared/lib/gregorian';
 import { hijriString } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { useSettings } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
-import { CalendarIcon, GearIcon, PinIcon } from '@/shared/ui/Icons';
+import { GearIcon, PinIcon } from '@/shared/ui/Icons';
 import { PressScale } from '@/shared/ui/PressScale';
 import { TabBar } from '@/shared/ui/TabBar';
-import { Display, Text } from '@/shared/ui/Text';
+import { Text } from '@/shared/ui/Text';
 import { Toast } from '@/shared/ui/Toast';
 
 const TOAST_MS = 1800;
 const TAB_BAR_HEIGHT = 58;
 const DAY_MS = 86_400_000;
+// Swipe hint: shown on the first launches, never again after a real swipe.
+const HINT_MAX = 3;
+const HINT_DELAY_MS = 900;
+const HINT_NUDGE_MS = 260;
+const HINT_SHOW_MS = 2400;
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
   const m = useMotion();
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
   const cfg = usePrayerConfig();
   const { now, day, next, h, m: mm, s } = useCountdown(cfg);
   const params = useLocalSearchParams<{ day?: string }>();
 
   // Day browsing: 0 = today. The countdown and sun arc always describe "now".
   const [dayOffset, setDayOffset] = useState(0);
-  const commit = useCallback((delta: number) => setDayOffset((o) => o + delta), []);
+  const [hint, setHint] = useState(false);
+  const hintDone = settings.swipeHintShown >= HINT_MAX;
+  const commit = useCallback(
+    (delta: number) => {
+      setDayOffset((o) => o + delta);
+      setHint(false);
+      if (!hintDone) update({ swipeHintShown: HINT_MAX });
+    },
+    [hintDone, update],
+  );
   const carousel = useDayCarousel(dayOffset, commit);
+
+  // One-time discoverability nudge. `initialShown` is captured at mount so the
+  // effect runs exactly once per launch.
+  const [initialShown] = useState(settings.swipeHintShown);
+  const { nudge } = carousel;
+  useEffect(() => {
+    if (initialShown >= HINT_MAX) return;
+    const show = setTimeout(() => {
+      setHint(true);
+      update({ swipeHintShown: initialShown + 1 });
+    }, HINT_DELAY_MS);
+    const slide = setTimeout(nudge, HINT_DELAY_MS + HINT_NUDGE_MS);
+    const hide = setTimeout(() => setHint(false), HINT_DELAY_MS + HINT_SHOW_MS);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(slide);
+      clearTimeout(hide);
+    };
+  }, [initialShown, nudge, update]);
 
   const y = now.getFullYear();
   const mo = now.getMonth();
@@ -75,6 +109,15 @@ export default function HomeScreen() {
     if (params.day) router.setParams({ day: undefined });
   }, [params.day, router]);
 
+  // The list makes room under the floating pill while one is showing.
+  const pillShowing = dayOffset !== 0 || hint;
+  const slotH = useSharedValue(0);
+  useEffect(() => {
+    const target = pillShowing ? PILL_SLOT : 0;
+    slotH.set(m.reduced ? target : withTiming(target, { duration: 220 }));
+  }, [pillShowing, m.reduced, slotH]);
+  const slotStyle = useAnimatedStyle(() => ({ height: slotH.get() }));
+
   const [toast, setToast] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = () => {
@@ -82,9 +125,12 @@ export default function HomeScreen() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(false), TOAST_MS);
   };
-  useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
@@ -106,17 +152,20 @@ export default function HomeScreen() {
             </Text>
           </View>
           <View style={styles.topEnd}>
-            <Text size={12} weight="medium" color={c.tm}>
-              {hijriString(now, day.byKey.maghrib)}
-            </Text>
-            <Pressable
+            <PressScale
               accessibilityRole="button"
               accessibilityLabel="جدول الشهر"
               onPress={openMonth}
-              style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
+              pressedScale={0.96}
+              style={styles.dates}
             >
-              <CalendarIcon size={17} color={c.tp} />
-            </Pressable>
+              <Text size={12} weight="medium" color={c.tm}>
+                {hijriString(now, day.byKey.maghrib)}
+              </Text>
+              <Text size={10.5} color={c.tm} style={styles.gregorian}>
+                {gregorianString(now)}
+              </Text>
+            </PressScale>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
@@ -147,29 +196,7 @@ export default function HomeScreen() {
           contentContainerStyle={[styles.listContent, { paddingBottom: tabBottom + TAB_BAR_HEIGHT + 16 }]}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View layout={m.reduced ? undefined : LinearTransition.duration(220)} style={styles.titleRow}>
-            <Animated.View key={dayOffset} entering={m.fadeIn()} exiting={m.fadeOut(140)}>
-              <Display size={22} lineHeight={30}>
-                {weekdayName(viewDate)} {dayMonthString(viewDate)}
-              </Display>
-            </Animated.View>
-            {dayOffset !== 0 ? (
-              <Animated.View entering={m.fadeIn()} exiting={m.fadeOut(140)}>
-                <PressScale
-                  accessibilityRole="button"
-                  accessibilityLabel="العودة إلى اليوم"
-                  onPress={() => carousel.go(-dayOffset)}
-                  pressedScale={0.94}
-                  style={[styles.todayPill, { backgroundColor: c.accent }]}
-                >
-                  <Text size={11.5} weight="bold" color="#ffffff">
-                    اليوم
-                  </Text>
-                </PressScale>
-              </Animated.View>
-            ) : null}
-          </Animated.View>
-
+          <Animated.View style={slotStyle} />
           <DayCarousel
             offset={dayOffset}
             values={carousel.values}
@@ -178,10 +205,15 @@ export default function HomeScreen() {
             )}
           />
         </ScrollView>
+        <DayPill date={dayOffset !== 0 ? viewDate : null} hint={hint} onToday={() => carousel.go(-dayOffset)} />
       </DaySwipeSurface>
 
       <TabBar bottom={tabBottom} onComingSoon={showToast} />
-      <Toast message="قريبًا في الإصدار القادم إِنْ شَاءَ اللّٰه" visible={toast} bottom={tabBottom + TAB_BAR_HEIGHT + 14} />
+      <Toast
+        message="قريبًا في الإصدار القادم إِنْ شَاءَ اللّٰه"
+        visible={toast}
+        bottom={tabBottom + TAB_BAR_HEIGHT + 14}
+      />
     </View>
   );
 }
@@ -196,18 +228,18 @@ const styles = StyleSheet.create({
   },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cityWrap: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  topEnd: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  topEnd: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dates: {
+    alignItems: 'flex-start',
+    gap: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: radius.md,
+  },
+  gregorian: { opacity: 0.85 },
   iconBtn: { width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   countdownBlock: { alignItems: 'center', paddingTop: 16 },
   countdown: { fontVariant: ['tabular-nums'] },
   headerSpacer: { height: 26 },
   listContent: { paddingTop: 14 },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 22,
-    paddingBottom: 10,
-  },
-  todayPill: { paddingVertical: 4, paddingHorizontal: 14, borderRadius: radius.pill },
 });

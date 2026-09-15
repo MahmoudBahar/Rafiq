@@ -1,4 +1,3 @@
-import uq from '@umalqura/core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -7,36 +6,30 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PRAYERS, computeRange } from '@/features/prayer/engine';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
-import { WEEKDAYS_AR, dayMonthString, gregorianRange, isSameDay, monthName } from '@/shared/lib/gregorian';
-import { hijriMonthName, hijriMonthRange } from '@/shared/lib/hijri';
+import { WEEKDAYS_AR, isSameDay, monthName } from '@/shared/lib/gregorian';
+import { hijriMonthRange } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme, type Scheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon, ChevronForwardIcon } from '@/shared/ui/Icons';
 import { PressScale } from '@/shared/ui/PressScale';
-import { Segmented } from '@/shared/ui/Segmented';
 import { Display, Text } from '@/shared/ui/Text';
-
-type Mode = 'gregorian' | 'hijri';
 
 const ROW_H = 46;
 const FRIDAY = 5;
-// @umalqura/core covers 1356–1500 AH (1937–2077 CE).
-const HIJRI_MIN = 1356;
-const HIJRI_MAX = 1500;
-const GREG_MIN = 1938;
-const GREG_MAX = 2076;
+// @umalqura/core (Hijri subtitle) covers 1356–1500 AH ≈ 1938–2076 CE.
+const YEAR_MIN = 1938;
+const YEAR_MAX = 2076;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const iso = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
-const localMidnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 interface RowVM {
   key: string;
   date: Date;
   num: string;
-  sub: string;
+  weekday: string;
   friday: boolean;
   isToday: boolean;
   times: string[];
@@ -55,97 +48,50 @@ export default function MonthScreen() {
   const tm = today.getMonth();
   const td = today.getDate();
 
-  const [mode, setMode] = useState<Mode>('gregorian');
   const [ym, setYm] = useState(() => {
     const y = Number(params.y);
     const m0 = Number(params.m);
     return params.y && params.m && Number.isFinite(y) && Number.isFinite(m0) ? { y, m0 } : { y: ty, m0: tm };
   });
-  const [hym, setHym] = useState(() => {
-    const u = uq(today);
-    return { hy: u.hy, hm: u.hm };
-  });
 
   const { first, last, title, sub } = useMemo(() => {
-    if (mode === 'hijri') {
-      const u = uq(hym.hy, hym.hm, 1);
-      const f = localMidnight(u.date);
-      const l = localMidnight(u.endOf('month').date);
-      return {
-        first: f,
-        last: l,
-        title: `${hijriMonthName(hym.hm)} ${toArabicIndic(hym.hy)}`,
-        sub: gregorianRange(f, l),
-      };
-    }
     const f = new Date(ym.y, ym.m0, 1);
     const l = new Date(ym.y, ym.m0 + 1, 0);
     return { first: f, last: l, title: `${monthName(ym.m0)} ${toArabicIndic(ym.y)}`, sub: hijriMonthRange(f, l) };
-  }, [mode, ym, hym]);
+  }, [ym]);
 
   // Strings only, so rows render without any per-row date work.
   const rows = useMemo<RowVM[]>(() => {
     const todayDate = new Date(ty, tm, td);
-    return computeRange(cfg, first, last).map((r, i) => ({
+    return computeRange(cfg, first, last).map((r) => ({
       key: iso(r.date),
       date: r.date,
-      num: toArabicIndic(mode === 'hijri' ? i + 1 : r.day),
-      sub: mode === 'hijri' ? dayMonthString(r.date) : WEEKDAYS_AR[r.weekday],
+      num: toArabicIndic(r.day),
+      weekday: WEEKDAYS_AR[r.weekday],
       friday: r.weekday === FRIDAY,
       isToday: isSameDay(r.date, todayDate),
       times: PRAYERS.map((p) => formatTimeShort(r.byKey[p.key])),
     }));
-  }, [cfg, first, last, mode, ty, tm, td]);
+  }, [cfg, first, last, ty, tm, td]);
 
   const todayIndex = rows.findIndex((r) => r.isToday);
-  const listKey = mode === 'hijri' ? `h-${hym.hy}-${hym.hm}` : `g-${ym.y}-${ym.m0}`;
+  const listKey = `${ym.y}-${ym.m0}`;
 
-  const onMode = (next: Mode) => {
-    if (next === mode) return;
-    const anchor = todayIndex >= 0 ? today : first;
-    if (next === 'hijri') {
-      const u = uq(anchor);
-      setHym({ hy: u.hy, hm: u.hm });
-    } else {
-      setYm({ y: anchor.getFullYear(), m0: anchor.getMonth() });
-    }
-    setMode(next);
-  };
+  const step = (delta: 1 | -1) =>
+    setYm(({ y, m0 }) => {
+      let nm = m0 + delta;
+      let ny = y;
+      if (nm < 0) {
+        nm = 11;
+        ny -= 1;
+      } else if (nm > 11) {
+        nm = 0;
+        ny += 1;
+      }
+      return { y: clamp(ny, YEAR_MIN, YEAR_MAX), m0: nm };
+    });
 
-  const step = (delta: 1 | -1) => {
-    if (mode === 'hijri') {
-      setHym(({ hy, hm }) => {
-        let nm = hm + delta;
-        let ny = hy;
-        if (nm < 1) {
-          nm = 12;
-          ny -= 1;
-        } else if (nm > 12) {
-          nm = 1;
-          ny += 1;
-        }
-        return { hy: clamp(ny, HIJRI_MIN, HIJRI_MAX), hm: nm };
-      });
-    } else {
-      setYm(({ y, m0 }) => {
-        let nm = m0 + delta;
-        let ny = y;
-        if (nm < 0) {
-          nm = 11;
-          ny -= 1;
-        } else if (nm > 11) {
-          nm = 0;
-          ny += 1;
-        }
-        return { y: clamp(ny, GREG_MIN, GREG_MAX), m0: nm };
-      });
-    }
-  };
-
-  const openDay = useCallback(
-    (date: Date) => router.navigate({ pathname: '/', params: { day: iso(date) } }),
-    [router],
-  );
+  const openDay = useCallback((date: Date) => router.navigate({ pathname: '/', params: { day: iso(date) } }), [router]);
 
   const listRef = useRef<ScrollView>(null);
   const scrollToToday = () => {
@@ -170,19 +116,6 @@ export default function MonthScreen() {
         <Display size={28} numberOfLines={1} style={styles.headerTitle}>
           جدول الشهر
         </Display>
-      </View>
-
-      <View style={styles.modeRow}>
-        <View style={styles.modeWrap}>
-          <Segmented<Mode>
-            value={mode}
-            onChange={onMode}
-            options={[
-              { key: 'gregorian', label: 'ميلادي' },
-              { key: 'hijri', label: 'هجري' },
-            ]}
-          />
-        </View>
       </View>
 
       <View style={styles.monthNav}>
@@ -252,7 +185,7 @@ const MonthRow = memo(function MonthRow({ vm, onPress }: MonthRowProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${vm.sub} ${vm.num}`}
+      accessibilityLabel={`${vm.weekday} ${vm.num}`}
       onPress={() => onPress(vm.date)}
       style={({ pressed }) => [
         styles.row,
@@ -270,7 +203,7 @@ const MonthRow = memo(function MonthRow({ vm, onPress }: MonthRowProps) {
           </Text>
         </View>
         <Text size={10} color={vm.friday ? c.ts : c.tm} weight={vm.friday ? 'semi' : 'regular'} numberOfLines={1}>
-          {vm.sub}
+          {vm.weekday}
         </Text>
       </View>
       {vm.times.map((t, i) => (
@@ -296,11 +229,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 24,
-    paddingBottom: 10,
+    paddingBottom: 12,
   },
   headerTitle: { flex: 1 },
-  modeRow: { paddingHorizontal: 20, paddingBottom: 12, alignItems: 'flex-start' },
-  modeWrap: { width: 200 },
   back: {
     width: 40,
     height: 40,

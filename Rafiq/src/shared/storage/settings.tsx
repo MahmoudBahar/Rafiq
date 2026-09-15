@@ -40,6 +40,8 @@ export interface Settings {
   madhab: Madhab;
   adjustments: Adjustments;
   theme: ThemeMode;
+  /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
+  swipeHintShown: number;
 }
 
 export const DEFAULTS: Settings = {
@@ -52,6 +54,7 @@ export const DEFAULTS: Settings = {
   madhab: 'shafii',
   adjustments: {},
   theme: 'system',
+  swipeHintShown: 0,
 };
 
 const KEY = 'rafiq.settings.v1';
