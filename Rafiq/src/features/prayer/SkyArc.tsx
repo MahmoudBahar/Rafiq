@@ -147,11 +147,9 @@ interface EndTimesProps {
   moon: Date | null;
 }
 
-/** Rise or set times of both bodies under one arc end, each with its glyph and verb. */
+/** Rise or set times of both bodies under one arc end, each behind its glyph. */
 function EndTimes({ kind, sun, moon }: EndTimesProps) {
   const { c } = useTheme();
-  const sunWord = kind === 'rise' ? 'شروق' : 'غروب';
-  const moonWord = kind === 'rise' ? 'طلوع القمر' : 'غروب القمر';
   // The set column is mirrored so its glyphs sit on the outer edge, under the corner.
   const row = kind === 'rise' ? styles.endRow : [styles.endRow, styles.endRowMirrored];
   return (
@@ -159,13 +157,13 @@ function EndTimes({ kind, sun, moon }: EndTimesProps) {
       <View style={row}>
         <SunIcon size={10} color={c.accent} strokeWidth={2.4} />
         <Text size={10} weight="semi" color={c.tm}>
-          {sunWord} {formatTimeShort(sun)}
+          {formatTimeShort(sun)}
         </Text>
       </View>
       <View style={row}>
         <MoonIcon size={10} color={c.moon} strokeWidth={2.4} />
         <Text size={10} weight="semi" color={c.tm}>
-          {moonWord} {moon ? formatTimeShort(moon) : '—'}
+          {moon ? formatTimeShort(moon) : '—'}
         </Text>
       </View>
     </View>
