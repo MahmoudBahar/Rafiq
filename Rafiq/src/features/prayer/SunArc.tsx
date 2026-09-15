@@ -15,7 +15,7 @@ import { formatTimeShort } from '@/shared/lib/arabic';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
 import type { DayTimes } from './engine';
-import { ARC_HEIGHT, ARC_START, ARC_WIDTH, FULL_ARC_D, sunArc } from './sunArc';
+import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, SUNRISE_POINT, sunArc } from './sunArc';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -134,30 +134,22 @@ export function SunArc({ now, day }: SunArcProps) {
           </>
         ) : (
           <>
-            {/* Dawn: the sky warms at the sunrise point while the moon fades out. */}
+            {/* Dawn: an ember grows where the sun will rise while the moon fades out. */}
             {pos.phase === 'dawn' ? (
               <>
                 <Circle
-                  cx={ARC_START.x}
-                  cy={ARC_START.y}
-                  r={14 + 18 * glow}
+                  cx={SUNRISE_POINT.x}
+                  cy={SUNRISE_POINT.y}
+                  r={6 + 9 * glow}
                   fill={c.accent}
-                  opacity={0.05 + 0.2 * glow}
+                  opacity={0.06 + 0.18 * glow}
                 />
                 <Circle
-                  cx={ARC_START.x}
-                  cy={ARC_START.y}
-                  r={5 + 6 * glow}
+                  cx={SUNRISE_POINT.x}
+                  cy={SUNRISE_POINT.y}
+                  r={2 + 4 * glow}
                   fill={c.accent}
-                  opacity={0.12 + 0.4 * glow}
-                />
-                <Path
-                  d={pos.pathD}
-                  stroke={c.accent}
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  fill="none"
-                  opacity={0.25 + 0.75 * glow}
+                  opacity={0.2 + 0.5 * glow}
                 />
               </>
             ) : null}

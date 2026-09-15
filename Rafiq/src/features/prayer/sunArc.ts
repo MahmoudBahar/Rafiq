@@ -5,7 +5,7 @@
  *
  * Phases: by day the sun travels right→left; by night the moon travels back
  * left→right and only sets at sunrise. Between Fajr and sunrise ("dawn") the
- * moon is still up but fading while the sky warms at the sunrise point.
+ * moon is still up but fading while a glow grows where the sun will appear.
  */
 interface Pt {
   x: number;
@@ -18,16 +18,21 @@ export const ARC_HEIGHT = 104;
 const P_START: Pt = { x: 324, y: 96 };
 const CTRL: Pt = { x: 165, y: -30 };
 const P_END: Pt = { x: 6, y: 96 };
-/** How far along the arc the dawn "pre-light" reaches at sunrise. */
-const PRELIGHT_T = 0.1;
-
-export const ARC_START: Readonly<Pt> = P_START;
-export const FULL_ARC_D = `M${P_END.x} ${P_END.y} Q${CTRL.x} ${CTRL.y} ${P_START.x} ${P_START.y}`;
-
 const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 const quad = (p0: Pt, c: Pt, p1: Pt, t: number): Pt => lerp(lerp(p0, c, t), lerp(c, p1, t), t);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const r1 = (n: number) => Math.round(n * 10) / 10;
+
+/** The sun never sits on the arc's end points (it would clip and cover the labels). */
+const T_MIN = 0.03;
+const T_MAX = 0.97;
+
+/** Where the sun first appears at sunrise; the dawn glow grows on this spot. */
+export const SUNRISE_POINT: Readonly<Pt> = (() => {
+  const p = quad(P_START, CTRL, P_END, T_MIN);
+  return { x: r1(p.x), y: r1(p.y) };
+})();
+export const FULL_ARC_D = `M${P_END.x} ${P_END.y} Q${CTRL.x} ${CTRL.y} ${P_START.x} ${P_START.y}`;
 
 /** Sub-curve of the day arc from sunrise to parameter `t`. */
 function fromStart(t: number): string {
@@ -47,7 +52,7 @@ export interface ArcPosition {
   /** Sun (day) or moon (night/dawn) position. */
   x: number;
   y: number;
-  /** Accent path from sunrise: to the sun by day, a short warming segment at dawn. */
+  /** Accent path from sunrise to the sun; empty outside the day phase. */
   pathD: string;
 }
 
@@ -66,14 +71,14 @@ export function sunArc({ now, fajr, sunrise, maghrib, prevMaghrib, nextSunrise }
   const n = now.getTime();
 
   if (n >= sunrise.getTime() && n < maghrib.getTime()) {
-    const t = clamp((n - sunrise.getTime()) / (maghrib.getTime() - sunrise.getTime()), 0.03, 0.97);
+    const t = clamp((n - sunrise.getTime()) / (maghrib.getTime() - sunrise.getTime()), T_MIN, T_MAX);
     const p = quad(P_START, CTRL, P_END, t);
     return { phase: 'day', t, dawn: 0, x: r1(p.x), y: r1(p.y), pathD: fromStart(t) };
   }
 
   const from = n >= maghrib.getTime() ? maghrib : prevMaghrib;
   const to = n >= maghrib.getTime() ? nextSunrise : sunrise;
-  const t = clamp((n - from.getTime()) / (to.getTime() - from.getTime()), 0.03, 0.97);
+  const t = clamp((n - from.getTime()) / (to.getTime() - from.getTime()), T_MIN, T_MAX);
   const p = quad(P_END, CTRL, P_START, t);
   const isDawn = n >= fajr.getTime() && n < sunrise.getTime();
   const dawn = isDawn ? clamp((n - fajr.getTime()) / (sunrise.getTime() - fajr.getTime()), 0, 1) : 0;
@@ -83,6 +88,6 @@ export function sunArc({ now, fajr, sunrise, maghrib, prevMaghrib, nextSunrise }
     dawn,
     x: r1(p.x),
     y: r1(p.y),
-    pathD: isDawn ? fromStart(Math.max(0.01, PRELIGHT_T * dawn)) : '',
+    pathD: '',
   };
 }
