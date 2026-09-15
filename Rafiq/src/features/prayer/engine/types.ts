@@ -37,15 +37,11 @@ export interface DayTimes {
   /** In `PRAYERS` order. */
   times: PrayerTime[];
   byKey: Record<PrayerKey, Date>;
-  /** Yesterday's Maghrib. */
-  prevMaghrib: Date;
-  /** Astronomical sunset (Maghrib before any method offset): the sun arc ends here. */
+  /** Astronomical sunset (equals Maghrib for most methods). */
   sunset: Date;
-  /** Yesterday's sunset: the night arc starts here before today's sunrise. */
-  prevSunset: Date;
   /** Tomorrow's Fajr. */
   nextFajr: Date;
-  /** Tomorrow's sunrise: the night arc ends here. */
+  /** Tomorrow's sunrise. */
   nextSunrise: Date;
 }
 

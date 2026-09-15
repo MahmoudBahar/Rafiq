@@ -13,7 +13,7 @@ import { DayCarousel, DaySwipeSurface } from '@/features/prayer/DayCarousel';
 import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
 import { COUNTRY, DEFAULT_CITY, getTimes, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
 import { PrayerList } from '@/features/prayer/PrayerList';
-import { SunArc } from '@/features/prayer/SunArc';
+import { SkyArc } from '@/features/prayer/SkyArc';
 import { useCountdown } from '@/features/prayer/useCountdown';
 import { useDayCarousel } from '@/features/prayer/useDayCarousel';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
@@ -229,7 +229,7 @@ export default function HomeScreen() {
             الأذان الساعة {formatTime12(next.at)}
           </Text>
         </View>
-        <SunArc now={now} day={day} />
+        <SkyArc now={now} day={day} coords={cfg.coords} />
         <View style={styles.headerSpacer} />
       </View>
 

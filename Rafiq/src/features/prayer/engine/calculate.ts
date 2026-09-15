@@ -45,22 +45,13 @@ export function timeFor(key: PrayerKey, cfg: PrayerConfig, date: Date): Date {
   return build(cfg, date)[key];
 }
 
-/** Today's six times plus the neighbouring-day bounds the header sky needs. */
+/** Today's six times plus sunset and tomorrow's Fajr / sunrise. */
 export function computeDay(cfg: PrayerConfig, date: Date): DayTimes {
-  const times = getTimes(cfg, date);
-  const byKey = Object.fromEntries(times.map((t) => [t.key, t.at])) as Record<PrayerKey, Date>;
   const today = build(cfg, date);
-  const prev = build(cfg, shiftDays(date, -1));
-  const next = build(cfg, shiftDays(date, 1));
-  return {
-    times,
-    byKey,
-    sunset: today.sunset,
-    prevMaghrib: prev.maghrib,
-    prevSunset: prev.sunset,
-    nextFajr: next.fajr,
-    nextSunrise: next.sunrise,
-  };
+  const tomorrow = build(cfg, shiftDays(date, 1));
+  const times = PRAYERS.map((p) => ({ ...p, at: today[p.key] }));
+  const byKey = Object.fromEntries(times.map((t) => [t.key, t.at])) as Record<PrayerKey, Date>;
+  return { times, byKey, sunset: today.sunset, nextFajr: tomorrow.fajr, nextSunrise: tomorrow.sunrise };
 }
 
 /** First real prayer after `now`; wraps to tomorrow's Fajr after Isha. Pure array scan. */
