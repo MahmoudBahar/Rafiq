@@ -14,8 +14,10 @@ import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
 import { COUNTRY, DEFAULT_CITY, getTimes, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
 import { PrayerList } from '@/features/prayer/PrayerList';
 import { SkyArc } from '@/features/prayer/SkyArc';
+import { StarField } from '@/features/prayer/StarField';
 import { useCountdown } from '@/features/prayer/useCountdown';
 import { useDayCarousel } from '@/features/prayer/useDayCarousel';
+import { useSky } from '@/features/prayer/useSky';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatCountdown, formatTime12 } from '@/shared/lib/arabic';
 import { gregorianString } from '@/shared/lib/gregorian';
@@ -54,6 +56,7 @@ export default function HomeScreen() {
   const cfg = usePrayerConfig();
   const { now, day, next, h, m: mm, s } = useCountdown(cfg);
   const params = useLocalSearchParams<{ day?: string }>();
+  const sky = useSky(now, day, cfg.coords);
 
   // Day browsing: 0 = today. The countdown and sun arc always describe "now".
   const [dayOffset, setDayOffset] = useState(0);
@@ -180,6 +183,7 @@ export default function HomeScreen() {
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <GradientBackground />
+        <StarField visibility={sky.stars} />
         <View style={styles.topRow}>
           <View style={styles.cityWrap}>
             <PinIcon size={13} color={c.tm} />
@@ -229,7 +233,7 @@ export default function HomeScreen() {
             الأذان الساعة {formatTime12(next.at)}
           </Text>
         </View>
-        <SkyArc now={now} day={day} coords={cfg.coords} />
+        <SkyArc sky={sky} day={day} />
         <View style={styles.headerSpacer} />
       </View>
 
