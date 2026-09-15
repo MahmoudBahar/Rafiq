@@ -152,15 +152,17 @@ function EndTimes({ kind, sun, moon }: EndTimesProps) {
   const { c } = useTheme();
   const sunWord = kind === 'rise' ? 'شروق' : 'غروب';
   const moonWord = kind === 'rise' ? 'طلوع القمر' : 'غروب القمر';
+  // The set column is mirrored so its glyphs sit on the outer edge, under the corner.
+  const row = kind === 'rise' ? styles.endRow : [styles.endRow, styles.endRowMirrored];
   return (
-    <View style={styles.endTimes}>
-      <View style={styles.endRow}>
+    <View style={[styles.endTimes, kind === 'set' && styles.endTimesMirrored]}>
+      <View style={row}>
         <SunIcon size={10} color={c.accent} strokeWidth={2.4} />
         <Text size={10} weight="semi" color={c.tm}>
           {sunWord} {formatTimeShort(sun)}
         </Text>
       </View>
-      <View style={styles.endRow}>
+      <View style={row}>
         <MoonIcon size={10} color={c.moon} strokeWidth={2.4} />
         <Text size={10} weight="semi" color={c.tm}>
           {moonWord} {moon ? formatTimeShort(moon) : '—'}
@@ -183,5 +185,7 @@ const styles = StyleSheet.create({
   },
   dayLength: { marginTop: 1, opacity: 0.9 },
   endTimes: { gap: 1 },
+  endTimesMirrored: { alignItems: 'flex-end' },
   endRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  endRowMirrored: { flexDirection: 'row-reverse' },
 });
