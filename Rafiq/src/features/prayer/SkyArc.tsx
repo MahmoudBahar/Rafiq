@@ -60,7 +60,7 @@ export function SkyArc({ sky, day }: SkyArcProps) {
     setMoonPos({ x: sky.moon.x, y: sky.moon.y });
   }
 
-  const litPath = sky.moon.fraction >= 0.03 ? moonPath(sky.moon.phase, MOON_R) : null;
+  const litPath = sky.moon.fraction >= 0.03 ? moonPath(sky.moon.phase, MOON_R, sky.moon.southern) : null;
   const dayMinutes = Math.round((day.sunset.getTime() - day.byKey.sunrise.getTime()) / 60_000);
   const dayLength = toArabicIndic(`${Math.floor(dayMinutes / 60)}:${String(dayMinutes % 60).padStart(2, '0')}`);
 

@@ -16,8 +16,12 @@
         "tinted": "./assets/images/ios-icon-tinted.png"
       },
       "infoPlist": {
-        "CFBundleDevelopmentRegion": "ar"
-      }
+        "CFBundleDevelopmentRegion": "ar",
+        "ExpoLocalization_supportsRTL": true,
+        "ExpoLocalization_forcesRTL": true,
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.rafiqelmuslim.Rafiq"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +31,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": true,
-      "package": "com.rafiq_elmuslim.Rafiq"
+      "package": "com.rafiq_elmuslim.Rafiq",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
