@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
+import { physicalLeft } from '@/shared/lib/rtl';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
 import { MoonIcon, SunIcon } from '@/shared/ui/Icons';
@@ -186,7 +187,7 @@ function Halo({ x, y, radius, grow, color, width, fill, opacity, pulse }: HaloPr
       style={[
         {
           position: 'absolute',
-          left: x - radius,
+          ...physicalLeft(x - radius),
           top: y - radius,
           width: radius * 2,
           height: radius * 2,

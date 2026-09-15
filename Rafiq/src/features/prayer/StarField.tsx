@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, G, Path } from 'react-native-svg';
+import { physicalLeft } from '@/shared/lib/rtl';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
 
@@ -157,7 +158,7 @@ function Sparkle({ x, y, color, osc, base }: SparkleProps) {
       style={[
         {
           position: 'absolute',
-          left: x - SPARKLE_BOX / 2,
+          ...physicalLeft(x - SPARKLE_BOX / 2),
           top: y - SPARKLE_BOX / 2,
           width: SPARKLE_BOX,
           height: SPARKLE_BOX,
