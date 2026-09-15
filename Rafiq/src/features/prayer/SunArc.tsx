@@ -15,7 +15,7 @@ import { formatTimeShort } from '@/shared/lib/arabic';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
 import type { DayTimes } from './engine';
-import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, SUNRISE_POINT, sunArc } from './sunArc';
+import { ARC_HEIGHT, ARC_PAD, ARC_WIDTH, FULL_ARC_D, sunArc } from './sunArc';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -36,6 +36,8 @@ const TWINKLE: Record<number, [number, number]> = { 1: [1, 0.35], 2: [0.4, 1], 3
 
 const MOON_D = 'M2.4 -6.2a7 7 0 1 0 4.4 11.4 5.6 5.6 0 0 1 -4.4 -11.4z';
 const SUN_R = 7;
+/** Stars still faintly visible by day (dark theme only; light theme has starop 0). */
+const DAY_STARS = 0.3;
 
 interface SunArcProps {
   now: Date;
@@ -48,8 +50,9 @@ export function SunArc({ now, day }: SunArcProps) {
     now,
     fajr: day.byKey.fajr,
     sunrise: day.byKey.sunrise,
-    maghrib: day.byKey.maghrib,
-    prevMaghrib: day.prevMaghrib,
+    sunset: day.sunset,
+    isha: day.byKey.isha,
+    prevSunset: day.prevSunset,
     nextSunrise: day.nextSunrise,
   });
 
@@ -78,22 +81,31 @@ export function SunArc({ now, day }: SunArcProps) {
   const twinkle3 = useAnimatedProps(() => ({ opacity: interpolate(pulse.get(), [0, 1], TWINKLE[3]) }));
   const twinkles = [twinkle1, twinkle2, twinkle3];
 
-  // The sun pops in at sunrise instead of appearing at full size.
+  // The sun springs in at sunrise and collapses into the ember at sunset.
   const sunR = useSharedValue(pos.phase === 'day' ? SUN_R : 0);
   useEffect(() => {
-    sunR.set(
-      pos.phase === 'day' ? withSpring(SUN_R, { damping: 12, stiffness: 160, reduceMotion: ReduceMotion.System }) : 0,
-    );
+    if (pos.phase === 'day') {
+      sunR.set(withSpring(SUN_R, { damping: 12, stiffness: 160, reduceMotion: ReduceMotion.System }));
+    } else if (pos.phase === 'dusk') {
+      sunR.set(withTiming(0, { duration: 600, easing: Easing.in(Easing.cubic), reduceMotion: ReduceMotion.System }));
+    } else {
+      sunR.set(0);
+    }
   }, [pos.phase, sunR]);
   const sunDisc = useAnimatedProps(() => ({ r: sunR.get() }));
 
-  // Stars belong to the night: full after Maghrib, fading through dawn, faint by day.
-  const starVis = pos.phase === 'night' ? 1 : pos.phase === 'dawn' ? 1 - 0.7 * pos.dawn : 0.3;
-  const glow = pos.dawn;
+  const starVis = DAY_STARS + (1 - DAY_STARS) * pos.night;
+  const sunAt = pos.phase === 'day' ? pos : pos.ember;
 
   return (
     <View style={styles.wrap}>
-      <Svg width="100%" height={ARC_HEIGHT} viewBox={`0 0 ${ARC_WIDTH} ${ARC_HEIGHT}`} preserveAspectRatio="none">
+      <Svg
+        width="100%"
+        height={ARC_HEIGHT + ARC_PAD}
+        viewBox={`${-ARC_PAD} 0 ${ARC_WIDTH + 2 * ARC_PAD} ${ARC_HEIGHT + ARC_PAD}`}
+        preserveAspectRatio="none"
+        style={styles.canvas}
+      >
         <G opacity={c.starop * starVis}>
           {STARS.map(([cx, cy, r, tw]) =>
             tw ? (
@@ -120,46 +132,51 @@ export function SunArc({ now, day }: SunArcProps) {
         />
 
         {pos.phase === 'day' ? (
+          <Path d={pos.pathD} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" />
+        ) : null}
+
+        {pos.ember ? (
           <>
-            <Path d={pos.pathD} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" />
-            <AnimatedCircle cx={pos.x} cy={pos.y} fill={c.accent} animatedProps={sunDisc} />
-            <AnimatedCircle
-              cx={pos.x}
-              cy={pos.y}
-              fill="none"
-              stroke={c.accent}
-              strokeWidth={1.5}
-              animatedProps={sunHalo}
+            <Circle
+              cx={pos.ember.x}
+              cy={pos.ember.y}
+              r={6 + 9 * pos.ember.k}
+              fill={c.accent}
+              opacity={0.06 + 0.18 * pos.ember.k}
+            />
+            <Circle
+              cx={pos.ember.x}
+              cy={pos.ember.y}
+              r={2 + 4 * pos.ember.k}
+              fill={c.accent}
+              opacity={0.2 + 0.5 * pos.ember.k}
             />
           </>
-        ) : (
+        ) : null}
+
+        {pos.moonOpacity > 0 ? (
+          <G transform={`translate(${pos.x} ${pos.y})`} opacity={pos.moonOpacity}>
+            <Circle cx={0} cy={0} r={14} fill={c.moon} opacity={0.12} />
+            <Path d={MOON_D} fill={c.moon} />
+            <AnimatedCircle cx={0} cy={0} fill="none" stroke={c.moon} strokeWidth={1.2} animatedProps={moonHalo} />
+          </G>
+        ) : null}
+
+        {sunAt ? (
           <>
-            {/* Dawn: an ember grows where the sun will rise while the moon fades out. */}
-            {pos.phase === 'dawn' ? (
-              <>
-                <Circle
-                  cx={SUNRISE_POINT.x}
-                  cy={SUNRISE_POINT.y}
-                  r={6 + 9 * glow}
-                  fill={c.accent}
-                  opacity={0.06 + 0.18 * glow}
-                />
-                <Circle
-                  cx={SUNRISE_POINT.x}
-                  cy={SUNRISE_POINT.y}
-                  r={2 + 4 * glow}
-                  fill={c.accent}
-                  opacity={0.2 + 0.5 * glow}
-                />
-              </>
+            <AnimatedCircle cx={sunAt.x} cy={sunAt.y} fill={c.accent} animatedProps={sunDisc} />
+            {pos.phase === 'day' ? (
+              <AnimatedCircle
+                cx={sunAt.x}
+                cy={sunAt.y}
+                fill="none"
+                stroke={c.accent}
+                strokeWidth={1.5}
+                animatedProps={sunHalo}
+              />
             ) : null}
-            <G transform={`translate(${pos.x} ${pos.y})`} opacity={1 - glow}>
-              <Circle cx={0} cy={0} r={14} fill={c.moon} opacity={0.12} />
-              <Path d={MOON_D} fill={c.moon} />
-              <AnimatedCircle cx={0} cy={0} fill="none" stroke={c.moon} strokeWidth={1.2} animatedProps={moonHalo} />
-            </G>
           </>
-        )}
+        ) : null}
       </Svg>
       <View style={styles.labels}>
         <Text size={10} weight="semi" color={c.tm}>
@@ -175,5 +192,8 @@ export function SunArc({ now, day }: SunArcProps) {
 
 const styles = StyleSheet.create({
   wrap: { marginHorizontal: 6, marginTop: 6 },
-  labels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
+  // The canvas bleeds past the wrapper by the padding so the arc keeps its
+  // place while end-point discs have room to draw.
+  canvas: { marginHorizontal: -ARC_PAD },
+  labels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 - ARC_PAD },
 });
