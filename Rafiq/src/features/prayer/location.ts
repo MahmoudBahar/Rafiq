@@ -62,8 +62,10 @@ async function geocode(coords: Coords): Promise<Location.LocationGeocodedAddress
 }
 
 /**
- * Foreground permission → device fix → Arabic place label.
- * Label preference: Arabic geocoded name, nearest known city, any geocoded name, "موقعي".
+ * Foreground permission → device fix → Arabic place label. The fix itself is
+ * what the engine calculates with; the label is the nearest listed city so
+ * the name matches the official table the times sit closest to.
+ * Label preference: nearest listed city, Arabic geocoded name, any geocoded name, "موقعي".
  */
 export async function resolveLocation(): Promise<ResolvedLocation> {
   const perm = await Location.requestForegroundPermissionsAsync();
@@ -77,7 +79,7 @@ export async function resolveLocation(): Promise<ResolvedLocation> {
   const geoCity = geo?.city ?? geo?.subregion ?? geo?.region ?? null;
   const near = nearestCity(coords);
 
-  const city = (hasArabic(geoCity) ? geoCity : null) ?? near?.name ?? geoCity ?? UNKNOWN_PLACE;
+  const city = near?.city.name ?? (hasArabic(geoCity) ? geoCity : null) ?? geoCity ?? UNKNOWN_PLACE;
   const country = hasArabic(geo?.country) ? geo.country : near ? COUNTRY : null;
   return { city, country, ...coords };
 }

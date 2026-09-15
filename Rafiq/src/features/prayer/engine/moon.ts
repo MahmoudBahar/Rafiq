@@ -30,6 +30,8 @@ export interface MoonState {
   phase: number;
   /** Illuminated fraction 0..1. */
   fraction: number;
+  /** Observer south of the equator: the lit limb appears on the opposite side. */
+  southern: boolean;
 }
 
 const DAY_MS = 86_400_000;
@@ -105,12 +107,14 @@ export function moonState(coords: Coords, now: Date): MoonState {
   const { jde } = julianDay(nowMs);
 
   // Phase: phase angle → illuminated fraction; waxing while the fraction grows.
-  const i = phaseAngle3(jde);
+  // astronomia's angle is signed (negative after full), so take its magnitude.
+  const i = Math.abs(phaseAngle3(jde));
   const fraction = illuminated(i);
   const waxing = illuminated(phaseAngle3(jde + 0.02)) > fraction;
   const k = i / Math.PI; // 1 at new moon, 0 at full
   const phase = waxing ? (1 - k) / 2 : (1 + k) / 2;
 
+  const southern = coords.latitude < 0;
   const h0 = stdh0Lunar(parallax(moonPosition(jde).range));
   const up = moonAltitude(coords, nowMs) > h0;
 
@@ -137,6 +141,7 @@ export function moonState(coords: Coords, now: Date): MoonState {
       ...dayTimes,
       phase,
       fraction,
+      southern,
     };
   }
   return {
@@ -148,5 +153,6 @@ export function moonState(coords: Coords, now: Date): MoonState {
     ...dayTimes,
     phase,
     fraction,
+    southern,
   };
 }
