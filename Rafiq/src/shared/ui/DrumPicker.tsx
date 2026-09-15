@@ -1,10 +1,12 @@
 import { BlurView } from 'expo-blur';
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
+  cancelAnimation,
   interpolate,
   useAnimatedReaction,
-  useAnimatedScrollHandler,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
@@ -13,6 +15,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
+import { bump, settle as settleHaptic, tap, tick } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -33,7 +36,7 @@ export interface DrumPickerProps {
   /** Called whenever the wheel settles on a new item (auto-apply). */
   onSelect: (key: string) => void;
   onClose: () => void;
-  /** Fires once per focused-index change while scrolling. Hook point for haptics. */
+  /** Fires once per focused-index change while the wheel moves (the tick haptic is built in). */
   onFocusChange?: (index: number) => void;
   /** Android: ref of the `BlurTargetView` wrapping the content behind the picker. */
   blurTarget?: RefObject<View | null>;
@@ -45,6 +48,17 @@ const LIST_H = ITEM_H * VISIBLE;
 const PAD = ITEM_H * 2;
 const MAX_PANEL_W = 360;
 const SPRING = { damping: 16, stiffness: 190, mass: 0.9 };
+
+// Wheel physics. The finger drives a raw offset; detents pull the displayed
+// offset toward the nearest row (cogging), the ends rubber-band, and a flick
+// decays exponentially to a projected stop that is snapped to a row.
+const COG_AMPLITUDE = ITEM_H * 0.1;
+const RUBBER = 0.35;
+const DECAY_PER_MS = 0.994;
+const MAX_FLICK_ROWS = 12;
+const SNAP_SPRING = { damping: 20, stiffness: 240, mass: 0.8 };
+const EDGE_SPRING = { damping: 22, stiffness: 260 };
+const TAU = Math.PI * 2;
 
 /**
  * Centred drum picker: items snap into a fixed lens; neighbours shrink, fade
@@ -66,6 +80,7 @@ export function DrumPicker({
   const { reduced } = useMotion();
   const { width: W } = useWindowDimensions();
   const panelW = Math.min(W - 40, MAX_PANEL_W);
+  const maxY = Math.max(0, items.length - 1) * ITEM_H;
 
   const selectedIndex = Math.max(
     0,
@@ -88,9 +103,18 @@ export function DrumPicker({
   const panelOp = useSharedValue(0);
   const panelScale = useSharedValue(0.94);
   const scrollY = useSharedValue(0);
-  const listRef = useRef<Animated.ScrollView>(null);
+  const dragStart = useSharedValue(0);
+  const overEdge = useSharedValue(false);
+  // Ticks are armed by the first touch, so positioning the wheel on open is silent.
+  const armed = useSharedValue(false);
 
-  const emitFocus = useCallback((index: number) => onFocusChange?.(index), [onFocusChange]);
+  const onDetent = useCallback(
+    (index: number) => {
+      tick();
+      onFocusChange?.(index);
+    },
+    [onFocusChange],
+  );
   const finishClose = useCallback(() => setClosing(false), []);
   const settle = useCallback(
     (index: number) => {
@@ -99,9 +123,18 @@ export function DrumPicker({
     },
     [items, onSelect, selectedKey],
   );
+  const land = useCallback(
+    (index: number) => {
+      settleHaptic();
+      settle(index);
+    },
+    [settle],
+  );
 
   useEffect(() => {
     if (visible) {
+      armed.set(false);
+      cancelAnimation(scrollY);
       scrollY.set(openIndex * ITEM_H);
       if (reduced) {
         dim.set(1);
@@ -129,29 +162,81 @@ export function DrumPicker({
         if (finished) scheduleOnRN(finishClose);
       }),
     );
-  }, [visible, closing, reduced, openIndex, dim, panelOp, panelScale, scrollY, finishClose]);
+  }, [visible, closing, reduced, openIndex, dim, panelOp, panelScale, scrollY, armed, finishClose]);
 
-  // Android safety net for `contentOffset`.
-  useEffect(() => {
-    if (mounted) listRef.current?.scrollTo({ y: openIndex * ITEM_H, animated: false });
-  }, [mounted, openIndex]);
-
-  const onScroll = useAnimatedScrollHandler({
-    onScroll: (e) => {
-      scrollY.set(e.contentOffset.y);
-    },
-    onEndDrag: (e) => {
-      // Only when the finger lifts exactly on a snap point (no momentum follows).
-      const y = e.contentOffset.y;
-      const v = e.velocity?.y ?? 0;
-      if (Math.abs(v) < 0.01 && Math.abs(y - Math.round(y / ITEM_H) * ITEM_H) < 0.5) {
-        scheduleOnRN(settle, Math.round(y / ITEM_H));
-      }
-    },
-    onMomentumEnd: (e) => {
-      scheduleOnRN(settle, Math.round(e.contentOffset.y / ITEM_H));
-    },
-  });
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([-6, 6])
+        .failOffsetX([-14, 14])
+        .onBegin(() => {
+          // Touching a moving wheel catches it.
+          cancelAnimation(scrollY);
+          dragStart.set(scrollY.get());
+          overEdge.set(false);
+          armed.set(true);
+        })
+        .onUpdate((e) => {
+          const raw = dragStart.get() - e.translationY;
+          let y: number;
+          if (raw < 0) {
+            y = raw * RUBBER;
+          } else if (raw > maxY) {
+            y = maxY + (raw - maxY) * RUBBER;
+          } else {
+            y = reduced ? raw : raw - COG_AMPLITUDE * Math.sin((TAU * raw) / ITEM_H);
+          }
+          const outside = raw < 0 || raw > maxY;
+          if (outside && !overEdge.get()) {
+            overEdge.set(true);
+            scheduleOnRN(bump);
+          } else if (!outside && overEdge.get()) {
+            overEdge.set(false);
+          }
+          scrollY.set(y);
+        })
+        .onEnd((e) => {
+          const y = scrollY.get();
+          const v = -e.velocityY; // px/s along scrollY
+          if (y < 0 || y > maxY) {
+            const edge = y < 0 ? 0 : maxY;
+            if (reduced) {
+              scrollY.set(edge);
+              scheduleOnRN(land, edge / ITEM_H);
+              return;
+            }
+            scrollY.set(
+              withSpring(edge, { ...EDGE_SPRING, velocity: v }, (finished) => {
+                'worklet';
+                if (finished) scheduleOnRN(land, edge / ITEM_H);
+              }),
+            );
+            return;
+          }
+          // Projected stop under exponential decay, clamped to a sane flick, snapped to a row.
+          const vms = v / 1000;
+          let dist = vms / (1 - DECAY_PER_MS);
+          dist = Math.max(-MAX_FLICK_ROWS * ITEM_H, Math.min(MAX_FLICK_ROWS * ITEM_H, dist));
+          const target = Math.max(0, Math.min(maxY, Math.round((y + dist) / ITEM_H) * ITEM_H));
+          const index = target / ITEM_H;
+          if (reduced) {
+            scrollY.set(target);
+            scheduleOnRN(land, index);
+            return;
+          }
+          const done = (finished?: boolean) => {
+            'worklet';
+            if (finished) scheduleOnRN(land, index);
+          };
+          if (Math.abs(target - y) < ITEM_H) {
+            scrollY.set(withSpring(target, { ...SNAP_SPRING, velocity: v }, done));
+          } else {
+            const duration = Math.max(220, Math.min(720, 180 + Math.abs(target - y) * 0.9));
+            scrollY.set(withTiming(target, { duration, easing: Easing.out(Easing.poly(4)) }, done));
+          }
+        }),
+    [armed, dragStart, land, maxY, overEdge, reduced, scrollY],
+  );
 
   const focused = useDerivedValue(() => {
     const idx = Math.round(scrollY.get() / ITEM_H);
@@ -160,7 +245,7 @@ export function DrumPicker({
   useAnimatedReaction(
     () => focused.get(),
     (cur, prev) => {
-      if (prev !== null && cur !== prev) scheduleOnRN(emitFocus, cur);
+      if (prev !== null && cur !== prev && armed.get()) scheduleOnRN(onDetent, cur);
     },
   );
 
@@ -169,16 +254,30 @@ export function DrumPicker({
     opacity: panelOp.get(),
     transform: [{ scale: panelScale.get() }],
   }));
+  const columnStyle = useAnimatedStyle(() => ({ transform: [{ translateY: PAD - scrollY.get() }] }));
 
   if (!mounted) return null;
 
   const onRowPress = (item: DrumItem, index: number) => {
-    if (item.key === selectedKey) {
+    if (item.key === selectedKey && index === Math.round(scrollY.get() / ITEM_H)) {
       onClose();
       return;
     }
+    armed.set(true);
     onSelect(item.key);
-    listRef.current?.scrollTo({ y: index * ITEM_H, animated: true });
+    cancelAnimation(scrollY);
+    const target = index * ITEM_H;
+    if (reduced) {
+      scrollY.set(target);
+      settleHaptic();
+      return;
+    }
+    scrollY.set(
+      withTiming(target, { duration: 280, easing: Easing.out(Easing.cubic) }, (finished) => {
+        'worklet';
+        if (finished) scheduleOnRN(settleHaptic);
+      }),
+    );
   };
 
   return (
@@ -209,45 +308,47 @@ export function DrumPicker({
             {title}
           </Text>
 
-          <View style={styles.wheel}>
-            <Animated.ScrollView
-              ref={listRef}
-              onScroll={onScroll}
-              scrollEventThrottle={16}
-              snapToInterval={ITEM_H}
-              decelerationRate="fast"
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              contentOffset={{ x: 0, y: openIndex * ITEM_H }}
-              contentContainerStyle={{ paddingVertical: PAD }}
-              style={{ height: LIST_H }}
-            >
-              {items.map((item, index) => (
-                <DrumRow
-                  key={item.key}
-                  item={item}
-                  index={index}
-                  scrollY={scrollY}
-                  selected={item.key === selectedKey}
-                  reduced={reduced}
-                  onPress={() => onRowPress(item, index)}
-                />
-              ))}
-            </Animated.ScrollView>
-            <View pointerEvents="none" style={[styles.lens, { borderColor: c.accent }]} />
-            <View pointerEvents="none" style={styles.pointer}>
-              <ChevronBackIcon size={16} color={c.accent} strokeWidth={2.6} />
+          <GestureDetector gesture={pan}>
+            <View style={styles.wheel}>
+              <Animated.View style={columnStyle}>
+                {items.map((item, index) => (
+                  <DrumRow
+                    key={item.key}
+                    item={item}
+                    index={index}
+                    scrollY={scrollY}
+                    selected={item.key === selectedKey}
+                    reduced={reduced}
+                    onPress={() => onRowPress(item, index)}
+                  />
+                ))}
+              </Animated.View>
+              <View pointerEvents="none" style={[styles.lens, { borderColor: c.accent }]} />
+              <View pointerEvents="none" style={styles.pointer}>
+                <ChevronBackIcon size={16} color={c.accent} strokeWidth={2.6} />
+              </View>
             </View>
-          </View>
+          </GestureDetector>
 
-          <Pressable accessibilityRole="button" onPress={onClose} style={styles.done}>
-            <Text size={13.5} weight="bold" color={c.accent}>
-              تم
-            </Text>
-          </Pressable>
+          <PressableDone onPress={onClose} color={c.accent} />
         </Animated.View>
       </View>
     </View>
+  );
+}
+
+function PressableDone({ onPress, color }: { onPress: () => void; color: string }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPressIn={tap}
+      onPress={onPress}
+      style={styles.done}
+    >
+      <Text size={13.5} weight="bold" color={color}>
+        تم
+      </Text>
+    </Pressable>
   );
 }
 
