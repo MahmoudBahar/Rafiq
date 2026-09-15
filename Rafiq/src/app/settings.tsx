@@ -201,8 +201,8 @@ export default function SettingsScreen() {
               value={settings.haptics ? 'on' : 'off'}
               onChange={(v) => update({ haptics: v === 'on' })}
               options={[
-                { key: 'on', label: 'اهتزاز مفعّل' },
-                { key: 'off', label: 'بدون اهتزاز' },
+                { key: 'on', label: 'مفعّل' },
+                { key: 'off', label: 'معطّل' },
               ]}
             />
             <Text size={12} color={c.tm} style={styles.caption}>

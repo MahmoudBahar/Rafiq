@@ -59,6 +59,11 @@ const MAX_FLICK_ROWS = 12;
 const SNAP_SPRING = { damping: 20, stiffness: 240, mass: 0.8 };
 const EDGE_SPRING = { damping: 22, stiffness: 260 };
 const TAU = Math.PI * 2;
+// Rows further than this from the lens are fully outside the visible wheel.
+const FAR_ROWS = 3.2;
+// Rows mounted on each side of the lens (visible: 2 either side).
+const WINDOW = 7;
+const FAR_STYLE = { opacity: 0, transform: [{ perspective: 600 }, { rotateX: '0deg' }, { scale: 1 }, { translateY: 0 }] };
 
 /**
  * Centred drum picker: items snap into a fixed lens; neighbours shrink, fade
@@ -92,10 +97,16 @@ export function DrumPicker({
   const [prevVisible, setPrevVisible] = useState(visible);
   const [closing, setClosing] = useState(false);
   const [openIndex, setOpenIndex] = useState(selectedIndex);
+  // Only rows near the lens are mounted; `center` follows the wheel per detent.
+  const [center, setCenter] = useState(selectedIndex);
   if (visible !== prevVisible) {
     setPrevVisible(visible);
-    if (visible) setOpenIndex(selectedIndex);
-    else setClosing(true);
+    if (visible) {
+      setOpenIndex(selectedIndex);
+      setCenter(selectedIndex);
+    } else {
+      setClosing(true);
+    }
   }
   const mounted = visible || closing;
 
@@ -105,12 +116,15 @@ export function DrumPicker({
   const scrollY = useSharedValue(0);
   const dragStart = useSharedValue(0);
   const overEdge = useSharedValue(false);
+  // True once a touch has dragged; a row press after a drag is not a tap.
+  const dragged = useSharedValue(false);
   // Ticks are armed by the first touch, so positioning the wheel on open is silent.
   const armed = useSharedValue(false);
 
   const onDetent = useCallback(
     (index: number) => {
       tick();
+      setCenter(index);
       onFocusChange?.(index);
     },
     [onFocusChange],
@@ -174,9 +188,11 @@ export function DrumPicker({
           cancelAnimation(scrollY);
           dragStart.set(scrollY.get());
           overEdge.set(false);
+          dragged.set(false);
           armed.set(true);
         })
         .onUpdate((e) => {
+          dragged.set(true);
           const raw = dragStart.get() - e.translationY;
           let y: number;
           if (raw < 0) {
@@ -235,7 +251,7 @@ export function DrumPicker({
             scrollY.set(withTiming(target, { duration, easing: Easing.out(Easing.poly(4)) }, done));
           }
         }),
-    [armed, dragStart, land, maxY, overEdge, reduced, scrollY],
+    [armed, dragStart, dragged, land, maxY, overEdge, reduced, scrollY],
   );
 
   const focused = useDerivedValue(() => {
@@ -259,6 +275,7 @@ export function DrumPicker({
   if (!mounted) return null;
 
   const onRowPress = (item: DrumItem, index: number) => {
+    if (dragged.get()) return;
     if (item.key === selectedKey && index === Math.round(scrollY.get() / ITEM_H)) {
       onClose();
       return;
@@ -310,18 +327,20 @@ export function DrumPicker({
 
           <GestureDetector gesture={pan}>
             <View style={styles.wheel}>
-              <Animated.View style={columnStyle}>
-                {items.map((item, index) => (
-                  <DrumRow
-                    key={item.key}
-                    item={item}
-                    index={index}
-                    scrollY={scrollY}
-                    selected={item.key === selectedKey}
-                    reduced={reduced}
-                    onPress={() => onRowPress(item, index)}
-                  />
-                ))}
+              <Animated.View style={[styles.column, { height: items.length * ITEM_H }, columnStyle]}>
+                {items.map((item, index) =>
+                  Math.abs(index - center) <= WINDOW ? (
+                    <DrumRow
+                      key={item.key}
+                      item={item}
+                      index={index}
+                      scrollY={scrollY}
+                      selected={item.key === selectedKey}
+                      reduced={reduced}
+                      onPress={() => onRowPress(item, index)}
+                    />
+                  ) : null,
+                )}
               </Animated.View>
               <View pointerEvents="none" style={[styles.lens, { borderColor: c.accent }]} />
               <View pointerEvents="none" style={styles.pointer}>
@@ -364,7 +383,11 @@ interface DrumRowProps {
 function DrumRow({ item, index, scrollY, selected, reduced, onPress }: DrumRowProps) {
   const { c } = useTheme();
   const style = useAnimatedStyle(() => {
-    const d = Math.max(-2.5, Math.min(2.5, (scrollY.get() - index * ITEM_H) / ITEM_H));
+    const raw = (scrollY.get() - index * ITEM_H) / ITEM_H;
+    // Rows outside the lens window are off-screen: a constant style costs
+    // nothing per frame, which keeps an 80-row wheel as smooth as a 10-row one.
+    if (raw > FAR_ROWS || raw < -FAR_ROWS) return FAR_STYLE;
+    const d = Math.max(-2.5, Math.min(2.5, raw));
     const a = Math.abs(d);
     const opacity = interpolate(a, [0, 1, 2.5], [1, 0.55, 0.25]);
     if (reduced) return { opacity };
@@ -379,7 +402,7 @@ function DrumRow({ item, index, scrollY, selected, reduced, onPress }: DrumRowPr
     };
   });
   return (
-    <Animated.View style={[styles.row, { backgroundColor: c.bg, borderColor: c.border }, style]}>
+    <Animated.View style={[styles.row, { top: index * ITEM_H + 3, backgroundColor: c.bg, borderColor: c.border }, style]}>
       <Pressable
         accessibilityRole="radio"
         accessibilityState={{ selected }}
@@ -422,10 +445,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  column: { width: '100%' },
   row: {
+    position: 'absolute',
+    start: 24,
+    end: 24,
     height: ITEM_H - 6,
-    marginVertical: 3,
-    marginHorizontal: 24,
     borderWidth: 1,
     borderRadius: radius.md,
     justifyContent: 'center',
