@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import Animated, { interpolate, useAnimatedProps, type SharedValue } from 'react-native-reanimated';
+import Animated, { interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type Tier = 'faint' | 'mid' | 'bright';
 
@@ -99,34 +96,40 @@ export function StarField({ visibility }: StarFieldProps) {
   const b2 = useOscillator(BREATH_MS[2]);
   const b3 = useOscillator(BREATH_MS[3]);
   const breaths = [b0, b1, b2, b3];
-  let bright = 0;
+
+  const dots = STARS.filter((s) => s.tier !== 'bright');
+  const sparkles = STARS.filter((s) => s.tier === 'bright');
+  const groupOpacity = c.starop * visibility;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
       {size.w > 0 ? (
-        <Svg width={size.w} height={size.h}>
-          <G opacity={c.starop * visibility}>
-            {STARS.map((s, i) => {
-              const x = s.x * size.w;
-              const y = s.y * size.h;
-              const color = TINTS[s.tint ?? 0];
-              if (s.tier === 'bright') {
-                const osc = breaths[bright++ % breaths.length];
-                return <Sparkle key={i} x={x} y={y} color={color} osc={osc} />;
-              }
-              return (
+        <>
+          <Svg width={size.w} height={size.h}>
+            <G opacity={groupOpacity}>
+              {dots.map((s, i) => (
                 <Circle
                   key={i}
-                  cx={x}
-                  cy={y}
+                  cx={s.x * size.w}
+                  cy={s.y * size.h}
                   r={s.tier === 'mid' ? MID_R : FAINT_R}
-                  fill={color}
+                  fill={TINTS[s.tint ?? 0]}
                   opacity={s.tier === 'mid' ? 0.85 : 0.5}
                 />
-              );
-            })}
-          </G>
-        </Svg>
+              ))}
+            </G>
+          </Svg>
+          {sparkles.map((s, i) => (
+            <Sparkle
+              key={i}
+              x={s.x * size.w}
+              y={s.y * size.h}
+              color={TINTS[s.tint ?? 0]}
+              osc={breaths[i % breaths.length]}
+              base={groupOpacity}
+            />
+          ))}
+        </>
       ) : null}
     </View>
   );
@@ -137,17 +140,39 @@ interface SparkleProps {
   y: number;
   color: string;
   osc: SharedValue<number>;
+  /** Star-group opacity (theme × sky phase). */
+  base: number;
 }
 
-function Sparkle({ x, y, color, osc }: SparkleProps) {
-  // Opacity is animated on the shapes themselves: an animated group nested in
-  // the translucent star group trips react-native-svg's canvas save/restore.
-  const rays = useAnimatedProps(() => ({ opacity: interpolate(osc.get(), [0, 1], [0.45, 0.85]) }));
-  const core = useAnimatedProps(() => ({ opacity: interpolate(osc.get(), [0, 1], [0.7, 1]) }));
+const SPARKLE_BOX = SPARKLE * 2 + 2;
+
+/**
+ * A breathing four-point star. Its SVG is static; the breath animates the
+ * wrapping view's opacity, which never re-rasterises the SVG.
+ */
+function Sparkle({ x, y, color, osc, base }: SparkleProps) {
+  const style = useAnimatedStyle(() => ({ opacity: base * interpolate(osc.get(), [0, 1], [0.5, 1]) }));
   return (
-    <>
-      <AnimatedPath d={SPARKLE_D} transform={`translate(${x} ${y})`} fill={color} animatedProps={rays} />
-      <AnimatedCircle cx={x} cy={y} r={1} fill={color} animatedProps={core} />
-    </>
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left: x - SPARKLE_BOX / 2,
+          top: y - SPARKLE_BOX / 2,
+          width: SPARKLE_BOX,
+          height: SPARKLE_BOX,
+        },
+        style,
+      ]}
+    >
+      <Svg
+        width={SPARKLE_BOX}
+        height={SPARKLE_BOX}
+        viewBox={`${-SPARKLE_BOX / 2} ${-SPARKLE_BOX / 2} ${SPARKLE_BOX} ${SPARKLE_BOX}`}
+      >
+        <Path d={SPARKLE_D} fill={color} opacity={0.85} />
+        <Circle cx={0} cy={0} r={1} fill={color} />
+      </Svg>
+    </Animated.View>
   );
 }
