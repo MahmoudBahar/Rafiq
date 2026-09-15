@@ -173,8 +173,9 @@ export default function HomeScreen() {
 
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
-  const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
-  const place = country ? `${city}، ${country}` : city;
+  const auto = settings.locationMode === 'auto' && !!settings.coords;
+  const after = (auto && settings.region) || settings.country || (auto ? null : COUNTRY);
+  const place = after ? `${city}، ${after}` : city;
   const nextLabel = next.isTomorrow ? 'الفجر غداً' : next.name;
   const openMonth = () => {
     if (settings.dateHintShown < HINT_MAX) update({ dateHintShown: HINT_MAX });
@@ -291,6 +292,6 @@ const styles = StyleSheet.create({
   iconBtn: { width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   countdownBlock: { alignItems: 'center', paddingTop: 16 },
   countdown: { fontVariant: ['tabular-nums'] },
-  headerSpacer: { height: 22 },
+  headerSpacer: { height: 26 },
   listContent: { paddingTop: 14 },
 });

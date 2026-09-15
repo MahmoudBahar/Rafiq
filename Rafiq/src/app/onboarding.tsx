@@ -64,7 +64,7 @@ function LocationStep() {
     if (!ok) setManualOpen(true);
   };
 
-  const pickCity = (city: string) => update({ city, locationMode: 'manual', onboarded: true });
+  const pickCity = (city: string) => update({ city, locationMode: 'manual', region: null, onboarded: true });
   const showOpenSettings = cannotAskAgain && Platform.OS !== 'web';
 
   return (
@@ -118,7 +118,16 @@ function Spinner({ color }: { color: string }) {
   return (
     <Animated.View pointerEvents="none" style={[styles.spinner, style]}>
       <Svg width="100%" height="100%" viewBox="0 0 100 100">
-        <Circle cx="50" cy="50" r="47" fill="none" stroke={color} strokeWidth={2.5} strokeDasharray="70 226" strokeLinecap="round" />
+        <Circle
+          cx="50"
+          cy="50"
+          r="47"
+          fill="none"
+          stroke={color}
+          strokeWidth={2.5}
+          strokeDasharray="70 226"
+          strokeLinecap="round"
+        />
       </Svg>
     </Animated.View>
   );

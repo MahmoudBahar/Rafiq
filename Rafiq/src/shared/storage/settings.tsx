@@ -32,6 +32,8 @@ export interface Settings {
   onboarded: boolean;
   /** Display label for the current place, in both location modes. */
   city: string | null;
+  /** Geocoded governorate in auto mode; null when unknown or in manual mode. */
+  region: string | null;
   /** Geocoded country in auto mode; null when unknown. */
   country: string | null;
   /** Last device fix in auto mode. */
@@ -50,6 +52,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   onboarded: false,
   city: null,
+  region: null,
   country: null,
   coords: null,
   locationMode: 'auto',

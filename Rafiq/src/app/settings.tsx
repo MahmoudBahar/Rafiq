@@ -79,6 +79,7 @@ export default function SettingsScreen() {
                 update({
                   locationMode: 'manual',
                   city: manual ? city : DEFAULT_CITY,
+                  region: null,
                 })
               }
             />
@@ -94,7 +95,7 @@ export default function SettingsScreen() {
                     key={name}
                     label={name}
                     selected={city === name}
-                    onPress={() => update({ city: name, locationMode: 'manual' })}
+                    onPress={() => update({ city: name, locationMode: 'manual', region: null })}
                   />
                 ))}
               </View>

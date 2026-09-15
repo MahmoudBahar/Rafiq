@@ -1,9 +1,13 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import { COUNTRY, nearestCity, type Coords } from './engine';
+import { reverseGeocodeArabic } from './geocode';
 
 export interface ResolvedLocation extends Coords {
+  /** Most specific Arabic place name: district, else city. */
   city: string;
+  /** Governorate shown after the city; null when unknown. */
+  region: string | null;
   country: string | null;
 }
 
@@ -63,7 +67,8 @@ async function geocode(coords: Coords): Promise<Location.LocationGeocodedAddress
 
 /**
  * Foreground permission → device fix → Arabic place label.
- * Label preference: Arabic geocoded name, nearest known city, any geocoded name, "موقعي".
+ * Label preference: OpenStreetMap district / city (Arabic), the device
+ * geocoder's Arabic name, nearest known city, any geocoded name, "موقعي".
  */
 export async function resolveLocation(): Promise<ResolvedLocation> {
   const perm = await Location.requestForegroundPermissionsAsync();
@@ -73,11 +78,25 @@ export async function resolveLocation(): Promise<ResolvedLocation> {
   }
 
   const coords = await getFix();
-  const geo = await geocode(coords);
-  const geoCity = geo?.city ?? geo?.subregion ?? geo?.region ?? null;
+  const [osm, geo] = await Promise.all([reverseGeocodeArabic(coords), geocode(coords)]);
   const near = nearestCity(coords);
 
-  const city = (hasArabic(geoCity) ? geoCity : null) ?? near?.name ?? geoCity ?? UNKNOWN_PLACE;
-  const country = hasArabic(geo?.country) ? geo.country : near ? COUNTRY : null;
-  return { city, country, ...coords };
+  const osmLabel = osm ? (osm.district ?? osm.city) : null;
+  const geoLabel = geo?.district ?? geo?.subregion ?? geo?.city ?? geo?.region ?? null;
+  const city =
+    (hasArabic(osmLabel) ? osmLabel : null) ??
+    (hasArabic(geoLabel) ? geoLabel : null) ??
+    near?.name ??
+    geoLabel ??
+    UNKNOWN_PLACE;
+
+  // Governorate, unless it just repeats the label (central Cairo: "القاهرة، القاهرة").
+  const osmRegion = osm?.region && osm.region !== city ? osm.region : null;
+  const region =
+    (hasArabic(osmRegion) ? osmRegion : null) ?? (hasArabic(geo?.region) && geo.region !== city ? geo.region : null);
+  const country =
+    (hasArabic(osm?.country) ? osm.country : null) ??
+    (hasArabic(geo?.country) ? geo.country : null) ??
+    (near ? COUNTRY : null);
+  return { city, region, country, ...coords };
 }
