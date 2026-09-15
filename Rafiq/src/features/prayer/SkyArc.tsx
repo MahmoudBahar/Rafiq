@@ -109,16 +109,7 @@ export function SkyArc({ sky, day }: SkyArcProps) {
           </>
         ) : null}
 
-        {/* Horizon: drawn last so a twilight sun sits behind it. */}
-        <Line
-          x1={P_END.x - 10}
-          y1={HORIZON_Y}
-          x2={P_START.x + 10}
-          y2={HORIZON_Y}
-          stroke={c.arcdim}
-          strokeWidth={1}
-          opacity={0.55}
-        />
+        {/* Rise and set marks at the arc ends. */}
         <Line
           x1={P_END.x}
           y1={HORIZON_Y - 3}
