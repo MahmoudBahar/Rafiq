@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
-    marginTop: -22,
+    marginTop: -14,
   },
   dayLength: { marginTop: 1, opacity: 0.9 },
   endTimes: { gap: 1 },
