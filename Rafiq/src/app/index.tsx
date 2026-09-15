@@ -173,9 +173,8 @@ export default function HomeScreen() {
 
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
-  const auto = settings.locationMode === 'auto' && !!settings.coords;
-  const after = (auto && settings.region) || settings.country || (auto ? null : COUNTRY);
-  const place = after ? `${city}، ${after}` : city;
+  const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
+  const place = country ? `${city}، ${country}` : city;
   const nextLabel = next.isTomorrow ? 'الفجر غداً' : next.name;
   const openMonth = () => {
     if (settings.dateHintShown < HINT_MAX) update({ dateHintShown: HINT_MAX });

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Coords, DayTimes } from './engine';
 import { moonState } from './engine/moon';
+import { sunAltitude } from './engine/sun';
 import { skyState, type SkyState } from './sky';
 
 /**
@@ -14,5 +15,5 @@ export function useSky(now: Date, day: DayTimes, coords: Coords): SkyState {
     () => moonState({ latitude, longitude }, new Date(minute * 60_000)),
     [latitude, longitude, minute],
   );
-  return skyState({ now, day, moon });
+  return skyState({ now, day, moon, sunAlt: sunAltitude(coords, now) });
 }

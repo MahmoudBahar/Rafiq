@@ -7,9 +7,12 @@ import type { MoonState } from './engine/moon';
  * them. The app is RTL, so bodies rise on the start (right, x=312) and set on
  * the end (left, x=18).
  *
- * Sun: on the arc from sunrise to sunset (adhan). Twilight is drawn as the sun
- * sitting below the rise corner from Fajr, climbing to it by sunrise, and
- * sinking below the set corner from sunset until Isha.
+ * Sun: on the arc from sunrise to sunset (adhan). The disc's crossing of the
+ * horizon follows the Sun's true altitude: it climbs out of the rise corner in
+ * the ~2.5 minutes after sunrise and sinks into the set corner in the ~2.5
+ * minutes before sunset, so it is gone at Maghrib. Twilight is an ember at the
+ * corner whose strength follows the Sun's depth below the horizon, shown from
+ * Fajr to sunrise and from sunset to Isha.
  * Moon: on the arc from moonrise to moonset (astronomia), nothing else.
  */
 interface Pt {
@@ -25,13 +28,18 @@ export const HORIZON_Y = 80;
 export const P_START: Readonly<Pt> = { x: 312, y: HORIZON_Y };
 export const P_END: Readonly<Pt> = { x: 18, y: HORIZON_Y };
 const CTRL: Pt = { x: 165, y: -14 };
-/** How far below a corner a twilight sun sits (svg units). */
-const DEPTH = 16;
+/** adhan's sunrise/sunset: the upper limb at the refracted horizon (degrees). */
+const UPPER_LIMB = -0.833;
+/** Apparent solar diameter (degrees): the disc takes this much altitude to cross the horizon. */
+const SUN_DIAMETER = 0.53;
+/** Depth below the horizon where twilight is fully out (degrees). */
+const TWILIGHT_DEPTH = 18;
+/** How far the disc sinks below the corner when fully set (svg units, its own diameter). */
+const DISC_DROP = 14;
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 const quad = (t: number): Pt => lerp(lerp(P_START, CTRL, t), lerp(CTRL, P_END, t), t);
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const smooth = (t: number) => t * t * (3 - 2 * t);
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
 /** Arc length in svg units (chord sum), for converting a gap size into a `t` span. */
@@ -75,6 +83,8 @@ export interface SkySun {
   visible: boolean;
   x: number;
   y: number;
+  /** Where the twilight ember sits (the disc's position before it sinks). */
+  glowY: number;
   opacity: number;
   /** Accent trail from the rise corner to the sun, split around the moon; empty during twilight. */
   trail: string[];
@@ -110,45 +120,61 @@ export interface SkyInputs {
   now: Date;
   day: DayTimes;
   moon: MoonState;
+  /** Sun's geometric altitude in degrees. */
+  sunAlt: number;
 }
 
-const hiddenSun: SkySun = { visible: false, x: P_START.x, y: P_START.y, opacity: 0, trail: [], glow: 0 };
+const hiddenSun: SkySun = {
+  visible: false,
+  x: P_START.x,
+  y: P_START.y,
+  glowY: P_START.y,
+  opacity: 0,
+  trail: [],
+  glow: 0,
+};
 
-export function skyState({ now, day, moon }: SkyInputs): SkyState {
+export function skyState({ now, day, moon, sunAlt }: SkyInputs): SkyState {
   const n = now.getTime();
   const { fajr, sunrise, isha } = day.byKey;
   const { sunset } = day;
+  const inDay = n >= sunrise.getTime() && n < sunset.getTime();
+  const inDawn = n >= fajr.getTime() && n < sunrise.getTime();
+  const inDusk = n >= sunset.getTime() && n < isha.getTime();
 
+  // 0 = disc fully up on the corner, 1 = fully below; outside the day it is always down.
+  const sink = inDay ? clamp01((UPPER_LIMB + SUN_DIAMETER - sunAlt) / SUN_DIAMETER) : 1;
+  // Sky brightness from the Sun's depth: 1 at the horizon, 0 at astronomical night.
+  const twilight = clamp01((sunAlt + TWILIGHT_DEPTH) / (TWILIGHT_DEPTH + UPPER_LIMB));
   const gapAt = moon.up ? moon.t : null;
+
   let sun: SkySun = hiddenSun;
   let stars = 1;
-  if (n >= sunrise.getTime() && n < sunset.getTime()) {
+  if (inDay) {
     const t = progress(n, sunrise, sunset);
     const p = quad(t);
-    sun = { visible: true, x: r1(p.x), y: r1(p.y), opacity: 1, trail: segments(0, t, gapAt), glow: 0 };
+    sun = {
+      visible: true,
+      x: r1(p.x),
+      y: r1(p.y + DISC_DROP * sink),
+      glowY: r1(p.y),
+      opacity: 1 - sink,
+      trail: segments(0, t, gapAt),
+      glow: twilight * Math.min(1, sink * 3), // ramps in as the disc starts to cross
+    };
     stars = 0.15;
-  } else if (n >= fajr.getTime() && n < sunrise.getTime()) {
-    const d = progress(n, fajr, sunrise);
+  } else if (inDawn || inDusk) {
+    const corner = inDawn ? P_START : P_END;
     sun = {
       visible: true,
-      x: P_START.x,
-      y: r1(P_START.y + DEPTH * (1 - smooth(d))),
-      opacity: 0.3 + 0.7 * d,
+      x: corner.x,
+      y: corner.y + DISC_DROP,
+      glowY: corner.y,
+      opacity: 0,
       trail: [],
-      glow: d,
+      glow: twilight,
     };
-    stars = 1 - 0.7 * d;
-  } else if (n >= sunset.getTime() && n < isha.getTime()) {
-    const e = progress(n, sunset, isha);
-    sun = {
-      visible: true,
-      x: P_END.x,
-      y: r1(P_END.y + DEPTH * smooth(e)),
-      opacity: 1 - 0.7 * e,
-      trail: [],
-      glow: 1 - e,
-    };
-    stars = 0.3 + 0.7 * e;
+    stars = 1 - 0.7 * twilight;
   }
 
   const mp = quad(moon.t);

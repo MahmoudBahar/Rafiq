@@ -29,8 +29,8 @@ export function useLocate(): Locate {
       setLocating(true);
       setError(null);
       try {
-        const { city, region, country, latitude, longitude } = await resolveLocation();
-        update({ locationMode: 'auto', city, region, country, coords: { latitude, longitude }, ...extra });
+        const { city, country, latitude, longitude } = await resolveLocation();
+        update({ locationMode: 'auto', city, country, coords: { latitude, longitude }, ...extra });
         return true;
       } catch (e) {
         const kind = e instanceof LocationError ? e.kind : 'unavailable';

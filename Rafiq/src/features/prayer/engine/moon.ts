@@ -1,12 +1,11 @@
-import { illuminated, sincos } from 'astronomia/base';
+import { illuminated } from 'astronomia/base';
 import { Ecliptic } from 'astronomia/coord';
-import { deltaT } from 'astronomia/deltat';
-import { Calendar } from 'astronomia/julian';
 import { phaseAngle3 } from 'astronomia/moonillum';
 import { parallax, position as moonPosition } from 'astronomia/moonposition';
 import { meanObliquity, nutation } from 'astronomia/nutation';
 import { stdh0Lunar, times as riseTimes } from 'astronomia/rise';
-import { apparent as siderealApparent, apparent0UT } from 'astronomia/sidereal';
+import { apparent0UT } from 'astronomia/sidereal';
+import { altitude, D2R, julianDay, TWO_PI } from './astro';
 import type { Coords } from './types';
 
 /**
@@ -34,8 +33,6 @@ export interface MoonState {
 }
 
 const DAY_MS = 86_400_000;
-const D2R = Math.PI / 180;
-const TWO_PI = 2 * Math.PI;
 /** Events closer than this are the same event reported by two adjacent UT days. */
 const DEDUPE_MS = 10 * 60_000;
 
@@ -59,13 +56,6 @@ function equatorial(jde: number): Equatorial {
 }
 
 const utDayStart = (ms: number): number => Math.floor(ms / DAY_MS) * DAY_MS;
-
-function julianDay(ms: number): { jd: number; jde: number; dT: number } {
-  const cal = new Calendar().fromDate(new Date(ms));
-  const jd = cal.toJD();
-  const dT = deltaT(cal.toYear());
-  return { jd, jde: jd + dT / 86_400, dT };
-}
 
 /** Rise / set events of the Moon on one UT day (ms epoch); empty when circumpolar. */
 function dayEvents(coords: Coords, dayStartMs: number): MoonEvent[] {
@@ -92,14 +82,10 @@ function dayEvents(coords: Coords, dayStartMs: number): MoonEvent[] {
 }
 
 /** Altitude of the Moon's centre above the horizon, radians (no refraction). */
-function altitude(coords: Coords, ms: number): number {
+function moonAltitude(coords: Coords, ms: number): number {
   const { jd, jde } = julianDay(ms);
   const { ra, dec } = equatorial(jde);
-  const theta = (siderealApparent(jd) / 86_400) * TWO_PI; // Greenwich apparent sidereal time
-  const hourAngle = theta + coords.longitude * D2R - ra;
-  const [sLat, cLat] = sincos(coords.latitude * D2R);
-  const [sDec, cDec] = sincos(dec);
-  return Math.asin(sLat * sDec + cLat * cDec * Math.cos(hourAngle));
+  return altitude(coords, jd, ra, dec);
 }
 
 function events(coords: Coords, nowMs: number): MoonEvent[] {
@@ -126,7 +112,7 @@ export function moonState(coords: Coords, now: Date): MoonState {
   const phase = waxing ? (1 - k) / 2 : (1 + k) / 2;
 
   const h0 = stdh0Lunar(parallax(moonPosition(jde).range));
-  const up = altitude(coords, nowMs) > h0;
+  const up = moonAltitude(coords, nowMs) > h0;
 
   const evs = events(coords, nowMs);
   const sameDay = (ms: number) => {

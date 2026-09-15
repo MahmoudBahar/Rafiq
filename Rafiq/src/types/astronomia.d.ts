@@ -82,3 +82,8 @@ declare module 'astronomia/rise' {
 declare module 'astronomia/moonillum' {
   export function phaseAngle3(jde: number): number;
 }
+
+declare module 'astronomia/solar' {
+  /** Apparent equatorial coordinates of the Sun (radians) for a Julian ephemeris day. */
+  export function apparentEquatorial(jde: number): { ra: number; dec: number };
+}
