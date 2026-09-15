@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet } from 'react-native';
+import { select } from '@/shared/lib/haptics';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from './Text';
@@ -16,7 +17,10 @@ export function Chip({ label, selected = false, onPress, size = 'sm' }: ChipProp
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      onPress={onPress}
+      onPress={() => {
+        select();
+        onPress();
+      }}
       style={[
         styles.chip,
         size === 'md' ? styles.md : styles.sm,

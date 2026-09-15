@@ -1,5 +1,6 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { sanitizeAdjustments, type Adjustments } from '@/shared/lib/adjustments';
+import { setHapticsEnabled } from '@/shared/lib/haptics';
 import { kv } from './kv';
 
 export { ADJUST_LIMIT, clampAdjust, type Adjustments, type PrayerKey } from '@/shared/lib/adjustments';
@@ -41,6 +42,8 @@ export interface Settings {
   madhab: Madhab;
   adjustments: Adjustments;
   theme: ThemeMode;
+  /** Vibration feedback on controls and the wheel. */
+  haptics: boolean;
   /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
   swipeHintShown: number;
   /** How many launches showed the "tap the date" tip; 3 = never again. */
@@ -57,6 +60,7 @@ export const DEFAULTS: Settings = {
   madhab: 'shafii',
   adjustments: {},
   theme: 'system',
+  haptics: true,
   swipeHintShown: 0,
   dateHintShown: 0,
 };
@@ -84,6 +88,9 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 export function SettingsProvider({ children }: { children: ReactNode }) {
   // Synchronous hydration: the very first render already knows theme + onboarded.
   const [settings, setSettings] = useState<Settings>(load);
+
+  // The haptics module is React-free; keep its switch in step with the setting.
+  setHapticsEnabled(settings.haptics);
 
   useEffect(() => {
     try {

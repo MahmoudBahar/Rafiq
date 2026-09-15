@@ -23,6 +23,7 @@ export function Button({ label, onPress, variant = 'primary', icon, disabled, st
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled}
       onPress={onPress}
+      haptic={primary ? 'press' : 'tap'}
       style={[
         styles.base,
         primary
