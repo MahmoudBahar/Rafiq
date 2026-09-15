@@ -7,18 +7,29 @@ export function toArabicIndic(value: string | number): string {
 
 export const pad2 = (n: number): string => String(n).padStart(2, '0');
 
+function hm(a: Date | number, b?: number): [number, number] {
+  return a instanceof Date ? [a.getHours(), a.getMinutes()] : [a, b ?? 0];
+}
+
 /** 12-hour clock with Arabic am/pm marker, e.g. `٤:٣٢ ص`. */
-export function formatTime12(hours: number, minutes: number): string {
+export function formatTime12(date: Date): string;
+export function formatTime12(hours: number, minutes: number): string;
+export function formatTime12(a: Date | number, b?: number): string {
+  const [hours, minutes] = hm(a, b);
   const h12 = ((hours + 11) % 12) + 1;
   return `${toArabicIndic(`${h12}:${pad2(minutes)}`)} ${hours < 12 ? 'ص' : 'م'}`;
 }
 
 /** `H:MM` without the am/pm marker, used for the arc end labels. */
-export function formatTimeShort(hours: number, minutes: number): string {
+export function formatTimeShort(date: Date): string;
+export function formatTimeShort(hours: number, minutes: number): string;
+export function formatTimeShort(a: Date | number, b?: number): string {
+  const [hours, minutes] = hm(a, b);
   const h12 = ((hours + 11) % 12) + 1;
   return toArabicIndic(`${h12}:${pad2(minutes)}`);
 }
 
+/** `h:mm:ss`, or `mm:ss` once less than an hour remains. */
 export function formatCountdown(h: number, m: number, s: number): string {
-  return toArabicIndic(`${h}:${pad2(m)}:${pad2(s)}`);
+  return toArabicIndic(h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`);
 }

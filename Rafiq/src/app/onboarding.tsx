@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Linking, Platform, StyleSheet, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
-import { CITIES } from '@/features/prayer/cities';
-import { resolveLocation } from '@/features/prayer/location';
+import { CITIES } from '@/features/prayer/engine';
+import { useLocate } from '@/features/prayer/useLocate';
 import { useMotion } from '@/shared/lib/motion';
 import { useSettings } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
@@ -55,18 +55,17 @@ function LocationStep() {
   const { c } = useTheme();
   const m = useMotion();
   const { update } = useSettings();
-  const [locating, setLocating] = useState(false);
+  const { locating, error, cannotAskAgain, locate } = useLocate();
   const [manualOpen, setManualOpen] = useState(false);
 
   const useGps = async () => {
-    if (locating) return;
-    setLocating(true);
-    const { city } = await resolveLocation();
-    // One update so the route guard flips exactly once.
-    update({ city, locationMode: 'auto', onboarded: true });
+    // `onboarded` rides along in the same update so the route guard flips exactly once.
+    const ok = await locate({ onboarded: true });
+    if (!ok) setManualOpen(true);
   };
 
   const pickCity = (city: string) => update({ city, locationMode: 'manual', onboarded: true });
+  const showOpenSettings = cannotAskAgain && Platform.OS !== 'web';
 
   return (
     <Animated.View entering={m.fadeInDown()} style={[styles.center, styles.locationCenter]}>
@@ -89,11 +88,19 @@ function LocationStep() {
           icon={<CrosshairIcon size={15} color={c.herotext} />}
         />
         <Button label="اختيار المدينة يدوياً" variant="secondary" onPress={() => setManualOpen((v) => !v)} />
+        {showOpenSettings ? (
+          <Button label="فتح إعدادات الجهاز" variant="secondary" onPress={() => Linking.openSettings()} />
+        ) : null}
       </View>
+      {error ? (
+        <Text size={12.5} color={c.tm} align="center" lineHeight={20} style={styles.body}>
+          {error}
+        </Text>
+      ) : null}
       {manualOpen ? (
         <Animated.View entering={m.fadeInUp(0, 300)} style={styles.chips}>
-          {CITIES.map((city) => (
-            <Chip key={city} label={city} size="md" onPress={() => pickCity(city)} />
+          {CITIES.map(({ name }) => (
+            <Chip key={name} label={name} size="md" onPress={() => pickCity(name)} />
           ))}
         </Animated.View>
       ) : null}

@@ -66,6 +66,53 @@ export function ChevronBackIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
   );
 }
 
+/** Forward chevron for an RTL app: points toward the end side (left). */
+export function ChevronForwardIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M15 6l-6 6 6 6" {...s} />
+    </Base>
+  );
+}
+
+export function ChevronDownIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M6 9l6 6 6-6" {...s} />
+    </Base>
+  );
+}
+
+export function CalendarIcon({ size, color, strokeWidth = 1.9 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Rect x="3" y="5" width="18" height="16" rx="2.5" {...s} />
+      <Path d="M8 3v4M16 3v4M3 10h18" {...s} />
+    </Base>
+  );
+}
+
+export function PlusIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M12 5v14M5 12h14" {...s} />
+    </Base>
+  );
+}
+
+export function MinusIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M5 12h14" {...s} />
+    </Base>
+  );
+}
+
 export function ClockIcon({ size, color, strokeWidth = 2 }: IconProps) {
   const s = strokeProps(color, strokeWidth);
   return (
@@ -113,7 +160,20 @@ export function SunIcon({ size, color, strokeWidth = 2 }: IconProps) {
   return (
     <Base size={size}>
       <Circle cx="12" cy="12" r="4" {...s} />
-      <Path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" {...s} />
+      <Path
+        d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+        {...s}
+      />
+    </Base>
+  );
+}
+
+export function SunriseIcon({ size, color, strokeWidth = 2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M7 15a5 5 0 0 1 10 0" {...s} />
+      <Path d="M12 4v3M4.2 8.2l1.5 1.5M19.8 8.2l-1.5 1.5M2 15h2M20 15h2M3 19h18" {...s} />
     </Base>
   );
 }

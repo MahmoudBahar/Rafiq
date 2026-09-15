@@ -1,0 +1,152 @@
+import { illuminated } from 'astronomia/base';
+import { Ecliptic } from 'astronomia/coord';
+import { phaseAngle3 } from 'astronomia/moonillum';
+import { parallax, position as moonPosition } from 'astronomia/moonposition';
+import { meanObliquity, nutation } from 'astronomia/nutation';
+import { stdh0Lunar, times as riseTimes } from 'astronomia/rise';
+import { apparent0UT } from 'astronomia/sidereal';
+import { altitude, D2R, julianDay, TWO_PI } from './astro';
+import type { Coords } from './types';
+
+/**
+ * Moon rise/set cycle and phase for an observer (Meeus via astronomia).
+ * React-free. Longitudes here are east-positive; astronomia wants west-positive.
+ */
+export interface MoonState {
+  /** Above the horizon now. */
+  up: boolean;
+  /** Start of the current above-horizon interval (when up). */
+  rise: Date | null;
+  /** End of that interval (when up). */
+  set: Date | null;
+  /** 0..1 progress rise → set (when up). */
+  t: number;
+  /** Next moonrise after `now` (when not up). */
+  nextRise: Date | null;
+  /** Moonrise / moonset falling on the local calendar day of `now`; null when the day has none. */
+  dayRise: Date | null;
+  daySet: Date | null;
+  /** 0 new → 0.25 first quarter → 0.5 full → 0.75 last quarter → 1. */
+  phase: number;
+  /** Illuminated fraction 0..1. */
+  fraction: number;
+}
+
+const DAY_MS = 86_400_000;
+/** Events closer than this are the same event reported by two adjacent UT days. */
+const DEDUPE_MS = 10 * 60_000;
+
+interface Equatorial {
+  ra: number;
+  dec: number;
+  range: number;
+}
+
+interface MoonEvent {
+  kind: 'rise' | 'set';
+  at: number;
+}
+
+/** Apparent equatorial coordinates of the Moon at a Julian ephemeris day. */
+function equatorial(jde: number): Equatorial {
+  const pos = moonPosition(jde);
+  const [dpsi, deps] = nutation(jde);
+  const eq = new Ecliptic(pos.lon + dpsi, pos.lat).toEquatorial(meanObliquity(jde) + deps);
+  return { ra: eq.ra, dec: eq.dec, range: pos.range };
+}
+
+const utDayStart = (ms: number): number => Math.floor(ms / DAY_MS) * DAY_MS;
+
+/** Rise / set events of the Moon on one UT day (ms epoch); empty when circumpolar. */
+function dayEvents(coords: Coords, dayStartMs: number): MoonEvent[] {
+  const { jd, jde, dT } = julianDay(dayStartMs);
+  const body = [-1, 0, 1].map((k) => equatorial(jde + k));
+  // Unwrap right ascension so the three-point interpolation never crosses 0 / 2π.
+  const ra = body.map((b) => b.ra);
+  for (let i = 1; i < ra.length; i++) {
+    while (ra[i] - ra[i - 1] > Math.PI) ra[i] -= TWO_PI;
+    while (ra[i] - ra[i - 1] < -Math.PI) ra[i] += TWO_PI;
+  }
+  const dec = body.map((b) => b.dec);
+  const h0 = stdh0Lunar(parallax(body[1].range));
+  const observer = { lat: coords.latitude * D2R, lon: -coords.longitude * D2R };
+  try {
+    const rs = riseTimes(observer, dT, h0, apparent0UT(jd), ra, dec);
+    return [
+      { kind: 'rise', at: dayStartMs + rs.rise * 1000 },
+      { kind: 'set', at: dayStartMs + rs.set * 1000 },
+    ];
+  } catch {
+    return []; // always above or below the horizon that day
+  }
+}
+
+/** Altitude of the Moon's centre above the horizon, radians (no refraction). */
+function moonAltitude(coords: Coords, ms: number): number {
+  const { jd, jde } = julianDay(ms);
+  const { ra, dec } = equatorial(jde);
+  return altitude(coords, jd, ra, dec);
+}
+
+function events(coords: Coords, nowMs: number): MoonEvent[] {
+  const start = utDayStart(nowMs);
+  const raw = [-1, 0, 1].flatMap((k) => dayEvents(coords, start + k * DAY_MS)).sort((a, b) => a.at - b.at);
+  const out: MoonEvent[] = [];
+  for (const e of raw) {
+    const last = out[out.length - 1];
+    if (last && last.kind === e.kind && e.at - last.at < DEDUPE_MS) continue;
+    out.push(e);
+  }
+  return out;
+}
+
+export function moonState(coords: Coords, now: Date): MoonState {
+  const nowMs = now.getTime();
+  const { jde } = julianDay(nowMs);
+
+  // Phase: phase angle → illuminated fraction; waxing while the fraction grows.
+  const i = phaseAngle3(jde);
+  const fraction = illuminated(i);
+  const waxing = illuminated(phaseAngle3(jde + 0.02)) > fraction;
+  const k = i / Math.PI; // 1 at new moon, 0 at full
+  const phase = waxing ? (1 - k) / 2 : (1 + k) / 2;
+
+  const h0 = stdh0Lunar(parallax(moonPosition(jde).range));
+  const up = moonAltitude(coords, nowMs) > h0;
+
+  const evs = events(coords, nowMs);
+  const sameDay = (ms: number) => {
+    const a = new Date(ms);
+    return a.getFullYear() === now.getFullYear() && a.getMonth() === now.getMonth() && a.getDate() === now.getDate();
+  };
+  const dayRise = evs.find((e) => e.kind === 'rise' && sameDay(e.at)) ?? null;
+  const daySet = evs.find((e) => e.kind === 'set' && sameDay(e.at)) ?? null;
+  const dayTimes = { dayRise: dayRise ? new Date(dayRise.at) : null, daySet: daySet ? new Date(daySet.at) : null };
+  const lastRise = [...evs].reverse().find((e) => e.kind === 'rise' && e.at <= nowMs) ?? null;
+  const nextSet = evs.find((e) => e.kind === 'set' && e.at > nowMs) ?? null;
+  const nextRise = evs.find((e) => e.kind === 'rise' && e.at > nowMs) ?? null;
+
+  if (up && lastRise && nextSet && (!nextRise || nextRise.at > nextSet.at)) {
+    const t = (nowMs - lastRise.at) / (nextSet.at - lastRise.at);
+    return {
+      up,
+      rise: new Date(lastRise.at),
+      set: new Date(nextSet.at),
+      t: Math.min(1, Math.max(0, t)),
+      nextRise: null,
+      ...dayTimes,
+      phase,
+      fraction,
+    };
+  }
+  return {
+    up,
+    rise: null,
+    set: null,
+    t: up ? 0.5 : 0, // circumpolar fallback: park it at the apex
+    nextRise: up ? null : nextRise ? new Date(nextRise.at) : null,
+    ...dayTimes,
+    phase,
+    fraction,
+  };
+}

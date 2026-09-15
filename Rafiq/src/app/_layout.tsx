@@ -12,7 +12,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { I18nManager, Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { DaylightProvider } from '@/features/prayer/DaylightProvider';
 import { SettingsProvider, useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
 
@@ -45,11 +47,15 @@ export default function RootLayout() {
   if (!ready) return null;
 
   return (
-    <SafeAreaProvider>
-      <SettingsProvider>
-        <RootStack />
-      </SettingsProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <SettingsProvider>
+          <DaylightProvider>
+            <RootStack />
+          </DaylightProvider>
+        </SettingsProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -68,6 +74,7 @@ function RootStack() {
         <Stack.Protected guard={settings.onboarded}>
           <Stack.Screen name="index" />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="month" options={{ animation: 'fade' }} />
         </Stack.Protected>
         <Stack.Protected guard={!settings.onboarded}>
           <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />

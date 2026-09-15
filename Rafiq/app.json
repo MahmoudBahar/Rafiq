@@ -53,6 +53,14 @@
           "supportsRTL": true,
           "forcesRTL": true
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "يحتاج رفيق إلى موقعك لحساب مواقيت الصلاة في مدينتك بدقة. لا يُشارك موقعك مع أي جهة.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
       ]
     ],
     "experiments": {
