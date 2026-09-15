@@ -7,7 +7,8 @@ import type { PrayerKey, PrayerTime } from './engine';
 
 interface PrayerListProps {
   times: readonly PrayerTime[];
-  nextKey: PrayerKey;
+  /** Highlighted row; null when no row on this day is "next" (other days, or after Isha). */
+  nextKey: PrayerKey | null;
 }
 
 export function PrayerList({ times, nextKey }: PrayerListProps) {

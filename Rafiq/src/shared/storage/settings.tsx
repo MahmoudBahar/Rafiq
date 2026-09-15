@@ -1,5 +1,8 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { sanitizeAdjustments, type Adjustments } from '@/shared/lib/adjustments';
 import { kv } from './kv';
+
+export { ADJUST_LIMIT, clampAdjust, type Adjustments, type PrayerKey } from '@/shared/lib/adjustments';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type Madhab = 'shafii' | 'hanafi';
@@ -35,6 +38,7 @@ export interface Settings {
   locationMode: LocationMode;
   method: Method;
   madhab: Madhab;
+  adjustments: Adjustments;
   theme: ThemeMode;
 }
 
@@ -46,6 +50,7 @@ export const DEFAULTS: Settings = {
   locationMode: 'auto',
   method: 'egypt',
   madhab: 'shafii',
+  adjustments: {},
   theme: 'system',
 };
 
@@ -56,7 +61,7 @@ function load(): Settings {
     const raw = kv.get(KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULTS, ...parsed };
+    return { ...DEFAULTS, ...parsed, adjustments: sanitizeAdjustments(parsed.adjustments) };
   } catch {
     return DEFAULTS;
   }

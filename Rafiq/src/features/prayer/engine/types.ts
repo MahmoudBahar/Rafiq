@@ -1,8 +1,7 @@
+import type { Adjustments, PrayerKey } from '@/shared/lib/adjustments';
 import type { Coords, Madhab, Method } from '@/shared/storage/settings';
 
-export type { Coords, Madhab, Method };
-
-export type PrayerKey = 'fajr' | 'sunrise' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
+export type { Adjustments, Coords, Madhab, Method, PrayerKey };
 
 export interface PrayerDef {
   key: PrayerKey;
@@ -25,6 +24,8 @@ export interface PrayerConfig {
   coords: Coords;
   method: Method;
   madhab: Madhab;
+  /** Manual per-prayer minute offsets on top of the method. */
+  adjustments: Adjustments;
 }
 
 export interface PrayerTime extends PrayerDef {
@@ -46,4 +47,16 @@ export interface NextPrayer {
   key: PrayerKey;
   name: string;
   at: Date;
+  /** True after Isha, when the next prayer is tomorrow's Fajr. */
+  isTomorrow: boolean;
+}
+
+/** One row of a monthly timetable. */
+export interface DayRow {
+  date: Date;
+  /** Day of month, 1-based. */
+  day: number;
+  /** 0 = Sunday, as `Date#getDay`. */
+  weekday: number;
+  byKey: Record<PrayerKey, Date>;
 }

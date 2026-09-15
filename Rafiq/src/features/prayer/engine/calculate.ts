@@ -1,6 +1,15 @@
 import { Coordinates, HighLatitudeRule, Madhab as AdhanMadhab, PrayerTimes } from 'adhan';
+import { clampAdjust } from '@/shared/lib/adjustments';
 import { METHOD_BY_ID } from './methods';
-import { PRAYERS, type DayTimes, type NextPrayer, type PrayerConfig, type PrayerKey, type PrayerTime } from './types';
+import {
+  PRAYERS,
+  type DayRow,
+  type DayTimes,
+  type NextPrayer,
+  type PrayerConfig,
+  type PrayerKey,
+  type PrayerTime,
+} from './types';
 
 /**
  * adhan reads the local calendar day from the Date it receives and returns
@@ -13,6 +22,11 @@ function build(cfg: PrayerConfig, date: Date): PrayerTimes {
   const params = def.params();
   params.madhab = cfg.madhab === 'hanafi' ? AdhanMadhab.Hanafi : AdhanMadhab.Shafi;
   params.highLatitudeRule = HighLatitudeRule.recommended(coords);
+  // adhan's `adjustments` is a full six-key object; merge the user's partial on top.
+  for (const p of PRAYERS) {
+    const n = cfg.adjustments[p.key];
+    if (typeof n === 'number' && Number.isFinite(n) && n !== 0) params.adjustments[p.key] = clampAdjust(n);
+  }
   return new PrayerTimes(coords, date, params);
 }
 
@@ -47,11 +61,24 @@ export function computeDay(cfg: PrayerConfig, date: Date): DayTimes {
 export function nextPrayerIn(day: DayTimes, now: Date): NextPrayer {
   const t = now.getTime();
   const found = day.times.find((p) => p.isPrayer && p.at.getTime() > t);
-  if (found) return { key: found.key, name: found.name, at: found.at };
+  if (found) return { key: found.key, name: found.name, at: found.at, isTomorrow: false };
   const fajr = PRAYERS[0];
-  return { key: fajr.key, name: fajr.name, at: day.nextFajr };
+  return { key: fajr.key, name: fajr.name, at: day.nextFajr, isTomorrow: true };
 }
 
 export function nextPrayer(now: Date, cfg: PrayerConfig): NextPrayer {
   return nextPrayerIn(computeDay(cfg, now), now);
+}
+
+/** Every day of a Gregorian month (`month0` is 0-based). */
+export function computeMonth(cfg: PrayerConfig, year: number, month0: number): DayRow[] {
+  const count = new Date(year, month0 + 1, 0).getDate();
+  const rows: DayRow[] = [];
+  for (let day = 1; day <= count; day++) {
+    const date = new Date(year, month0, day);
+    const pt = build(cfg, date);
+    const byKey = Object.fromEntries(PRAYERS.map((p) => [p.key, pt[p.key]])) as Record<PrayerKey, Date>;
+    rows.push({ date, day, weekday: date.getDay(), byKey });
+  }
+  return rows;
 }

@@ -1,13 +1,17 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COUNTRY, DEFAULT_CITY } from '@/features/prayer/engine';
+import { DateBar } from '@/features/prayer/DateBar';
+import { DayPager } from '@/features/prayer/DayPager';
+import { COUNTRY, DEFAULT_CITY, computeDay, type PrayerKey } from '@/features/prayer/engine';
 import { PrayerList } from '@/features/prayer/PrayerList';
 import { SunArc } from '@/features/prayer/SunArc';
 import { useCountdown } from '@/features/prayer/useCountdown';
+import { useDayPager } from '@/features/prayer/useDayPager';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatCountdown, formatTime12 } from '@/shared/lib/arabic';
+import { gregorianString } from '@/shared/lib/gregorian';
 import { hijriString } from '@/shared/lib/hijri';
 import { useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -19,6 +23,7 @@ import { Toast } from '@/shared/ui/Toast';
 
 const TOAST_MS = 1800;
 const TAB_BAR_HEIGHT = 58;
+const DAY_MS = 86_400_000;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -27,6 +32,39 @@ export default function HomeScreen() {
   const { settings } = useSettings();
   const cfg = usePrayerConfig();
   const { now, day, next, h, m, s } = useCountdown(cfg);
+  const params = useLocalSearchParams<{ day?: string }>();
+
+  // Day browsing: 0 = today. The countdown and sun arc always describe "now".
+  const [dayOffset, setDayOffset] = useState(0);
+  const commit = useCallback((delta: number) => setDayOffset((o) => o + delta), []);
+  const pager = useDayPager(dayOffset, commit);
+
+  const y = now.getFullYear();
+  const mo = now.getMonth();
+  const d = now.getDate();
+  const viewDate = useMemo(() => new Date(y, mo, d + dayOffset), [y, mo, d, dayOffset]);
+  const viewDay = useMemo(
+    () => (dayOffset === 0 ? day : computeDay(cfg, viewDate)),
+    [cfg, day, dayOffset, viewDate],
+  );
+  const highlight: PrayerKey | null = dayOffset === 0 && !next.isTomorrow ? next.key : null;
+
+  // Deep link from the month table: ?day=YYYY-MM-DD → jump to that day.
+  // State is adjusted during render (React's "derive from prop change" pattern);
+  // the effect only clears the param so a re-open of the same day works.
+  const [seenDay, setSeenDay] = useState<string | undefined>(undefined);
+  if (params.day !== seenDay) {
+    setSeenDay(params.day);
+    if (params.day) {
+      const [py, pm, pd] = params.day.split('-').map(Number);
+      if (Number.isFinite(py) && Number.isFinite(pm) && Number.isFinite(pd)) {
+        setDayOffset(Math.round((Date.UTC(py, pm - 1, pd) - Date.UTC(y, mo, d)) / DAY_MS));
+      }
+    }
+  }
+  useEffect(() => {
+    if (params.day) router.setParams({ day: undefined });
+  }, [params.day, router]);
 
   const [toast, setToast] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,6 +81,7 @@ export default function HomeScreen() {
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
   const place = country ? `${city}، ${country}` : city;
+  const nextLabel = next.isTomorrow ? 'الفجر غداً' : next.name;
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
@@ -56,9 +95,14 @@ export default function HomeScreen() {
             </Text>
           </View>
           <View style={styles.topEnd}>
-            <Text size={12} weight="medium" color={c.tm}>
-              {hijriString(now, day.byKey.maghrib)}
-            </Text>
+            <View style={styles.dates}>
+              <Text size={12} weight="medium" color={c.tm}>
+                {hijriString(now, day.byKey.maghrib)}
+              </Text>
+              <Text size={10.5} color={c.tm} style={styles.gregorian}>
+                {gregorianString(now)}
+              </Text>
+            </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
@@ -71,7 +115,7 @@ export default function HomeScreen() {
         </View>
         <View style={styles.countdownBlock}>
           <Text size={12} weight="medium" color={c.tm}>
-            الصلاة القادمة · {next.name}
+            الصلاة القادمة · {nextLabel}
           </Text>
           <Text size={56} weight="bold" lineHeight={68} style={styles.countdown}>
             {formatCountdown(h, m, s)}
@@ -84,16 +128,27 @@ export default function HomeScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
-        style={styles.list}
-        contentContainerStyle={[styles.listContent, { paddingBottom: tabBottom + TAB_BAR_HEIGHT + 16 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <PrayerList times={day.times} nextKey={next.key} />
-      </ScrollView>
+      <DayPager gesture={pager.gesture} animatedStyle={pager.animatedStyle} style={styles.list}>
+        <ScrollView
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBottom + TAB_BAR_HEIGHT + 16 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <DateBar
+            date={viewDate}
+            isToday={dayOffset === 0}
+            onPrev={() => pager.go(-1)}
+            onNext={() => pager.go(1)}
+            onToday={() => pager.go(-dayOffset)}
+            onOpenMonth={() =>
+              router.push({ pathname: '/month', params: { y: String(viewDate.getFullYear()), m: String(viewDate.getMonth()) } })
+            }
+          />
+          <PrayerList times={viewDay.times} nextKey={highlight} />
+        </ScrollView>
+      </DayPager>
 
       <TabBar bottom={tabBottom} onComingSoon={showToast} />
-      <Toast message="قريباً في الإصدار القادم إن شاء الله" visible={toast} bottom={tabBottom + TAB_BAR_HEIGHT + 14} />
+      <Toast message="قريبًا في الإصدار القادم إِنْ شَاءَ اللّٰه" visible={toast} bottom={tabBottom + TAB_BAR_HEIGHT + 14} />
     </View>
   );
 }
@@ -109,6 +164,8 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cityWrap: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   topEnd: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dates: { alignItems: 'flex-end', gap: 0 },
+  gregorian: { opacity: 0.85 },
   gear: { width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   countdownBlock: { alignItems: 'center', paddingTop: 16 },
   countdown: { fontVariant: ['tabular-nums'] },

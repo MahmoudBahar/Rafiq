@@ -9,6 +9,18 @@ export interface MethodDef {
   params: () => CalculationParameters;
 }
 
+/**
+ * adhan adds a one-minute Dhuhr precaution to its Egyptian preset that the
+ * Egyptian General Authority of Survey does not apply. Checked against Dar
+ * al-Ifta's Cairo table for September 2026: without it Dhuhr matches on 28 of
+ * 30 days (0 of 30 with it); the other prayers differ only by ±1 min rounding.
+ */
+function egyptian(): CalculationParameters {
+  const p = CalculationMethod.Egyptian();
+  p.methodAdjustments.dhuhr = 0;
+  return p;
+}
+
 /** Shia Ithna-Ashari (Leva Institute, Qum): not an adhan preset, same angles Aladhan uses. */
 function jafari(): CalculationParameters {
   const p = CalculationMethod.Other();
@@ -24,7 +36,7 @@ export const METHOD_BY_ID: Record<Method, MethodDef> = {
     id: 'egypt',
     name: 'الهيئة المصرية العامة للمساحة',
     sub: 'الافتراضي في مصر',
-    params: CalculationMethod.Egyptian,
+    params: egyptian,
   },
   mwl: {
     id: 'mwl',

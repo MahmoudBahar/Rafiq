@@ -66,6 +66,53 @@ export function ChevronBackIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
   );
 }
 
+/** Forward chevron for an RTL app: points toward the end side (left). */
+export function ChevronForwardIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M15 6l-6 6 6 6" {...s} />
+    </Base>
+  );
+}
+
+export function ChevronDownIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M6 9l6 6 6-6" {...s} />
+    </Base>
+  );
+}
+
+export function CalendarIcon({ size, color, strokeWidth = 1.9 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Rect x="3" y="5" width="18" height="16" rx="2.5" {...s} />
+      <Path d="M8 3v4M16 3v4M3 10h18" {...s} />
+    </Base>
+  );
+}
+
+export function PlusIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M12 5v14M5 12h14" {...s} />
+    </Base>
+  );
+}
+
+export function MinusIcon({ size, color, strokeWidth = 2.2 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M5 12h14" {...s} />
+    </Base>
+  );
+}
+
 export function ClockIcon({ size, color, strokeWidth = 2 }: IconProps) {
   const s = strokeProps(color, strokeWidth);
   return (

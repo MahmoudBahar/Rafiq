@@ -30,3 +30,21 @@ export function hijriString(date: Date = new Date(), maghrib?: Date): string {
     return '';
   }
 }
+
+/**
+ * Hijri span covered by a Gregorian month, e.g. `ربيع الآخر ١٤٤٨` or
+ * `ربيع الأول – ربيع الآخر ١٤٤٨` (years are both shown only when they differ).
+ */
+export function hijriMonthRange(first: Date, last: Date): string {
+  try {
+    const a = uq(first);
+    const b = uq(last);
+    const am = HIJRI_MONTHS[a.hm - 1] ?? '';
+    const bm = HIJRI_MONTHS[b.hm - 1] ?? '';
+    if (a.hy === b.hy && a.hm === b.hm) return `${am} ${toArabicIndic(a.hy)}`;
+    if (a.hy === b.hy) return `${am} – ${bm} ${toArabicIndic(a.hy)}`;
+    return `${am} ${toArabicIndic(a.hy)} – ${bm} ${toArabicIndic(b.hy)}`;
+  } catch {
+    return '';
+  }
+}
