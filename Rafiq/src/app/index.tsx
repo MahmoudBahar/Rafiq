@@ -22,6 +22,7 @@ import { useSky } from '@/features/prayer/useSky';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12 } from '@/shared/lib/arabic';
 import { gregorianString } from '@/shared/lib/gregorian';
+import { tap } from '@/shared/lib/haptics';
 import { hijriString } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { useSettings } from '@/shared/storage/settings';
@@ -203,6 +204,7 @@ export default function HomeScreen() {
                 accessibilityLabel="جدول الشهر"
                 onPress={openMonth}
                 pressedScale={0.96}
+                haptic="tap"
                 style={styles.dates}
               >
                 <Text size={12} weight="medium" color={c.tm}>
@@ -220,6 +222,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
+              onPressIn={tap}
               onPress={() => router.push('/settings')}
               style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
             >
@@ -228,11 +231,14 @@ export default function HomeScreen() {
           </View>
         </View>
         <View style={styles.countdownBlock}>
-          <Text size={12} weight="medium" color={c.tm}>
+          {/* Full-width, centred by textAlign: an intrinsic-width RTL label on
+              Android can measure a hair short and wrap its last word into a
+              clipped second line (the "الصلاة القادمة ·" with no name bug). */}
+          <Text size={12} weight="medium" color={c.tm} align="center" numberOfLines={1} style={styles.wide}>
             الصلاة القادمة · {nextLabel}
           </Text>
           <CountdownDigits at={next.at} />
-          <Text size={12.5} weight="medium" color={c.ts}>
+          <Text size={12.5} weight="medium" color={c.ts} align="center" numberOfLines={1} style={styles.wide}>
             الأذان الساعة {formatTime12(next.at)}
           </Text>
         </View>
@@ -289,6 +295,7 @@ const styles = StyleSheet.create({
   gregorian: { opacity: 0.85 },
   iconBtn: { width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   countdownBlock: { alignItems: 'center', paddingTop: 16 },
+  wide: { alignSelf: 'stretch' },
   headerSpacer: { height: 26 },
   listContent: { paddingTop: 14 },
 });
