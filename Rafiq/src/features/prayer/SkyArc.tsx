@@ -76,6 +76,11 @@ export function SkyArc({ sky, day }: SkyArcProps) {
 
         {sky.empty ? <AnimatedCircle cx={P_START.x} cy={P_START.y} fill={c.accent} animatedProps={marker} /> : null}
 
+        {/* The sun's trail goes under the moon; the sun itself is drawn last. */}
+        {sky.sun.visible && sky.sun.pathD ? (
+          <Path d={sky.sun.pathD} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" />
+        ) : null}
+
         <AnimatedG transform={`translate(${moonPos.x} ${moonPos.y})`} animatedProps={moonStyle}>
           <Circle cx={0} cy={0} r={MOON_R + 7} fill={c.moon} opacity={0.1} />
           <Circle cx={0} cy={0} r={MOON_R} fill={c.moon} opacity={0.22} />
@@ -85,9 +90,6 @@ export function SkyArc({ sky, day }: SkyArcProps) {
 
         {sky.sun.visible ? (
           <>
-            {sky.sun.pathD ? (
-              <Path d={sky.sun.pathD} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" />
-            ) : null}
             {sky.sun.glow > 0 ? (
               <Circle
                 cx={sky.sun.x}
