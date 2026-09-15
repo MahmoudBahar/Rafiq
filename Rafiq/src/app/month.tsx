@@ -93,7 +93,7 @@ export default function MonthScreen() {
 
   const openDay = useCallback((date: Date) => router.navigate({ pathname: '/', params: { day: iso(date) } }), [router]);
 
-  const backPress = useClick();
+  const backPress = useClick(() => router.back());
   const listRef = useRef<ScrollView>(null);
   const scrollToToday = () => {
     if (todayIndex > 2) listRef.current?.scrollTo({ y: ROW_H * (todayIndex - 2), animated: false });
@@ -106,7 +106,6 @@ export default function MonthScreen() {
           accessibilityRole="button"
           accessibilityLabel="رجوع"
           {...backPress}
-          onPress={() => router.back()}
           style={({ pressed }) => [
             styles.back,
             { backgroundColor: c.surface, borderColor: c.border },
@@ -184,13 +183,12 @@ interface MonthRowProps {
 
 const MonthRow = memo(function MonthRow({ vm, onPress }: MonthRowProps) {
   const { c } = useTheme();
-  const press = useClick();
+  const press = useClick(() => onPress(vm.date));
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${vm.weekday} ${vm.num}`}
       {...press}
-      onPress={() => onPress(vm.date)}
       style={({ pressed }) => [
         styles.row,
         vm.isToday

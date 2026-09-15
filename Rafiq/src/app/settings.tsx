@@ -31,7 +31,7 @@ export default function SettingsScreen() {
   const cfg = usePrayerConfig();
   const { locating, error, locate } = useLocate();
 
-  const backPress = useClick();
+  const backPress = useClick(() => router.back());
   const [sheet, setSheet] = useState<'method' | 'city' | null>(null);
   const blurTarget = useRef<View | null>(null);
   const closeSheet = useCallback(() => setSheet(null), []);
@@ -64,7 +64,6 @@ export default function SettingsScreen() {
             accessibilityRole="button"
             accessibilityLabel="رجوع"
             {...backPress}
-            onPress={() => router.back()}
             style={({ pressed }) => [
               styles.back,
               { backgroundColor: c.surface, borderColor: c.border },

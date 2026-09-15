@@ -17,7 +17,7 @@ export interface TabBarProps {
  */
 export function TabBar({ onComingSoon, bottom }: TabBarProps) {
   const { c } = useTheme();
-  const press = useClick();
+  const press = useClick(onComingSoon);
   const soon = [
     { key: 'azkar', label: 'الأذكار', Icon: MoonIcon },
     { key: 'tasbih', label: 'التسبيح', Icon: TasbihIcon },
@@ -40,7 +40,6 @@ export function TabBar({ onComingSoon, bottom }: TabBarProps) {
           accessibilityRole="tab"
           accessibilityLabel={label}
           {...press}
-          onPress={onComingSoon}
           style={({ pressed }) => [styles.tab, pressed && { opacity: 0.7 }]}
         >
           <Icon size={17} color={c.tabicon} />

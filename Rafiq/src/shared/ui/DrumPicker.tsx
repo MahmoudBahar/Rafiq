@@ -353,9 +353,9 @@ export function DrumPicker({
 }
 
 function PressableDone({ onPress, color }: { onPress: () => void; color: string }) {
-  const press = useClick();
+  const press = useClick(onPress);
   return (
-    <Pressable accessibilityRole="button" {...press} onPress={onPress} style={styles.done}>
+    <Pressable accessibilityRole="button" {...press} style={styles.done}>
       <Text size={13.5} weight="bold" color={color}>
         تم
       </Text>

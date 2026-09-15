@@ -10,23 +10,19 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { click } from '@/shared/lib/haptics';
 
 /**
- * Press-in is deferred by this much. A scroll or pan that starts on the
- * control steals the responder within the window, which cancels the pending
- * press-in, so only a real press clicks (or scales). A tap released sooner
- * still gets press-in immediately before press-out (RN Pressability).
+ * Clicks fire on release, never on touch-down: a scroll or pan that starts on
+ * a control cancels its press, so a finger resting on a row before scrolling
+ * stays silent. Only a completed press clicks.
  */
-export const PRESS_DELAY = 80;
-
-/** Props for a `Pressable` that clicks like a physical key on a real press. */
-export function useClick(onPressIn?: PressableProps['onPressIn'], enabled = true) {
-  const handlePressIn = useCallback(
+export function useClick(onPress?: PressableProps['onPress'], enabled = true) {
+  const handlePress = useCallback(
     (e: GestureResponderEvent) => {
       if (enabled) click();
-      onPressIn?.(e);
+      onPress?.(e);
     },
-    [enabled, onPressIn],
+    [enabled, onPress],
   );
-  return { onPressIn: handlePressIn, unstable_pressDelay: PRESS_DELAY } as const;
+  return { onPress: handlePress } as const;
 }
 
 export interface PressScaleProps extends Omit<PressableProps, 'style'> {
@@ -44,24 +40,22 @@ export function PressScale({
   style,
   pressedScale = 0.97,
   click: clicks = true,
+  onPress,
   onPressIn,
   onPressOut,
   ...rest
 }: PressScaleProps) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
-  const pressIn = useCallback(
-    (e: GestureResponderEvent) => {
-      scale.set(withTiming(pressedScale, { duration: 120 }));
-      onPressIn?.(e);
-    },
-    [onPressIn, pressedScale, scale],
-  );
-  const press = useClick(pressIn, clicks);
+  const press = useClick(onPress, clicks);
   return (
     <AnimatedPressable
       {...rest}
       {...press}
+      onPressIn={(e) => {
+        scale.set(withTiming(pressedScale, { duration: 120 }));
+        onPressIn?.(e);
+      }}
       onPressOut={(e) => {
         scale.set(withTiming(1, { duration: 160 }));
         onPressOut?.(e);

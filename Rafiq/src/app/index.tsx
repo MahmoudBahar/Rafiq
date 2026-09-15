@@ -172,7 +172,7 @@ export default function HomeScreen() {
     [],
   );
 
-  const gearPress = useClick();
+  const gearPress = useClick(() => router.push('/settings'));
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
@@ -222,7 +222,6 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
               {...gearPress}
-              onPress={() => router.push('/settings')}
               style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
             >
               <GearIcon size={17} color={c.tp} />
