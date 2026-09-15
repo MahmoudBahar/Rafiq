@@ -22,7 +22,6 @@ import { useSky } from '@/features/prayer/useSky';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12 } from '@/shared/lib/arabic';
 import { gregorianString } from '@/shared/lib/gregorian';
-import { tap } from '@/shared/lib/haptics';
 import { hijriString } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { useSettings } from '@/shared/storage/settings';
@@ -30,7 +29,7 @@ import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronDownIcon, GearIcon, PinIcon } from '@/shared/ui/Icons';
-import { PressScale } from '@/shared/ui/PressScale';
+import { PressScale, useClick } from '@/shared/ui/PressScale';
 import { TabBar } from '@/shared/ui/TabBar';
 import { Text } from '@/shared/ui/Text';
 import { TipBubble } from '@/shared/ui/TipBubble';
@@ -173,6 +172,7 @@ export default function HomeScreen() {
     [],
   );
 
+  const gearPress = useClick();
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
@@ -204,7 +204,6 @@ export default function HomeScreen() {
                 accessibilityLabel="جدول الشهر"
                 onPress={openMonth}
                 pressedScale={0.96}
-                haptic="tap"
                 style={styles.dates}
               >
                 <Text size={12} weight="medium" color={c.tm}>
@@ -222,7 +221,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
-              onPressIn={tap}
+              {...gearPress}
               onPress={() => router.push('/settings')}
               style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
             >

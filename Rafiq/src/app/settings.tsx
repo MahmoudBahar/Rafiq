@@ -3,19 +3,18 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CITIES, COUNTRY, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } from '@/features/prayer/engine';
+import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } from '@/features/prayer/engine';
 import { FineTune } from '@/features/prayer/FineTune';
 import { useLocate } from '@/features/prayer/useLocate';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
-import { tap } from '@/shared/lib/haptics';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { useSettings, type Madhab, type Method, type ThemeMode } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon, ChevronForwardIcon, MonitorIcon, MoonIcon, SunIcon, SunriseIcon } from '@/shared/ui/Icons';
 import { Mark } from '@/shared/ui/Mark';
-import { PressScale } from '@/shared/ui/PressScale';
+import { PressScale, useClick } from '@/shared/ui/PressScale';
 import { RadioCard } from '@/shared/ui/RadioCard';
 import { SectionLabel } from '@/shared/ui/SectionLabel';
 import { Segmented } from '@/shared/ui/Segmented';
@@ -32,6 +31,7 @@ export default function SettingsScreen() {
   const cfg = usePrayerConfig();
   const { locating, error, locate } = useLocate();
 
+  const backPress = useClick();
   const [sheet, setSheet] = useState<'method' | 'city' | null>(null);
   const blurTarget = useRef<View | null>(null);
   const closeSheet = useCallback(() => setSheet(null), []);
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="رجوع"
-            onPressIn={tap}
+            {...backPress}
             onPress={() => router.back()}
             style={({ pressed }) => [
               styles.back,
@@ -105,15 +105,11 @@ export default function SettingsScreen() {
                 accessibilityLabel={`المدينة: ${city}`}
                 onPress={() => setSheet('city')}
                 pressedScale={0.985}
-                haptic="tap"
                 style={[styles.methodRow, { backgroundColor: c.surface, borderColor: c.border }]}
               >
                 <View style={styles.methodTexts}>
                   <Text size={14.5} weight="semi" numberOfLines={1}>
                     {city}
-                  </Text>
-                  <Text size={12} color={c.tm} numberOfLines={1}>
-                    {COUNTRY} · جداول الهيئة المصرية العامة للمساحة
                   </Text>
                 </View>
                 <ChevronForwardIcon size={16} color={c.tm} />
@@ -128,7 +124,6 @@ export default function SettingsScreen() {
               accessibilityLabel={`طريقة الحساب: ${method.name}`}
               onPress={() => setSheet('method')}
               pressedScale={0.985}
-              haptic="tap"
               style={[styles.methodRow, { backgroundColor: c.surface, borderColor: c.border }]}
             >
               <View style={styles.methodTexts}>
@@ -192,21 +187,6 @@ export default function SettingsScreen() {
               {settings.theme === 'daylight'
                 ? 'نهاري: فاتح من الشروق إلى المغرب، وداكن ليلاً'
                 : 'تلقائي: يتبع مظهر نظام الجهاز'}
-            </Text>
-          </View>
-
-          <View style={styles.section}>
-            <SectionLabel>اللمس</SectionLabel>
-            <Segmented<'on' | 'off'>
-              value={settings.haptics ? 'on' : 'off'}
-              onChange={(v) => update({ haptics: v === 'on' })}
-              options={[
-                { key: 'on', label: 'مفعّل' },
-                { key: 'off', label: 'معطّل' },
-              ]}
-            />
-            <Text size={12} color={c.tm} style={styles.caption}>
-              نبضات خفيفة عند اللمس وتدوير العجلة
             </Text>
           </View>
 

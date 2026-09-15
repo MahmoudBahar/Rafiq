@@ -42,7 +42,6 @@ export function DayPill({ date, hint, onToday }: DayPillProps) {
             accessibilityLabel="العودة إلى اليوم"
             onPress={onToday}
             pressedScale={0.95}
-            haptic="tap"
             style={pill}
           >
             <Animated.View

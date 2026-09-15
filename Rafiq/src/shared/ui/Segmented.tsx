@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { select } from '@/shared/lib/haptics';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
+import { PRESS_DELAY } from './PressScale';
+import { click } from '@/shared/lib/haptics';
 import { Text } from './Text';
 
 export interface SegmentOption<K extends string> {
@@ -29,11 +30,9 @@ export function Segmented<K extends string>({ options, value, onChange }: Segmen
             key={o.key}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
-            onPress={() => {
-              if (active) return;
-              select();
-              onChange(o.key);
-            }}
+            unstable_pressDelay={PRESS_DELAY}
+            onPressIn={() => !active && click()}
+            onPress={() => !active && onChange(o.key)}
             style={[styles.segment, { backgroundColor: active ? c.hero : 'transparent' }]}
           >
             {o.icon?.(color)}

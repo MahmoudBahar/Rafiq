@@ -7,13 +7,12 @@ import { PRAYERS, computeRange } from '@/features/prayer/engine';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
 import { WEEKDAYS_AR, isSameDay, monthName } from '@/shared/lib/gregorian';
-import { tap } from '@/shared/lib/haptics';
 import { hijriMonthRange } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme, type Scheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon, ChevronForwardIcon } from '@/shared/ui/Icons';
-import { PressScale } from '@/shared/ui/PressScale';
+import { PressScale, useClick } from '@/shared/ui/PressScale';
 import { Display, Text } from '@/shared/ui/Text';
 
 const ROW_H = 46;
@@ -94,6 +93,7 @@ export default function MonthScreen() {
 
   const openDay = useCallback((date: Date) => router.navigate({ pathname: '/', params: { day: iso(date) } }), [router]);
 
+  const backPress = useClick();
   const listRef = useRef<ScrollView>(null);
   const scrollToToday = () => {
     if (todayIndex > 2) listRef.current?.scrollTo({ y: ROW_H * (todayIndex - 2), animated: false });
@@ -105,7 +105,7 @@ export default function MonthScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="رجوع"
-          onPressIn={tap}
+          {...backPress}
           onPress={() => router.back()}
           style={({ pressed }) => [
             styles.back,
@@ -126,7 +126,6 @@ export default function MonthScreen() {
           accessibilityLabel="الشهر السابق"
           onPress={() => step(-1)}
           pressedScale={0.92}
-          haptic="tap"
           style={[styles.navBtn, { backgroundColor: c.surface, borderColor: c.border }]}
         >
           <ChevronBackIcon size={15} color={c.tp} />
@@ -144,7 +143,6 @@ export default function MonthScreen() {
           accessibilityLabel="الشهر التالي"
           onPress={() => step(1)}
           pressedScale={0.92}
-          haptic="tap"
           style={[styles.navBtn, { backgroundColor: c.surface, borderColor: c.border }]}
         >
           <ChevronForwardIcon size={15} color={c.tp} />
@@ -186,11 +184,12 @@ interface MonthRowProps {
 
 const MonthRow = memo(function MonthRow({ vm, onPress }: MonthRowProps) {
   const { c } = useTheme();
+  const press = useClick();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${vm.weekday} ${vm.num}`}
-      onPressIn={tap}
+      {...press}
       onPress={() => onPress(vm.date)}
       style={({ pressed }) => [
         styles.row,

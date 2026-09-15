@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { toArabicIndic } from '@/shared/lib/arabic';
-import { bump, select } from '@/shared/lib/haptics';
+import { stop } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { ADJUST_LIMIT, clampAdjust, useSettings, type Adjustments, type PrayerKey } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
@@ -47,10 +47,9 @@ export function FineTune() {
   const setAdj = (key: PrayerKey, delta: number) => {
     const next = clampAdjust((adj[key] ?? 0) + delta);
     if (next === (adj[key] ?? 0)) {
-      bump();
+      stop();
       return;
     }
-    select();
     const merged: Adjustments = { ...adj };
     if (next === 0) delete merged[key];
     else merged[key] = next;
@@ -66,7 +65,6 @@ export function FineTune() {
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((v) => !v)}
         pressedScale={0.985}
-        haptic="tap"
         style={[styles.headerCard, { backgroundColor: c.surface, borderColor: c.border }]}
       >
         <View style={styles.headerTexts}>
@@ -120,7 +118,6 @@ export function FineTune() {
                 accessibilityRole="button"
                 onPress={() => update({ adjustments: {} })}
                 pressedScale={0.95}
-                haptic="press"
               >
                 <Text size={12.5} weight="semi" color={c.accent}>
                   إعادة الضبط
@@ -152,6 +149,7 @@ function Stepper({
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
       onPress={onPress}
+      click={!disabled}
       pressedScale={disabled ? 0.96 : 0.88}
       style={[styles.stepBtn, { backgroundColor: c.bg, borderColor: c.border, opacity: disabled ? 0.5 : 1 }]}
     >
