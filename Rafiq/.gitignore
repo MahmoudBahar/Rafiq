@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# service account keys (never commit)
+rafiq-508715-1eae4f2da114.json
