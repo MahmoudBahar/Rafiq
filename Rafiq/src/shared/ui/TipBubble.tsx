@@ -32,7 +32,7 @@ export function TipBubble({ visible, text }: TipBubbleProps) {
           { backgroundColor: c.surface, borderColor: c.border, boxShadow: `0 6px 18px ${c.shadow}` },
         ]}
       >
-        <Text size={11.5} weight="medium" color={c.tm}>
+        <Text size={11.5} weight="medium" color={c.tm} align="center">
           {text}
         </Text>
       </View>
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   bubble: {
-    width: 102,
+    width: 124,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: radius.md,
