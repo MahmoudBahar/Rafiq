@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CountdownDigits } from '@/features/prayer/CountdownDigits';
 import { DayCarousel, DaySwipeSurface } from '@/features/prayer/DayCarousel';
 import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
 import { COUNTRY, DEFAULT_CITY, getTimes, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
@@ -19,7 +20,7 @@ import { useCountdown } from '@/features/prayer/useCountdown';
 import { useDayCarousel } from '@/features/prayer/useDayCarousel';
 import { useSky } from '@/features/prayer/useSky';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
-import { formatCountdown, formatTime12 } from '@/shared/lib/arabic';
+import { formatTime12 } from '@/shared/lib/arabic';
 import { gregorianString } from '@/shared/lib/gregorian';
 import { hijriString } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
@@ -54,7 +55,7 @@ export default function HomeScreen() {
   const m = useMotion();
   const { settings, update } = useSettings();
   const cfg = usePrayerConfig();
-  const { now, day, next, h, m: mm, s } = useCountdown(cfg);
+  const { now, day, next } = useCountdown(cfg);
   const params = useLocalSearchParams<{ day?: string }>();
   const sky = useSky(now, day, cfg.coords);
 
@@ -230,9 +231,7 @@ export default function HomeScreen() {
           <Text size={12} weight="medium" color={c.tm}>
             الصلاة القادمة · {nextLabel}
           </Text>
-          <Text size={56} weight="bold" lineHeight={68} style={styles.countdown}>
-            {formatCountdown(h, mm, s)}
-          </Text>
+          <CountdownDigits at={next.at} />
           <Text size={12.5} weight="medium" color={c.ts}>
             الأذان الساعة {formatTime12(next.at)}
           </Text>
@@ -290,7 +289,6 @@ const styles = StyleSheet.create({
   gregorian: { opacity: 0.85 },
   iconBtn: { width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   countdownBlock: { alignItems: 'center', paddingTop: 16 },
-  countdown: { fontVariant: ['tabular-nums'] },
   headerSpacer: { height: 26 },
   listContent: { paddingTop: 14 },
 });
