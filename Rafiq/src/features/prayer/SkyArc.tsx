@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, G, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Mask, Path, Rect } from 'react-native-svg';
 import { toArabicIndic } from '@/shared/lib/arabic';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -76,9 +76,24 @@ export function SkyArc({ sky, day }: SkyArcProps) {
 
         {sky.empty ? <AnimatedCircle cx={P_START.x} cy={P_START.y} fill={c.accent} animatedProps={marker} /> : null}
 
-        {/* The sun's trail goes under the moon; the sun itself is drawn last. */}
+        {/* The sun's trail passes under the moon with a clear gap around it. */}
         {sky.sun.visible && sky.sun.pathD ? (
-          <Path d={sky.sun.pathD} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" />
+          <>
+            <Defs>
+              <Mask id="moonGap" maskUnits="userSpaceOnUse" x={0} y={0} width={ARC_WIDTH} height={ARC_HEIGHT}>
+                <Rect x={0} y={0} width={ARC_WIDTH} height={ARC_HEIGHT} fill="#fff" />
+                {sky.moon.visible ? <Circle cx={moonPos.x} cy={moonPos.y} r={MOON_R + 9} fill="#000" /> : null}
+              </Mask>
+            </Defs>
+            <Path
+              d={sky.sun.pathD}
+              stroke={c.accent}
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              fill="none"
+              mask="url(#moonGap)"
+            />
+          </>
         ) : null}
 
         <AnimatedG transform={`translate(${moonPos.x} ${moonPos.y})`} animatedProps={moonStyle}>
