@@ -11,6 +11,7 @@ import Svg, { Circle, Defs, G, Mask, Path, Rect } from 'react-native-svg';
 import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
+import { MoonIcon, SunIcon } from '@/shared/ui/Icons';
 import { Text } from '@/shared/ui/Text';
 import type { DayTimes } from './engine';
 import { moonPath } from './moonPath';
@@ -130,36 +131,39 @@ export function SkyArc({ sky, day }: SkyArcProps) {
       </Svg>
 
       <View style={styles.footer}>
-        <EndTimes sun={day.byKey.sunrise} moon={sky.moon.rise} />
+        <EndTimes kind="rise" sun={day.byKey.sunrise} moon={sky.moon.rise} />
         <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
           طول النهار {dayLength}
         </Text>
-        <EndTimes sun={day.sunset} moon={sky.moon.set} />
+        <EndTimes kind="set" sun={day.sunset} moon={sky.moon.set} />
       </View>
     </View>
   );
 }
 
 interface EndTimesProps {
+  kind: 'rise' | 'set';
   sun: Date;
   moon: Date | null;
 }
 
-/** Rise or set times of both bodies under one arc end. */
-function EndTimes({ sun, moon }: EndTimesProps) {
+/** Rise or set times of both bodies under one arc end, each with its glyph and verb. */
+function EndTimes({ kind, sun, moon }: EndTimesProps) {
   const { c } = useTheme();
+  const sunWord = kind === 'rise' ? 'شروق' : 'غروب';
+  const moonWord = kind === 'rise' ? 'طلوع القمر' : 'غروب القمر';
   return (
     <View style={styles.endTimes}>
       <View style={styles.endRow}>
-        <View style={[styles.dot, { backgroundColor: c.accent }]} />
+        <SunIcon size={10} color={c.accent} strokeWidth={2.4} />
         <Text size={10} weight="semi" color={c.tm}>
-          {formatTimeShort(sun)}
+          {sunWord} {formatTimeShort(sun)}
         </Text>
       </View>
       <View style={styles.endRow}>
-        <View style={[styles.dot, { backgroundColor: c.moon }]} />
+        <MoonIcon size={10} color={c.moon} strokeWidth={2.4} />
         <Text size={10} weight="semi" color={c.tm}>
-          {moon ? formatTimeShort(moon) : '—'}
+          {moonWord} {moon ? formatTimeShort(moon) : '—'}
         </Text>
       </View>
     </View>
@@ -168,9 +172,16 @@ function EndTimes({ sun, moon }: EndTimesProps) {
 
 const styles = StyleSheet.create({
   wrap: { marginHorizontal: 6, marginTop: 6 },
-  footer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 6 },
-  dayLength: { marginTop: 2, opacity: 0.9 },
+  // Pulled up into the empty band under the arc and inset so each glyph sits under its corner
+  // (corners are 18 of 330 units in from the edges).
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    marginTop: -14,
+  },
+  dayLength: { marginTop: 1, opacity: 0.9 },
   endTimes: { gap: 1 },
   endRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  dot: { width: 5, height: 5, borderRadius: 999, opacity: 0.9 },
 });
