@@ -3,16 +3,16 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, timeFor } from '@/features/prayer/engine';
+import { CITIES, COUNTRY, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } from '@/features/prayer/engine';
 import { FineTune } from '@/features/prayer/FineTune';
 import { useLocate } from '@/features/prayer/useLocate';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
+import { tap } from '@/shared/lib/haptics';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { useSettings, type Madhab, type Method, type ThemeMode } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
-import { Chip } from '@/shared/ui/Chip';
 import { ChevronBackIcon, ChevronForwardIcon, MonitorIcon, MoonIcon, SunIcon, SunriseIcon } from '@/shared/ui/Icons';
 import { Mark } from '@/shared/ui/Mark';
 import { PressScale } from '@/shared/ui/PressScale';
@@ -32,18 +32,29 @@ export default function SettingsScreen() {
   const cfg = usePrayerConfig();
   const { locating, error, locate } = useLocate();
 
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState<'method' | 'city' | null>(null);
   const blurTarget = useRef<View | null>(null);
-  const closeSheet = useCallback(() => setSheet(false), []);
+  const closeSheet = useCallback(() => setSheet(null), []);
   // Hardware / system back closes the picker instead of popping the screen.
-  usePreventBack(sheet, closeSheet);
+  usePreventBack(sheet !== null, closeSheet);
 
   const manual = settings.locationMode === 'manual';
   const city = settings.city ?? DEFAULT_CITY;
   const asr = timeFor('asr', cfg, new Date());
-  const autoSub = locating ? 'جارٍ تحديد موقعك…' : !manual && settings.coords ? `${city} · مفعّل` : 'استخدام GPS';
+  const near = !manual && settings.coords ? nearestCity(settings.coords) : null;
+  const autoSub = locating
+    ? 'جارٍ تحديد موقعك…'
+    : !manual && settings.coords
+      ? near
+        ? `${near.city.name} · على بعد ${toArabicIndic(Math.round(near.km))} كم`
+        : `${city} · مفعّل`
+      : 'استخدام GPS';
   const method = METHOD_BY_ID[settings.method] ?? METHOD_BY_ID.egypt;
   const methodItems = useMemo<DrumItem[]>(() => METHODS.map((m) => ({ key: m.id, title: m.name, sub: m.sub })), []);
+  const cityItems = useMemo<DrumItem[]>(
+    () => CITIES.map((c) => ({ key: c.name, title: c.name, sub: `محافظة ${c.gov}` })),
+    [],
+  );
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
@@ -52,6 +63,7 @@ export default function SettingsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="رجوع"
+            onPressIn={tap}
             onPress={() => router.back()}
             style={({ pressed }) => [
               styles.back,
@@ -88,16 +100,24 @@ export default function SettingsScreen() {
               </Text>
             ) : null}
             {manual ? (
-              <View style={styles.chips}>
-                {CITIES.map(({ name }) => (
-                  <Chip
-                    key={name}
-                    label={name}
-                    selected={city === name}
-                    onPress={() => update({ city: name, locationMode: 'manual' })}
-                  />
-                ))}
-              </View>
+              <PressScale
+                accessibilityRole="button"
+                accessibilityLabel={`المدينة: ${city}`}
+                onPress={() => setSheet('city')}
+                pressedScale={0.985}
+                haptic="tap"
+                style={[styles.methodRow, { backgroundColor: c.surface, borderColor: c.border }]}
+              >
+                <View style={styles.methodTexts}>
+                  <Text size={14.5} weight="semi" numberOfLines={1}>
+                    {city}
+                  </Text>
+                  <Text size={12} color={c.tm} numberOfLines={1}>
+                    {COUNTRY} · جداول الهيئة المصرية العامة للمساحة
+                  </Text>
+                </View>
+                <ChevronForwardIcon size={16} color={c.tm} />
+              </PressScale>
             ) : null}
           </View>
 
@@ -106,8 +126,9 @@ export default function SettingsScreen() {
             <PressScale
               accessibilityRole="button"
               accessibilityLabel={`طريقة الحساب: ${method.name}`}
-              onPress={() => setSheet(true)}
+              onPress={() => setSheet('method')}
               pressedScale={0.985}
+              haptic="tap"
               style={[styles.methodRow, { backgroundColor: c.surface, borderColor: c.border }]}
             >
               <View style={styles.methodTexts}>
@@ -174,6 +195,21 @@ export default function SettingsScreen() {
             </Text>
           </View>
 
+          <View style={styles.section}>
+            <SectionLabel>اللمس</SectionLabel>
+            <Segmented<'on' | 'off'>
+              value={settings.haptics ? 'on' : 'off'}
+              onChange={(v) => update({ haptics: v === 'on' })}
+              options={[
+                { key: 'on', label: 'اهتزاز مفعّل' },
+                { key: 'off', label: 'بدون اهتزاز' },
+              ]}
+            />
+            <Text size={12} color={c.tm} style={styles.caption}>
+              نبضات خفيفة عند اللمس وتدوير العجلة
+            </Text>
+          </View>
+
           <View style={styles.footer}>
             <Mark size={20} color={c.tp} knockout={c.bg} accent={c.accent} />
             <Text size={11.5} color={c.tm}>
@@ -184,15 +220,21 @@ export default function SettingsScreen() {
       </BlurTargetView>
 
       <DrumPicker
-        visible={sheet}
+        visible={sheet === 'method'}
         title="طريقة الحساب"
         items={methodItems}
         selectedKey={settings.method}
         onSelect={(id) => update({ method: id as Method })}
         onClose={closeSheet}
-        onFocusChange={() => {
-          // TODO(haptics): expo-haptics selectionAsync() per wheel tick.
-        }}
+        blurTarget={blurTarget}
+      />
+      <DrumPicker
+        visible={sheet === 'city'}
+        title="المدينة"
+        items={cityItems}
+        selectedKey={city}
+        onSelect={(name) => update({ city: name, locationMode: 'manual' })}
+        onClose={closeSheet}
         blurTarget={blurTarget}
       />
     </View>
@@ -228,13 +270,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   methodTexts: { flex: 1, gap: 1 },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingTop: 4,
-    paddingHorizontal: 2,
-  },
   caption: { paddingHorizontal: 4 },
   footer: {
     flexDirection: 'row',
