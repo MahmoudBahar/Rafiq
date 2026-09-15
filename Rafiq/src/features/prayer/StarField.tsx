@@ -1,59 +1,81 @@
 import { useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { interpolate, useAnimatedProps, type SharedValue } from 'react-native-reanimated';
-import Svg, { Circle, Defs, G, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, G, Path } from 'react-native-svg';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+type Tier = 'faint' | 'mid' | 'bright';
+
 interface Star {
-  /** Normalised position 0..1 across the header. */
+  /** Normalised position across the header (0..1). */
   x: number;
   y: number;
-  /** Radius in dp. */
-  r: number;
-  tint: string;
-  /** 0 = steady, 1..3 = twinkle rhythm. */
-  group: number;
-  glow: boolean;
+  tier: Tier;
+  tint?: number;
 }
 
 const TINTS = ['#f3ead6', '#e8dcc3', '#d9e3ea'];
-// Per twinkle group: [low, high] opacity swing and half-period.
-const TWINKLE: [number, number][] = [
-  [1, 1],
-  [1, 0.35],
-  [0.4, 1],
-  [0.7, 0.2],
-];
-const TWINKLE_MS = [0, 1700, 2600, 3400];
-const COUNT = 46;
+const FAINT_R = 0.65;
+const MID_R = 0.9;
+const SPARKLE = 5;
+/** Four-point sparkle centred on the origin. */
+const SPARKLE_D = `M0,${-SPARKLE} L1.1,-1.1 L${SPARKLE},0 L1.1,1.1 L0,${SPARKLE} L-1.1,1.1 L${-SPARKLE},0 L-1.1,-1.1 Z`;
+/** Breathing half-periods for the four bright stars, in order. */
+const BREATH_MS = [3200, 4100, 5000, 3700];
 
-/** Deterministic field: denser toward the top of the header, a few bright glowing ones. */
-const STARS: Star[] = (() => {
-  let seed = 0x2f6e2b1;
-  const rand = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  const stars: Star[] = [];
-  for (let i = 0; i < COUNT; i++) {
-    const r = 0.5 + rand() * 1.2;
-    const bright = r > 1.35;
-    stars.push({
-      x: rand(),
-      y: Math.pow(rand(), 1.4) * 0.9,
-      r,
-      tint: TINTS[Math.floor(rand() * TINTS.length)],
-      group: rand() < 0.55 ? 0 : 1 + Math.floor(rand() * 3),
-      glow: bright,
-    });
-  }
-  return stars;
-})();
+/**
+ * Hand-placed field. The countdown block (x 0.22–0.78, y 0.24–0.56) and the
+ * band under the arc (y > 0.72) stay empty. Three loose clusters plus a few
+ * lone stars; the four bright ones are spread across the header.
+ */
+const STARS: Star[] = [
+  // Cluster: top, start side (right in RTL)
+  { x: 0.66, y: 0.06, tier: 'faint' },
+  { x: 0.7, y: 0.12, tier: 'faint', tint: 2 },
+  { x: 0.74, y: 0.05, tier: 'mid' },
+  { x: 0.78, y: 0.17, tier: 'faint' },
+  { x: 0.82, y: 0.09, tier: 'bright' },
+  { x: 0.86, y: 0.2, tier: 'faint', tint: 1 },
+  { x: 0.9, y: 0.06, tier: 'faint' },
+  { x: 0.93, y: 0.14, tier: 'mid', tint: 2 },
+  { x: 0.95, y: 0.25, tier: 'faint' },
+  { x: 0.64, y: 0.2, tier: 'faint', tint: 1 },
+  // Cluster: top, end side (left in RTL)
+  { x: 0.05, y: 0.08, tier: 'faint' },
+  { x: 0.09, y: 0.16, tier: 'mid' },
+  { x: 0.12, y: 0.06, tier: 'faint', tint: 2 },
+  { x: 0.16, y: 0.22, tier: 'bright' },
+  { x: 0.2, y: 0.1, tier: 'faint' },
+  { x: 0.24, y: 0.18, tier: 'faint', tint: 1 },
+  { x: 0.28, y: 0.07, tier: 'mid' },
+  { x: 0.31, y: 0.27, tier: 'faint' },
+  { x: 0.07, y: 0.29, tier: 'faint', tint: 2 },
+  // Cluster: low, end side, above the arc
+  { x: 0.06, y: 0.54, tier: 'faint' },
+  { x: 0.1, y: 0.62, tier: 'mid', tint: 1 },
+  { x: 0.14, y: 0.56, tier: 'faint' },
+  { x: 0.18, y: 0.66, tier: 'faint', tint: 2 },
+  { x: 0.22, y: 0.59, tier: 'bright' },
+  { x: 0.09, y: 0.69, tier: 'faint' },
+  // Lone stars
+  { x: 0.4, y: 0.05, tier: 'faint' },
+  { x: 0.47, y: 0.12, tier: 'mid', tint: 2 },
+  { x: 0.55, y: 0.07, tier: 'faint' },
+  { x: 0.35, y: 0.16, tier: 'faint', tint: 1 },
+  { x: 0.6, y: 0.19, tier: 'faint' },
+  { x: 0.84, y: 0.36, tier: 'faint' },
+  { x: 0.9, y: 0.48, tier: 'mid' },
+  { x: 0.95, y: 0.6, tier: 'faint', tint: 1 },
+  { x: 0.86, y: 0.64, tier: 'bright' },
+  { x: 0.8, y: 0.55, tier: 'faint', tint: 2 },
+  { x: 0.03, y: 0.42, tier: 'faint' },
+  { x: 0.12, y: 0.4, tier: 'faint', tint: 1 },
+  { x: 0.5, y: 0.63, tier: 'faint' },
+];
 
 interface StarFieldProps {
   /** 0..1 from the sky phase (night 1, day faint). */
@@ -61,8 +83,9 @@ interface StarFieldProps {
 }
 
 /**
- * Full-header star layer. Sits behind the header content; invisible in the
- * light theme (`starop` is 0 there).
+ * Full-header star layer behind the content. Invisible in the light theme
+ * (`starop` is 0 there). Only the four bright stars move: a slow breath, out
+ * of phase with each other.
  */
 export function StarField({ visibility }: StarFieldProps) {
   const { c } = useTheme();
@@ -71,35 +94,37 @@ export function StarField({ visibility }: StarFieldProps) {
     const { width, height } = e.nativeEvent.layout;
     if (width !== size.w || height !== size.h) setSize({ w: width, h: height });
   };
-  const steady = useOscillator(0);
-  const tw1 = useOscillator(TWINKLE_MS[1]);
-  const tw2 = useOscillator(TWINKLE_MS[2]);
-  const tw3 = useOscillator(TWINKLE_MS[3]);
-  const oscillators = [steady, tw1, tw2, tw3];
+  const b0 = useOscillator(BREATH_MS[0]);
+  const b1 = useOscillator(BREATH_MS[1]);
+  const b2 = useOscillator(BREATH_MS[2]);
+  const b3 = useOscillator(BREATH_MS[3]);
+  const breaths = [b0, b1, b2, b3];
+  let bright = 0;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
       {size.w > 0 ? (
         <Svg width={size.w} height={size.h}>
-          <Defs>
-            <RadialGradient id="starGlow" cx="50%" cy="50%" r="50%">
-              <Stop offset="0" stopColor="#f3ead6" stopOpacity={0.5} />
-              <Stop offset="1" stopColor="#f3ead6" stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
           <G opacity={c.starop * visibility}>
-            {STARS.map((s, i) => (
-              <StarDot
-                key={i}
-                x={s.x * size.w}
-                y={s.y * size.h}
-                r={s.r}
-                color={s.tint}
-                glow={s.glow}
-                osc={oscillators[s.group]}
-                range={TWINKLE[s.group]}
-              />
-            ))}
+            {STARS.map((s, i) => {
+              const x = s.x * size.w;
+              const y = s.y * size.h;
+              const color = TINTS[s.tint ?? 0];
+              if (s.tier === 'bright') {
+                const osc = breaths[bright++ % breaths.length];
+                return <Sparkle key={i} x={x} y={y} color={color} osc={osc} />;
+              }
+              return (
+                <Circle
+                  key={i}
+                  cx={x}
+                  cy={y}
+                  r={s.tier === 'mid' ? MID_R : FAINT_R}
+                  fill={color}
+                  opacity={s.tier === 'mid' ? 0.85 : 0.5}
+                />
+              );
+            })}
           </G>
         </Svg>
       ) : null}
@@ -107,26 +132,22 @@ export function StarField({ visibility }: StarFieldProps) {
   );
 }
 
-interface StarDotProps {
+interface SparkleProps {
   x: number;
   y: number;
-  r: number;
   color: string;
-  glow: boolean;
   osc: SharedValue<number>;
-  range: [number, number];
 }
 
-function StarDot({ x, y, r, color, glow, osc, range }: StarDotProps) {
-  const twinkle = useAnimatedProps(() => ({ opacity: interpolate(osc.get(), [0, 1], range) }));
+function Sparkle({ x, y, color, osc }: SparkleProps) {
+  // Opacity is animated on the shapes themselves: an animated group nested in
+  // the translucent star group trips react-native-svg's canvas save/restore.
+  const rays = useAnimatedProps(() => ({ opacity: interpolate(osc.get(), [0, 1], [0.45, 0.85]) }));
+  const core = useAnimatedProps(() => ({ opacity: interpolate(osc.get(), [0, 1], [0.7, 1]) }));
   return (
     <>
-      {glow ? <Circle cx={x} cy={y} r={r * 3.4} fill="url(#starGlow)" /> : null}
-      {range[0] === range[1] ? (
-        <Circle cx={x} cy={y} r={r} fill={color} />
-      ) : (
-        <AnimatedCircle cx={x} cy={y} r={r} fill={color} animatedProps={twinkle} />
-      )}
+      <AnimatedPath d={SPARKLE_D} transform={`translate(${x} ${y})`} fill={color} animatedProps={rays} />
+      <AnimatedCircle cx={x} cy={y} r={1} fill={color} animatedProps={core} />
     </>
   );
 }

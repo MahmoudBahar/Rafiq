@@ -20,8 +20,10 @@ interface Pt {
 export const ARC_WIDTH = 330;
 export const ARC_HEIGHT = 104;
 
-export const P_START: Readonly<Pt> = { x: 312, y: 80 };
-export const P_END: Readonly<Pt> = { x: 18, y: 80 };
+/** Arc baseline: the horizon line the bodies rise from and sink below. */
+export const HORIZON_Y = 80;
+export const P_START: Readonly<Pt> = { x: 312, y: HORIZON_Y };
+export const P_END: Readonly<Pt> = { x: 18, y: HORIZON_Y };
 const CTRL: Pt = { x: 165, y: -14 };
 /** How far below a corner a twilight sun sits (svg units). */
 const DEPTH = 16;
