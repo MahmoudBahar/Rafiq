@@ -7,14 +7,14 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, G, Line, Path } from 'react-native-svg';
+import Svg, { Circle, G, Path } from 'react-native-svg';
 import { toArabicIndic } from '@/shared/lib/arabic';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
 import type { DayTimes } from './engine';
 import { moonPath } from './moonPath';
-import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, HORIZON_Y, P_END, P_START, type SkyState } from './sky';
+import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, P_START, type SkyState } from './sky';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedG = Animated.createAnimatedComponent(G);
@@ -108,26 +108,6 @@ export function SkyArc({ sky, day }: SkyArcProps) {
             />
           </>
         ) : null}
-
-        {/* Rise and set marks at the arc ends. */}
-        <Line
-          x1={P_END.x}
-          y1={HORIZON_Y - 3}
-          x2={P_END.x}
-          y2={HORIZON_Y + 3}
-          stroke={c.arcdim}
-          strokeWidth={1}
-          opacity={0.8}
-        />
-        <Line
-          x1={P_START.x}
-          y1={HORIZON_Y - 3}
-          x2={P_START.x}
-          y2={HORIZON_Y + 3}
-          stroke={c.arcdim}
-          strokeWidth={1}
-          opacity={0.8}
-        />
       </Svg>
 
       <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
