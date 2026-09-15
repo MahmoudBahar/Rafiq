@@ -42,6 +42,8 @@ export interface Settings {
   theme: ThemeMode;
   /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
   swipeHintShown: number;
+  /** How many launches showed the "tap the date" tip; 3 = never again. */
+  dateHintShown: number;
 }
 
 export const DEFAULTS: Settings = {
@@ -55,6 +57,7 @@ export const DEFAULTS: Settings = {
   adjustments: {},
   theme: 'system',
   swipeHintShown: 0,
+  dateHintShown: 0,
 };
 
 const KEY = 'rafiq.settings.v1';

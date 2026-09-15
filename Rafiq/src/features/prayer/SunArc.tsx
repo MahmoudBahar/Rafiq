@@ -9,12 +9,12 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, G, Path } from 'react-native-svg';
+import Svg, { Circle, ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { formatTimeShort } from '@/shared/lib/arabic';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
 import type { DayTimes } from './engine';
-import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, sunArc } from './sunArc';
+import { ARC_HEIGHT, ARC_WIDTH, FULL_ARC_D, HORIZON_Y, sunArc } from './sunArc';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -40,6 +40,7 @@ export function SunArc({ now, day }: SunArcProps) {
   const pos = sunArc({
     now,
     fajr: day.byKey.fajr,
+    sunrise: day.byKey.sunrise,
     maghrib: day.byKey.maghrib,
     prevMaghrib: day.prevMaghrib,
     nextFajr: day.nextFajr,
@@ -69,29 +70,62 @@ export function SunArc({ now, day }: SunArcProps) {
   return (
     <View style={styles.wrap}>
       <Svg width="100%" height={ARC_HEIGHT} viewBox={`0 0 ${ARC_WIDTH} ${ARC_HEIGHT}`} preserveAspectRatio="none">
+        <Defs>
+          {/* Everything below the horizon line is hidden: the dawn sun rises into view. */}
+          <ClipPath id="horizon">
+            <Rect x={0} y={0} width={ARC_WIDTH} height={HORIZON_Y} />
+          </ClipPath>
+        </Defs>
         <G opacity={c.starop}>
           {STARS.map(([cx, cy, r]) => (
             <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} fill="#e8dcc3" />
           ))}
         </G>
-        <Path d={FULL_ARC_D} stroke={c.arcdim} strokeWidth={2} strokeDasharray="1 6" strokeLinecap="round" fill="none" />
-        {pos.isNight ? (
+        <Path
+          d={FULL_ARC_D}
+          stroke={c.arcdim}
+          strokeWidth={2}
+          strokeDasharray="1 6"
+          strokeLinecap="round"
+          fill="none"
+        />
+        {pos.phase === 'night' ? (
           <G transform={`translate(${pos.x} ${pos.y})`}>
             <Circle cx={0} cy={0} r={14} fill={c.moon} opacity={0.12} />
             <Path d={MOON_D} fill={c.moon} />
             <AnimatedCircle cx={0} cy={0} fill="none" stroke={c.moon} strokeWidth={1.2} animatedProps={moonHalo} />
           </G>
+        ) : pos.phase === 'dawn' ? (
+          <G clipPath="url(#horizon)">
+            <Circle cx={pos.x} cy={pos.y} r={22} fill={c.accent} opacity={0.08 + 0.14 * pos.dawn} />
+            <Circle cx={pos.x} cy={pos.y} r={7} fill={c.accent} />
+            <AnimatedCircle
+              cx={pos.x}
+              cy={pos.y}
+              fill="none"
+              stroke={c.accent}
+              strokeWidth={1.5}
+              animatedProps={sunHalo}
+            />
+          </G>
         ) : (
           <>
             <Path d={pos.pathD} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" />
             <Circle cx={pos.x} cy={pos.y} r={7} fill={c.accent} />
-            <AnimatedCircle cx={pos.x} cy={pos.y} fill="none" stroke={c.accent} strokeWidth={1.5} animatedProps={sunHalo} />
+            <AnimatedCircle
+              cx={pos.x}
+              cy={pos.y}
+              fill="none"
+              stroke={c.accent}
+              strokeWidth={1.5}
+              animatedProps={sunHalo}
+            />
           </>
         )}
       </Svg>
       <View style={styles.labels}>
         <Text size={10} weight="semi" color={c.tm}>
-          الفجر {formatTimeShort(day.byKey.fajr)}
+          الشروق {formatTimeShort(day.byKey.sunrise)}
         </Text>
         <Text size={10} weight="semi" color={c.tm}>
           المغرب {formatTimeShort(day.byKey.maghrib)}
