@@ -97,6 +97,8 @@ export interface SkyMoon {
   x: number;
   y: number;
   phase: number;
+  /** Observer in the southern hemisphere (lit limb mirrored). */
+  southern: boolean;
   fraction: number;
   /** Today's moonrise / moonset (null when the day has none). */
   rise: Date | null;
@@ -174,6 +176,7 @@ export function skyState({ now, day, moon, sunAlt }: SkyInputs): SkyState {
     x: r1(mp.x),
     y: r1(mp.y),
     phase: moon.phase,
+    southern: moon.southern,
     fraction: moon.fraction,
     rise: moon.dayRise,
     set: moon.daySet,
