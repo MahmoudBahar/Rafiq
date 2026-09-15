@@ -291,6 +291,6 @@ const styles = StyleSheet.create({
   iconBtn: { width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   countdownBlock: { alignItems: 'center', paddingTop: 16 },
   countdown: { fontVariant: ['tabular-nums'] },
-  headerSpacer: { height: 18 },
+  headerSpacer: { height: 22 },
   listContent: { paddingTop: 14 },
 });
