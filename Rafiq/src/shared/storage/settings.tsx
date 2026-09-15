@@ -4,7 +4,8 @@ import { kv } from './kv';
 
 export { ADJUST_LIMIT, clampAdjust, type Adjustments, type PrayerKey } from '@/shared/lib/adjustments';
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+/** `daylight`: light between sunrise and Maghrib, dark otherwise. */
+export type ThemeMode = 'light' | 'dark' | 'system' | 'daylight';
 export type Madhab = 'shafii' | 'hanafi';
 export type Method =
   | 'egypt'

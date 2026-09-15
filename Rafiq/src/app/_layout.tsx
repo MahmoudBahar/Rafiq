@@ -14,6 +14,7 @@ import { useEffect } from 'react';
 import { I18nManager, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { DaylightProvider } from '@/features/prayer/DaylightProvider';
 import { SettingsProvider, useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
 
@@ -49,7 +50,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <SettingsProvider>
-          <RootStack />
+          <DaylightProvider>
+            <RootStack />
+          </DaylightProvider>
         </SettingsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

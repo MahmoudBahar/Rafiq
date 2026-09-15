@@ -41,6 +41,8 @@ export interface DayTimes {
   prevMaghrib: Date;
   /** Tomorrow's Fajr. */
   nextFajr: Date;
+  /** Tomorrow's sunrise: the night arc ends here. */
+  nextSunrise: Date;
 }
 
 export interface NextPrayer {

@@ -13,7 +13,7 @@ import { useSettings, type Madhab, type Method, type ThemeMode } from '@/shared/
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Chip } from '@/shared/ui/Chip';
-import { ChevronBackIcon, ChevronForwardIcon, MonitorIcon, MoonIcon, SunIcon } from '@/shared/ui/Icons';
+import { ChevronBackIcon, ChevronForwardIcon, MonitorIcon, MoonIcon, SunIcon, SunriseIcon } from '@/shared/ui/Icons';
 import { Mark } from '@/shared/ui/Mark';
 import { PressScale } from '@/shared/ui/PressScale';
 import { RadioCard } from '@/shared/ui/RadioCard';
@@ -160,10 +160,17 @@ export default function SettingsScreen() {
                   label: 'تلقائي',
                   icon: (color) => <MonitorIcon size={14} color={color} />,
                 },
+                {
+                  key: 'daylight',
+                  label: 'نهاري',
+                  icon: (color) => <SunriseIcon size={14} color={color} />,
+                },
               ]}
             />
             <Text size={12} color={c.tm} style={styles.caption}>
-              تلقائي: يتبع مظهر نظام الجهاز
+              {settings.theme === 'daylight'
+                ? 'نهاري: فاتح من الشروق إلى المغرب، وداكن ليلاً'
+                : 'تلقائي: يتبع مظهر نظام الجهاز'}
             </Text>
           </View>
 

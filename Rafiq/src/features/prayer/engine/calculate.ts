@@ -54,6 +54,7 @@ export function computeDay(cfg: PrayerConfig, date: Date): DayTimes {
     byKey,
     prevMaghrib: build(cfg, shiftDays(date, -1)).maghrib,
     nextFajr: build(cfg, shiftDays(date, 1)).fajr,
+    nextSunrise: build(cfg, shiftDays(date, 1)).sunrise,
   };
 }
 
