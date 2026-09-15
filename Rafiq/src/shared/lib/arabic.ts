@@ -29,6 +29,7 @@ export function formatTimeShort(a: Date | number, b?: number): string {
   return toArabicIndic(`${h12}:${pad2(minutes)}`);
 }
 
+/** `h:mm:ss`, or `mm:ss` once less than an hour remains. */
 export function formatCountdown(h: number, m: number, s: number): string {
-  return toArabicIndic(`${h}:${pad2(m)}:${pad2(s)}`);
+  return toArabicIndic(h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`);
 }
