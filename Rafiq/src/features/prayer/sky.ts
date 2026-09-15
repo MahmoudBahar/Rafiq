@@ -10,9 +10,9 @@ import type { MoonState } from './engine/moon';
  * Sun: on the arc from sunrise to sunset (adhan). The disc's crossing of the
  * horizon follows the Sun's true altitude: it climbs out of the rise corner in
  * the ~2.5 minutes after sunrise and sinks into the set corner in the ~2.5
- * minutes before sunset, so it is gone at Maghrib. Twilight is an ember at the
- * corner whose strength follows the Sun's depth below the horizon, shown from
- * Fajr to sunrise and from sunset to Isha.
+ * minutes before sunset, so it is gone at Maghrib. A glow accompanies only the
+ * crossing itself; between Fajr/sunrise and sunset/Isha nothing of the Sun is
+ * drawn and only the star field follows the Sun's depth below the horizon.
  * Moon: on the arc from moonrise to moonset (astronomia), nothing else.
  */
 interface Pt {
@@ -164,16 +164,7 @@ export function skyState({ now, day, moon, sunAlt }: SkyInputs): SkyState {
     };
     stars = 0.15;
   } else if (inDawn || inDusk) {
-    const corner = inDawn ? P_START : P_END;
-    sun = {
-      visible: true,
-      x: corner.x,
-      y: corner.y + DISC_DROP,
-      glowY: corner.y,
-      opacity: 0,
-      trail: [],
-      glow: twilight,
-    };
+    // No disc, no ember: only the sky itself changes with the Sun's depth.
     stars = 1 - 0.7 * twilight;
   }
 
