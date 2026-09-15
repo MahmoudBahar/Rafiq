@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { ClockIcon, CompassIcon, MoonIcon, TasbihIcon } from './Icons';
-import { useClick } from './PressScale';
+import { click } from '@/shared/lib/haptics';
 import { Text } from './Text';
 
 export interface TabBarProps {
@@ -17,7 +17,6 @@ export interface TabBarProps {
  */
 export function TabBar({ onComingSoon, bottom }: TabBarProps) {
   const { c } = useTheme();
-  const press = useClick(onComingSoon);
   const soon = [
     { key: 'azkar', label: 'الأذكار', Icon: MoonIcon },
     { key: 'tasbih', label: 'التسبيح', Icon: TasbihIcon },
@@ -39,7 +38,10 @@ export function TabBar({ onComingSoon, bottom }: TabBarProps) {
           key={key}
           accessibilityRole="tab"
           accessibilityLabel={label}
-          {...press}
+          onPress={() => {
+            click();
+            onComingSoon();
+          }}
           style={({ pressed }) => [styles.tab, pressed && { opacity: 0.7 }]}
         >
           <Icon size={17} color={c.tabicon} />

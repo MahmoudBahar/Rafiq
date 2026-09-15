@@ -15,12 +15,11 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { click, detent, stop } from '@/shared/lib/haptics';
+import { detent, stop } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon } from './Icons';
-import { useClick } from './PressScale';
 import { Text } from './Text';
 
 export interface DrumItem {
@@ -274,12 +273,11 @@ export function DrumPicker({
 
   if (!mounted) return null;
 
-  // Tapping the selected row is a button press (it closes the picker) and
-  // clicks; tapping another row only turns the wheel, whose detents speak.
+  // Tapping the selected row closes; tapping another row turns the wheel,
+  // whose detents are the only feedback.
   const onRowPress = (item: DrumItem, index: number) => {
     if (dragged.get()) return;
     if (item.key === selectedKey && index === Math.round(scrollY.get() / ITEM_H)) {
-      click();
       onClose();
       return;
     }
@@ -354,9 +352,8 @@ export function DrumPicker({
 }
 
 function PressableDone({ onPress, color }: { onPress: () => void; color: string }) {
-  const press = useClick(onPress);
   return (
-    <Pressable accessibilityRole="button" {...press} style={styles.done}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={styles.done}>
       <Text size={13.5} weight="bold" color={color}>
         تم
       </Text>

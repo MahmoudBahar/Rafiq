@@ -14,7 +14,7 @@ import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon, ChevronForwardIcon, MonitorIcon, MoonIcon, SunIcon, SunriseIcon } from '@/shared/ui/Icons';
 import { Mark } from '@/shared/ui/Mark';
-import { PressScale, useClick } from '@/shared/ui/PressScale';
+import { PressScale } from '@/shared/ui/PressScale';
 import { RadioCard } from '@/shared/ui/RadioCard';
 import { SectionLabel } from '@/shared/ui/SectionLabel';
 import { Segmented } from '@/shared/ui/Segmented';
@@ -31,7 +31,6 @@ export default function SettingsScreen() {
   const cfg = usePrayerConfig();
   const { locating, error, locate } = useLocate();
 
-  const backPress = useClick(() => router.back());
   const [sheet, setSheet] = useState<'method' | 'city' | null>(null);
   const blurTarget = useRef<View | null>(null);
   const closeSheet = useCallback(() => setSheet(null), []);
@@ -63,7 +62,7 @@ export default function SettingsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="رجوع"
-            {...backPress}
+            onPress={() => router.back()}
             style={({ pressed }) => [
               styles.back,
               { backgroundColor: c.surface, borderColor: c.border },

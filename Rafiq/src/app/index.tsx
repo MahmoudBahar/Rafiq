@@ -29,7 +29,7 @@ import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronDownIcon, GearIcon, PinIcon } from '@/shared/ui/Icons';
-import { PressScale, useClick } from '@/shared/ui/PressScale';
+import { PressScale } from '@/shared/ui/PressScale';
 import { TabBar } from '@/shared/ui/TabBar';
 import { Text } from '@/shared/ui/Text';
 import { TipBubble } from '@/shared/ui/TipBubble';
@@ -172,7 +172,6 @@ export default function HomeScreen() {
     [],
   );
 
-  const gearPress = useClick(() => router.push('/settings'));
   const tabBottom = insets.bottom + 14;
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
@@ -221,7 +220,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
-              {...gearPress}
+              onPress={() => router.push('/settings')}
               style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
             >
               <GearIcon size={17} color={c.tp} />

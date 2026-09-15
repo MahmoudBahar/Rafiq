@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { adhan } from '@/shared/lib/haptics';
+import { useMemo, useState } from 'react';
 import { useWallClock } from '@/shared/lib/useWallClock';
 import { computeDay, nextPrayerIn, type DayTimes, type NextPrayer, type PrayerConfig } from './engine';
 
@@ -34,17 +33,6 @@ export function useCountdown(cfg: PrayerConfig): Countdown {
   const next = nextPrayerIn(day, now);
   const nextAt = next.at.getTime();
   if (nextAt !== wakeAt) setWakeAt(nextAt); // derived state, adjusted during render
-
-  // When "next" rolls over because its time just passed (not because the
-  // config changed or the app woke hours later), pulse: the adhan is now.
-  const prevAt = useRef(nextAt);
-  useEffect(() => {
-    const before = prevAt.current;
-    prevAt.current = nextAt;
-    if (before === nextAt) return;
-    const late = now.getTime() - before;
-    if (late >= 0 && late < 2 * COARSE_MS) adhan();
-  }, [nextAt, now]);
 
   return { now, day, next };
 }
