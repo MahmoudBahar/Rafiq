@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { toArabicIndic } from '@/shared/lib/arabic';
+import { click, stop } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { ADJUST_LIMIT, clampAdjust, useSettings, type Adjustments, type PrayerKey } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
@@ -45,7 +46,11 @@ export function FineTune() {
 
   const setAdj = (key: PrayerKey, delta: number) => {
     const next = clampAdjust((adj[key] ?? 0) + delta);
-    if (next === (adj[key] ?? 0)) return;
+    if (next === (adj[key] ?? 0)) {
+      stop();
+      return;
+    }
+    click();
     const merged: Adjustments = { ...adj };
     if (next === 0) delete merged[key];
     else merged[key] = next;
