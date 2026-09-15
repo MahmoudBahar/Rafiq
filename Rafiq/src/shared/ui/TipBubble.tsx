@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   bubble: {
-    width: 240,
+    width: 160,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: radius.md,
