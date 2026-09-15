@@ -7,6 +7,7 @@ import { PRAYERS, computeRange } from '@/features/prayer/engine';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
 import { WEEKDAYS_AR, isSameDay, monthName } from '@/shared/lib/gregorian';
+import { tap } from '@/shared/lib/haptics';
 import { hijriMonthRange } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
@@ -104,6 +105,7 @@ export default function MonthScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="رجوع"
+          onPressIn={tap}
           onPress={() => router.back()}
           style={({ pressed }) => [
             styles.back,
@@ -124,6 +126,7 @@ export default function MonthScreen() {
           accessibilityLabel="الشهر السابق"
           onPress={() => step(-1)}
           pressedScale={0.92}
+          haptic="tap"
           style={[styles.navBtn, { backgroundColor: c.surface, borderColor: c.border }]}
         >
           <ChevronBackIcon size={15} color={c.tp} />
@@ -141,6 +144,7 @@ export default function MonthScreen() {
           accessibilityLabel="الشهر التالي"
           onPress={() => step(1)}
           pressedScale={0.92}
+          haptic="tap"
           style={[styles.navBtn, { backgroundColor: c.surface, borderColor: c.border }]}
         >
           <ChevronForwardIcon size={15} color={c.tp} />
@@ -186,6 +190,7 @@ const MonthRow = memo(function MonthRow({ vm, onPress }: MonthRowProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${vm.weekday} ${vm.num}`}
+      onPressIn={tap}
       onPress={() => onPress(vm.date)}
       style={({ pressed }) => [
         styles.row,

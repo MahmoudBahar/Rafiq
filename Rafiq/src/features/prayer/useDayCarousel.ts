@@ -10,6 +10,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
+import { settle } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 
 export const COL_PAD = 20;
@@ -73,6 +74,7 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
           'worklet';
           center.set(center.get() + delta);
           tx.set(0);
+          scheduleOnRN(settle);
           scheduleOnRN(onCommit, delta);
         };
         if (reduced) {
@@ -97,6 +99,7 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
           }
           center.set(center.get() + delta);
           tx.set(0);
+          scheduleOnRN(settle);
           scheduleOnRN(onCommit, delta);
         }),
       );

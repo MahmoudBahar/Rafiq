@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { error as errorHaptic, success } from '@/shared/lib/haptics';
 import { useSettings, type Settings } from '@/shared/storage/settings';
 import { LocationError, resolveLocation } from './location';
 
@@ -31,11 +32,13 @@ export function useLocate(): Locate {
       try {
         const { city, country, latitude, longitude } = await resolveLocation();
         update({ locationMode: 'auto', city, country, coords: { latitude, longitude }, ...extra });
+        success();
         return true;
       } catch (e) {
         const kind = e instanceof LocationError ? e.kind : 'unavailable';
         setCannotAskAgain(e instanceof LocationError && e.kind === 'denied' && !e.canAskAgain);
         setError(MESSAGES[kind]);
+        errorHaptic();
         return false;
       } finally {
         setLocating(false);

@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
+import { soft } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -17,6 +19,9 @@ interface TipBubbleProps {
 export function TipBubble({ visible, text }: TipBubbleProps) {
   const { c } = useTheme();
   const { reduced } = useMotion();
+  useEffect(() => {
+    if (visible) soft();
+  }, [visible]);
   if (!visible) return null;
   return (
     <Animated.View
