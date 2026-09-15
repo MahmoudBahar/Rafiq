@@ -274,11 +274,12 @@ export function DrumPicker({
 
   if (!mounted) return null;
 
-  // Rows click on release: a finger often rests on the wheel before turning it.
+  // Tapping the selected row is a button press (it closes the picker) and
+  // clicks; tapping another row only turns the wheel, whose detents speak.
   const onRowPress = (item: DrumItem, index: number) => {
     if (dragged.get()) return;
-    click();
     if (item.key === selectedKey && index === Math.round(scrollY.get() / ITEM_H)) {
+      click();
       onClose();
       return;
     }
