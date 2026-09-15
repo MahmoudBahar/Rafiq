@@ -65,6 +65,13 @@ export function SkyArc({ sky, day }: SkyArcProps) {
   return (
     <View style={styles.wrap}>
       <Svg width="100%" height={ARC_HEIGHT} viewBox={`0 0 ${ARC_WIDTH} ${ARC_HEIGHT}`} preserveAspectRatio="none">
+        {/* Cut a clear ring around the moon out of the dashed arc and the sun trail. */}
+        <Defs>
+          <Mask id="moonGap" maskUnits="userSpaceOnUse" x={0} y={0} width={ARC_WIDTH} height={ARC_HEIGHT}>
+            <Rect x={0} y={0} width={ARC_WIDTH} height={ARC_HEIGHT} fill="#fff" />
+            {sky.moon.visible ? <Circle cx={moonPos.x} cy={moonPos.y} r={MOON_R + 9} fill="#000" /> : null}
+          </Mask>
+        </Defs>
         <Path
           d={FULL_ARC_D}
           stroke={c.arcdim}
@@ -72,19 +79,14 @@ export function SkyArc({ sky, day }: SkyArcProps) {
           strokeDasharray="1 6"
           strokeLinecap="round"
           fill="none"
+          mask="url(#moonGap)"
         />
 
         {sky.empty ? <AnimatedCircle cx={P_START.x} cy={P_START.y} fill={c.accent} animatedProps={marker} /> : null}
 
-        {/* The sun's trail passes under the moon with a clear gap around it. */}
+        {/* The sun's trail passes under the moon. */}
         {sky.sun.visible && sky.sun.pathD ? (
           <>
-            <Defs>
-              <Mask id="moonGap" maskUnits="userSpaceOnUse" x={0} y={0} width={ARC_WIDTH} height={ARC_HEIGHT}>
-                <Rect x={0} y={0} width={ARC_WIDTH} height={ARC_HEIGHT} fill="#fff" />
-                {sky.moon.visible ? <Circle cx={moonPos.x} cy={moonPos.y} r={MOON_R + 9} fill="#000" /> : null}
-              </Mask>
-            </Defs>
             <Path
               d={sky.sun.pathD}
               stroke={c.accent}
