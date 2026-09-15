@@ -27,7 +27,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": true,
-      "package": "com.rafiq_elmuslim.Rafiq"
+      "package": "com.rafiqelmuslim.Rafiq"
     },
     "web": {
       "output": "static",
