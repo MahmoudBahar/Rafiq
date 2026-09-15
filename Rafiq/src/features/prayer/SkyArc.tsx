@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, G, Path } from 'react-native-svg';
-import { formatTimeShort } from '@/shared/lib/arabic';
+import { toArabicIndic } from '@/shared/lib/arabic';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
@@ -59,9 +59,8 @@ export function SkyArc({ sky, day }: SkyArcProps) {
   }
 
   const litPath = sky.moon.fraction >= 0.03 ? moonPath(sky.moon.phase, MOON_R) : null;
-  const nextLabel = sky.next
-    ? `${sky.next.kind === 'moon' ? 'طلوع القمر' : 'الشروق'} ${formatTimeShort(sky.next.at)}`
-    : null;
+  const dayMinutes = Math.round((day.sunset.getTime() - day.byKey.sunrise.getTime()) / 60_000);
+  const dayLength = toArabicIndic(`${Math.floor(dayMinutes / 60)}:${String(dayMinutes % 60).padStart(2, '0')}`);
 
   return (
     <View style={styles.wrap}>
@@ -111,26 +110,14 @@ export function SkyArc({ sky, day }: SkyArcProps) {
         ) : null}
       </Svg>
 
-      <View style={styles.labels}>
-        <Text size={10} weight="semi" color={c.tm}>
-          الشروق {formatTimeShort(day.byKey.sunrise)}
-        </Text>
-        <Text size={10} weight="semi" color={c.tm}>
-          الغروب {formatTimeShort(day.sunset)}
-        </Text>
-      </View>
-      {nextLabel ? (
-        <Text size={10} color={c.tm} align="center" style={styles.next}>
-          {nextLabel}
-        </Text>
-      ) : null}
+      <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
+        طول النهار {dayLength}
+      </Text>
     </View>
   );
 }
 
-// Corners are inset 18 svg units; the label row is padded so the texts sit under them.
 const styles = StyleSheet.create({
   wrap: { marginHorizontal: 6, marginTop: 6 },
-  labels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2, paddingHorizontal: 8 },
-  next: { marginTop: 2, opacity: 0.85 },
+  dayLength: { marginTop: 2, opacity: 0.9 },
 });
