@@ -116,7 +116,11 @@ export default function HomeScreen() {
   const mo = now.getMonth();
   const d = now.getDate();
   const viewDate = useMemo(() => new Date(y, mo, d + dayOffset), [y, mo, d, dayOffset]);
-  const highlight: PrayerKey | null = dayOffset === 0 && !next.isTomorrow ? next.key : null;
+  // After Isha the next prayer is tomorrow's Fajr: highlight it on tomorrow's column, not today's.
+  const highlightFor = (off: number): PrayerKey | null => {
+    if (next.isTomorrow) return off === 1 ? 'fajr' : null;
+    return off === 0 ? next.key : null;
+  };
 
   // Times for the visible column and its two neighbours.
   const timesByOffset = useMemo(() => {
@@ -246,9 +250,7 @@ export default function HomeScreen() {
           <DayCarousel
             offset={dayOffset}
             values={carousel.values}
-            renderDay={(off) => (
-              <PrayerList times={timesByOffset.get(off) ?? day.times} nextKey={off === 0 ? highlight : null} />
-            )}
+            renderDay={(off) => <PrayerList times={timesByOffset.get(off) ?? day.times} nextKey={highlightFor(off)} />}
           />
         </ScrollView>
         <DayPill date={dayOffset !== 0 ? viewDate : null} hint={hint} onToday={() => carousel.go(-dayOffset)} />
