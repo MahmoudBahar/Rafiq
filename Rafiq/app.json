@@ -10,11 +10,7 @@
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#fbf8f1",
     "ios": {
-      "icon": {
-        "light": "./assets/images/ios-icon-light.png",
-        "dark": "./assets/images/ios-icon-dark.png",
-        "tinted": "./assets/images/ios-icon-tinted.png"
-      },
+      "icon": "./assets/rafiq.icon",
       "infoPlist": {
         "CFBundleDevelopmentRegion": "ar",
         "ExpoLocalization_supportsRTL": true,
@@ -69,7 +65,8 @@
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
-      ]
+      ],
+      "./plugins/withAndroidNightColors"
     ],
     "experiments": {
       "typedRoutes": true,

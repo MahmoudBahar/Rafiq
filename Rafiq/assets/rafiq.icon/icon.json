@@ -1,0 +1,64 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "automatic-gradient" : "srgb:0.90980,0.86275,0.76471,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "automatic-gradient" : "srgb:0.05490,0.23529,0.20784,1.00000"
+      }
+    },
+    {
+      "appearance" : "tinted",
+      "value" : {
+        "automatic-gradient" : "srgb:0.10196,0.10196,0.10196,1.00000"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name-specializations" : [
+            {
+              "value" : "rafiq-mark-light.svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "rafiq-mark-dark.svg"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "rafiq-mark-tinted.svg"
+            }
+          ],
+          "name" : "rafiq-mark",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
