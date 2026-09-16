@@ -65,8 +65,7 @@
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
-      ],
-      "./plugins/withAndroidNightColors"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
