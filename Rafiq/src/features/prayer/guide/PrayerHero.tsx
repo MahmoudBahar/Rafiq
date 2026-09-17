@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { PixelRatio, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -19,6 +19,24 @@ import type { EventKind } from '../engine';
 export const HERO_H = 158;
 export const HERO_LIVE_H = 204;
 export const HERO_MARGIN = 20;
+/**
+ * The background is three pieces so the card can change height without a
+ * layout pass: two fixed corner caps and a middle strip that scales. Height
+ * is a layout prop, and animating it on the new architecture commits the
+ * shadow tree every frame (which lagged the transforms and halved the fps).
+ */
+const CAP = 28;
+/** Physical pixels per point; moving edges are snapped to whole pixels. */
+const PX = PixelRatio.get();
+/** Fill inset so the settled card's outline (on the shadow view) shows around the pieces. */
+const INSET = 1;
+/**
+ * No overlap between the strip and the caps: the strip's scaled height is
+ * exactly the card's height minus the caps, so the pieces meet edge to edge.
+ * (A hairline gap seen earlier came from a scale computed without the
+ * overlap that was then in use, not from the pieces themselves.)
+ */
+const OVERLAP = 0;
 const SPRING = { damping: 18, stiffness: 170, mass: 0.9 };
 /** The shadow is mounted, static, once the visible travel is over. */
 const SHADOW_MS = 480;
@@ -70,50 +88,73 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
   const { c } = useTheme();
   const { reduced } = useMotion();
   const { height: winH } = useWindowDimensions();
-  const box = useRef<View>(null);
   const settledH = live ? HERO_LIVE_H : HERO_H;
 
-  const measured = useSharedValue(0);
-  const originDy = useSharedValue(FALLBACK_DY);
-  const originH = useSharedValue(settledH);
-  const [started, setStarted] = useState(false);
+  // The card's window position is its slot's `top`: this screen fills the
+  // window, so no measurement round trip is needed and the spring starts
+  // before the first paint. Missing or absurd params fall back to a short rise.
+  const valid = origin !== null && origin.h > 0 && origin.y >= 0 && origin.y < winH;
+  const originDy = useSharedValue(valid ? origin.y - top : FALLBACK_DY);
+  const originH = useSharedValue(valid ? origin.h : settledH);
+  const kicked = useRef(false);
   const [landed, setLanded] = useState(reduced);
+  useLayoutEffect(() => {
+    if (kicked.current) return;
+    kicked.current = true;
+    progress.set(reduced ? 1 : withSpring(1, SPRING));
+  }, [reduced, progress]);
   useEffect(() => {
-    if (!started || reduced) return;
+    if (reduced) return;
     const id = setTimeout(() => setLanded(true), SHADOW_MS);
     return () => clearTimeout(id);
-  }, [started, reduced]);
-
-  useEffect(() => {
-    if (started) return;
-    const node = box.current;
-    if (!node) return;
-    node.measureInWindow((_x, heroY) => {
-      const valid = origin !== null && origin.h > 0 && origin.y >= 0 && origin.y < winH;
-      originDy.set(valid ? origin.y - heroY : FALLBACK_DY);
-      originH.set(valid ? origin.h : settledH);
-      measured.set(1);
-      setStarted(true);
-      progress.set(reduced ? 1 : withSpring(1, SPRING));
-    });
-  }, [started, origin, winH, settledH, reduced, originDy, originH, measured, progress]);
+  }, [reduced]);
 
   // The next prayer's row is drawn in the hero colours; its page keeps them.
   const highlighted = origin?.highlighted ?? false;
   const bg = highlighted ? c.hero : c.surface;
   const border = highlighted ? c.hero : c.border;
-  // The original architecture: one box, translated from the row and growing
-  // to the card's height (a layout property animated per frame).
-  const card = useAnimatedStyle(() => {
-    const t = progress.get();
-    return {
-      opacity: measured.get(),
-      transform: [{ translateY: originDy.get() * (1 - t) }],
-      height: interpolate(t, [0, 1], [originH.get(), settledH]),
-      borderRadius: interpolate(t, [0, 1], [radius.md, radius.xl]),
-    };
+  const mid = settledH - 2 * CAP - 2 * INSET;
+  // Every moving edge is snapped to a whole physical pixel: two edges meeting
+  // between pixels are each drawn at partial coverage and the background
+  // shows through as a hairline. (Borders are also kept off the pieces: on
+  // Android a zero-width side still insets the fill by a fraction.)
+  const snap = (v: number) => {
+    'worklet';
+    return Math.round(v * PX) / PX;
+  };
+  const card = useAnimatedStyle(() => ({
+    transform: [{ translateY: snap(originDy.get() * (1 - progress.get())) }],
+  }));
+  // 2. The shadow shows only while the card is settled: on the way back it must
+  // not ride along at full size (it is a full-size view inside the container).
+  const shadow = useAnimatedStyle(() => ({ opacity: progress.get() > 0.98 ? 1 : 0 }));
+  const paint = { backgroundColor: bg };
+  // Every style below reads `progress` directly: a helper worklet called from
+  // these styles was seen with a frozen value on the UI thread.
+  const capTop = useAnimatedStyle(() => {
+    const r = interpolate(progress.get(), [0, 1], [radius.md, radius.xl]);
+    return { borderTopStartRadius: r, borderTopEndRadius: r };
   });
-  const rowLayer = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0, 0.5], [1, 0], 'clamp') }));
+  const capBottom = useAnimatedStyle(() => {
+    const t = progress.get();
+    const h = snap(interpolate(t, [0, 1], [originH.get(), settledH]));
+    const r = interpolate(t, [0, 1], [radius.md, radius.xl]);
+    return { borderBottomStartRadius: r, borderBottomEndRadius: r, transform: [{ translateY: h - settledH }] };
+  });
+  const midStyle = useAnimatedStyle(() => {
+    // Scale about the top edge (RN scales about the centre, so shift up by the
+    // lost half). With `h` snapped, the strip's ends land on whole pixels too.
+    const h = snap(interpolate(progress.get(), [0, 1], [originH.get(), settledH]));
+    const natural = mid + 2 * OVERLAP;
+    const sc = Math.max(0.001, (h - 2 * CAP + 2 * OVERLAP) / natural);
+    return { transform: [{ translateY: (-(1 - sc) * natural) / 2 }, { scaleY: sc }] };
+  });
+  // The row layer stays centred in the short box; the full layer waits for room.
+  const rowLayer = useAnimatedStyle(() => {
+    const t = progress.get();
+    const h = interpolate(t, [0, 1], [originH.get(), settledH]);
+    return { opacity: interpolate(t, [0, 0.5], [1, 0], 'clamp'), transform: [{ translateY: (h - settledH) / 2 }] };
+  });
   const fullLayer = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0.5, 1], [0, 1], 'clamp') }));
 
   const rowText = highlighted ? c.herotext : c.tp;
@@ -124,10 +165,18 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
   const rule = highlighted ? `${c.herotext}33` : c.border;
 
   return (
-    <View ref={box} collapsable={false} style={[styles.slot, { top, height: settledH }]}>
-      <Animated.View style={[styles.card, { backgroundColor: bg, borderColor: border }, card]}>
-        {/* Static, mounted after landing: a blurred shadow whose opacity animates is re-rendered every frame. */}
-        {landed ? <View style={[styles.shadow, { backgroundColor: bg, boxShadow: `0 12px 30px ${c.shadow}` }]} /> : null}
+    <View style={[styles.slot, { top, height: settledH }]}>
+      <Animated.View style={[styles.card, card]}>
+        {/* Mounted after landing (a blurred shadow is costly to re-render while the card moves). */}
+        {landed ? (
+          <Animated.View
+            style={[styles.shadow, { backgroundColor: bg, borderColor: border, boxShadow: `0 12px 30px ${c.shadow}` }, shadow]}
+          />
+        ) : null}
+        {/* Strip, then the caps. */}
+        <Animated.View style={[styles.mid, { top: INSET + CAP - OVERLAP, height: mid + 2 * OVERLAP }, paint, midStyle]} />
+        <Animated.View style={[styles.cap, styles.capTop, paint, capTop]} />
+        <Animated.View style={[styles.cap, styles.capBottom, paint, capBottom]} />
         {/* Frame one: the home row, verbatim. */}
         <Animated.View pointerEvents="none" style={[styles.rowLayer, rowLayer]}>
           <View style={styles.rowName}>
@@ -182,8 +231,13 @@ const FILL = { position: 'absolute', top: 0, bottom: 0, start: 0, end: 0 } as co
 const styles = StyleSheet.create({
   // Outside the band's clipping so the card can start low, on the pressed row.
   slot: { position: 'absolute', start: HERO_MARGIN, end: HERO_MARGIN, zIndex: 2 },
-  card: { borderWidth: 1, overflow: 'hidden' },
-  shadow: { ...FILL, borderRadius: radius.xl },
+  card: { flex: 1 },
+  // Settled card: outline and shadow live here, under the borderless pieces.
+  shadow: { ...FILL, borderRadius: radius.xl, borderWidth: 1 },
+  cap: { position: 'absolute', start: INSET, end: INSET, height: CAP },
+  capTop: { top: INSET },
+  capBottom: { bottom: INSET },
+  mid: { position: 'absolute', start: INSET, end: INSET },
   rowLayer: {
     ...FILL,
     flexDirection: 'row',
