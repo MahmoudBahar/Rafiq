@@ -26,8 +26,13 @@ export const HERO_MARGIN = 20;
  * shadow tree every frame (which lagged the transforms and halved the fps).
  */
 const CAP = 28;
-/** The strip runs this far under each cap, so its edges are never visible. */
-const OVERLAP = 14;
+/**
+ * No overlap between the strip and the caps: the strip's scaled height is
+ * exactly the card's height minus the caps, so the pieces meet edge to edge.
+ * (A hairline gap seen earlier came from a scale computed without the
+ * overlap that was then in use, not from the pieces themselves.)
+ */
+const OVERLAP = 0;
 const SPRING = { damping: 18, stiffness: 170, mass: 0.9 };
 /** The shadow is mounted, static, once the visible travel is over. */
 const SHADOW_MS = 480;
@@ -157,7 +162,7 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
       <Animated.View style={[styles.card, card]}>
         {/* Static, mounted after landing: a blurred shadow whose opacity animates is re-rendered every frame. */}
         {landed ? <View style={[styles.shadow, { backgroundColor: bg, boxShadow: `0 12px 30px ${c.shadow}` }]} /> : null}
-        {/* Strip first, caps over it: the caps hide the strip's ends. */}
+        {/* Strip, then the caps. */}
         <Animated.View style={[styles.mid, { top: CAP - OVERLAP, height: mid + 2 * OVERLAP }, paint, midStyle]} />
         <Animated.View style={[styles.cap, styles.capTop, paint, capTop]} />
         <Animated.View style={[styles.cap, styles.capBottom, paint, capBottom]} />
