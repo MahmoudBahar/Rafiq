@@ -1,5 +1,4 @@
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { SkyArc } from '../SkyArc';
 import { StarField } from '../StarField';
@@ -10,25 +9,24 @@ interface SkyBandProps {
   height: number;
   /** Top of the arc block inside the band, in dp. */
   arcTop: number;
-  /** Page morph progress; the arc fades in with it. */
-  progress: SharedValue<number>;
   children?: React.ReactNode;
 }
 
 /**
  * Header band of a prayer page: the home gradient and stars, plus the home
  * sky arc frozen at that prayer's moment, drawn with the same margins so its
- * proportions match the home screen exactly.
+ * proportions match the home screen exactly. Nothing here animates per frame
+ * beyond the arc's own halos.
  */
-export function SkyBand({ frozen, height, arcTop, progress, children }: SkyBandProps) {
-  const fade = useAnimatedStyle(() => ({ opacity: progress.get() }));
+export function SkyBand({ frozen, height, arcTop, children }: SkyBandProps) {
   return (
     <View style={[styles.band, { height }]}>
       <GradientBackground />
       <StarField visibility={frozen.sky.stars} />
-      <Animated.View pointerEvents="none" style={[styles.arc, { top: arcTop }, fade]}>
+      {/* Static: fading a parent of an SVG re-composites the SVG every frame. */}
+      <View pointerEvents="none" style={[styles.arc, { top: arcTop }]}>
         <SkyArc sky={frozen.sky} day={frozen.day} footer={false} />
-      </Animated.View>
+      </View>
       {children}
     </View>
   );

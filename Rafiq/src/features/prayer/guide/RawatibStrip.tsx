@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -17,6 +18,15 @@ interface RawatibStripProps {
 export function RawatibStrip({ lit, delay }: RawatibStripProps) {
   const { c } = useTheme();
   const m = useMotion();
+  // Same fade-up as the stations, driven by a style rather than a layout `entering`.
+  const reveal = useSharedValue(m.reduced ? 1 : 0);
+  useEffect(() => {
+    reveal.set(m.reduced ? 1 : withDelay(delay, withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) })));
+  }, [delay, m.reduced, reveal]);
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: reveal.get(),
+    transform: [{ translateY: (1 - reveal.get()) * 24 }],
+  }));
   const set = new Set(lit);
   const looks: BeadLook[] = Array.from({ length: RAWATIB_TOTAL }, (_, i) => (set.has(i) ? 'solid' : 'faint'));
   // Groups of uneven size: lay them out by hand from the group sizes.
@@ -28,7 +38,7 @@ export function RawatibStrip({ lit, delay }: RawatibStripProps) {
   }
   let index = 0;
   return (
-    <Animated.View entering={m.fadeInUp(delay, 420)} style={[styles.strip, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <Animated.View style={[styles.strip, { backgroundColor: c.surface, borderColor: c.border }, revealStyle]}>
       <Text size={11.5} weight="semi" color={c.tm}>
         الرواتب · اثنتا عشرة ركعة في اليوم والليلة
       </Text>
@@ -36,7 +46,7 @@ export function RawatibStrip({ lit, delay }: RawatibStripProps) {
         {groups.map((g, gi) => {
           const d = delay + 200 + index * 40;
           index += g.length;
-          return <Beads key={gi} looks={g} perGroup={0} color={c.accent} faintColor={c.border} delay={d} size={9} />;
+          return <Beads key={gi} looks={g} perGroup={0} color={c.accent} faintColor={c.border} bg={c.surface} delay={d} size={9} />;
         })}
       </View>
       <Text size={11} color={c.tm}>

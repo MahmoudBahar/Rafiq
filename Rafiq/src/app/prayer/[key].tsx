@@ -116,7 +116,7 @@ export default function PrayerScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        <SkyBand frozen={frozen} height={bandH} arcTop={arcTop} progress={progress}>
+        <SkyBand frozen={frozen} height={bandH} arcTop={arcTop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="رجوع"
