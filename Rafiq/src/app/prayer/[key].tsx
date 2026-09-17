@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -93,6 +93,10 @@ export default function PrayerScreen() {
   // native so Android's predictive peek keeps working.
   const progress = useSharedValue(0);
   const bodyOp = useSharedValue(1);
+  // The page dissolves while the card travels back, so the home (already
+  // mounted underneath, its row exactly under the card) is fully visible by
+  // the time the card lands; the stack's pop then runs on an invisible screen.
+  const pageOp = useSharedValue(1);
   const leaving = useRef(false);
   const back = useCallback(() => router.back(), [router]);
   const exit = () => {
@@ -103,6 +107,7 @@ export default function PrayerScreen() {
       return;
     }
     bodyOp.set(withTiming(0, { duration: 200 }));
+    pageOp.set(withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }));
     progress.set(
       withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
         'worklet';
@@ -111,12 +116,13 @@ export default function PrayerScreen() {
     );
   };
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
+  const pageStyle = useAnimatedStyle(() => ({ opacity: pageOp.get() }));
 
   const stationCount = stationsOf(guide).length;
   const stripDelay = PATH_START_MS + stationCount * 90 + 200;
 
   return (
-    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+    <Animated.View style={[styles.screen, { backgroundColor: c.bg }, pageStyle]}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
@@ -155,7 +161,7 @@ export default function PrayerScreen() {
           {guide.fardRakaat > 0 ? <RawatibStrip lit={guide.rawatib} delay={stripDelay} /> : null}
         </Animated.View>
       </ScrollView>
-    </View>
+    </Animated.View>
   );
 }
 
