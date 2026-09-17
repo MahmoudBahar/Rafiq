@@ -13,10 +13,10 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { I18nManager, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ReduceMotion, ReducedMotionConfig } from 'react-native-reanimated';
+import { ReduceMotion, ReducedMotionConfig, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DaylightProvider } from '@/features/prayer/DaylightProvider';
-import { useMotion } from '@/shared/lib/motion';
+import { useMotion, useSystemReducedMotion } from '@/shared/lib/motion';
 import { SettingsProvider, useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
 
@@ -65,6 +65,11 @@ function RootStack() {
   const { settings } = useSettings();
   const { c, isDark } = useTheme();
   const { reduced } = useMotion();
+  // Reanimated froze the device flag at launch. Its config component logs a
+  // dev warning whenever it is mounted, so it is mounted only when our answer
+  // (app setting, or the device switch flipped since launch) differs from it.
+  const atLaunch = useReducedMotion();
+  useSystemReducedMotion();
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(c.bg);
@@ -72,9 +77,9 @@ function RootStack() {
 
   return (
     <>
-      {/* Reanimated freezes the device flag at launch; feed it the live answer
-          (app setting, or the device switch as it changes). */}
-      <ReducedMotionConfig mode={reduced ? ReduceMotion.Always : ReduceMotion.Never} />
+      {reduced !== atLaunch ? (
+        <ReducedMotionConfig mode={reduced ? ReduceMotion.Always : ReduceMotion.Never} />
+      ) : null}
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
         <Stack.Protected guard={settings.onboarded}>
