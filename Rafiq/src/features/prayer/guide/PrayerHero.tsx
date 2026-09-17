@@ -146,7 +146,8 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
     // lost half). With `h` snapped, the strip's ends land on whole pixels too.
     const h = snap(interpolate(progress.get(), [0, 1], [originH.get(), settledH]));
     const natural = mid + 2 * OVERLAP;
-    const sc = Math.max(0.001, (h - 2 * CAP + 2 * OVERLAP) / natural);
+    // Target length: the card height minus both caps and both insets.
+    const sc = Math.max(0.001, (h - 2 * CAP - 2 * INSET + 2 * OVERLAP) / natural);
     return { transform: [{ translateY: (-(1 - sc) * natural) / 2 }, { scaleY: sc }] };
   });
   // The row layer stays centred in the short box; the full layer waits for room.
