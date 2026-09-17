@@ -6,11 +6,8 @@ import { skyState, type SkyState } from '../sky';
 const MIN_MS = 60_000;
 /** Duha window opens this long after sunrise. */
 export const DUHA_AFTER_SUNRISE_MIN = 15;
-/**
- * Maghrib's snapshot is taken just before sunset: the disc is still whole on
- * the set corner with the first of its glow (it sinks over the last ~2.5 min).
- */
-const MAGHRIB_LEAD_MS = 150_000;
+/** Maghrib's snapshot is taken with the disc mid-crossing: sinking into the set corner, glowing. */
+const MAGHRIB_LEAD_MS = 90_000;
 
 export interface FrozenSky {
   day: DayTimes;
