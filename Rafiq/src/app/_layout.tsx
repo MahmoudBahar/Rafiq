@@ -75,6 +75,8 @@ function RootStack() {
           <Stack.Screen name="index" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="month" options={{ animation: 'fade' }} />
+          {/* The page morphs from the pressed row itself; the stack only fades. */}
+          <Stack.Screen name="prayer/[key]" options={{ animation: 'fade', animationDuration: 180 }} />
         </Stack.Protected>
         <Stack.Protected guard={!settings.onboarded}>
           <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />

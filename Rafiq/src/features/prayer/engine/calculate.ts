@@ -1,11 +1,11 @@
 import { Coordinates, HighLatitudeRule, Madhab as AdhanMadhab, PrayerTimes } from 'adhan';
-import { clampAdjust } from '@/shared/lib/adjustments';
+import { FARD_KEYS, clampAdjust } from '@/shared/lib/adjustments';
 import { METHOD_BY_ID } from './methods';
 import {
   PRAYERS,
   type DayRow,
   type DayTimes,
-  type NextPrayer,
+  type NextEvent,
   type PrayerConfig,
   type PrayerKey,
   type PrayerTime,
@@ -23,11 +23,23 @@ function build(cfg: PrayerConfig, date: Date): PrayerTimes {
   params.madhab = cfg.madhab === 'hanafi' ? AdhanMadhab.Hanafi : AdhanMadhab.Shafi;
   params.highLatitudeRule = HighLatitudeRule.recommended(coords);
   // adhan's `adjustments` is a full six-key object; merge the user's partial on top.
-  for (const p of PRAYERS) {
-    const n = cfg.adjustments[p.key];
-    if (typeof n === 'number' && Number.isFinite(n) && n !== 0) params.adjustments[p.key] = clampAdjust(n);
+  for (const key of FARD_KEYS) {
+    const n = cfg.adjustments[key];
+    if (typeof n === 'number' && Number.isFinite(n) && n !== 0) params.adjustments[key] = clampAdjust(n);
   }
   return new PrayerTimes(coords, date, params);
+}
+
+const MIN_MS = 60_000;
+
+/** The six rows with each prayer's iqama attached. */
+function timesOf(pt: PrayerTimes, cfg: PrayerConfig): PrayerTime[] {
+  return PRAYERS.map((p) => {
+    const at = pt[p.key];
+    const delay = p.isPrayer ? cfg.iqama[p.key as keyof typeof cfg.iqama] : 0;
+    const iqama = p.isPrayer && delay > 0 ? new Date(at.getTime() + delay * MIN_MS) : null;
+    return { ...p, at, iqama };
+  });
 }
 
 function shiftDays(date: Date, days: number): Date {
@@ -37,8 +49,7 @@ function shiftDays(date: Date, days: number): Date {
 }
 
 export function getTimes(cfg: PrayerConfig, date: Date): PrayerTime[] {
-  const pt = build(cfg, date);
-  return PRAYERS.map((p) => ({ ...p, at: pt[p.key] }));
+  return timesOf(build(cfg, date), cfg);
 }
 
 export function timeFor(key: PrayerKey, cfg: PrayerConfig, date: Date): Date {
@@ -49,22 +60,45 @@ export function timeFor(key: PrayerKey, cfg: PrayerConfig, date: Date): Date {
 export function computeDay(cfg: PrayerConfig, date: Date): DayTimes {
   const today = build(cfg, date);
   const tomorrow = build(cfg, shiftDays(date, 1));
-  const times = PRAYERS.map((p) => ({ ...p, at: today[p.key] }));
+  const times = timesOf(today, cfg);
   const byKey = Object.fromEntries(times.map((t) => [t.key, t.at])) as Record<PrayerKey, Date>;
   return { times, byKey, sunset: today.sunset, nextFajr: tomorrow.fajr, nextSunrise: tomorrow.sunrise };
 }
 
-/** First real prayer after `now`; wraps to tomorrow's Fajr after Isha. Pure array scan. */
-export function nextPrayerIn(day: DayTimes, now: Date): NextPrayer {
-  const t = now.getTime();
-  const found = day.times.find((p) => p.isPrayer && p.at.getTime() > t);
-  if (found) return { key: found.key, name: found.name, at: found.at, isTomorrow: false };
-  const fajr = PRAYERS[0];
-  return { key: fajr.key, name: fajr.name, at: day.nextFajr, isTomorrow: true };
+type DayEvent = Omit<NextEvent, 'isTomorrow'>;
+
+/**
+ * The day's countdown targets in order: each adhan, then its iqama, with
+ * sunrise as its own event. An iqama that would land after the following
+ * adhan is dropped, so the list is always monotonic.
+ */
+export function dayEvents(day: DayTimes): DayEvent[] {
+  const out: DayEvent[] = [];
+  day.times.forEach((p, i) => {
+    if (!p.isPrayer) {
+      out.push({ kind: 'sunrise', key: p.key, name: p.name, at: p.at });
+      return;
+    }
+    out.push({ kind: 'adhan', key: p.key, name: p.name, at: p.at });
+    const following = day.times[i + 1]?.at ?? day.nextFajr;
+    if (p.iqama && p.iqama.getTime() < following.getTime()) {
+      out.push({ kind: 'iqama', key: p.key, name: p.name, at: p.iqama });
+    }
+  });
+  return out;
 }
 
-export function nextPrayer(now: Date, cfg: PrayerConfig): NextPrayer {
-  return nextPrayerIn(computeDay(cfg, now), now);
+/** First event after `now`; wraps to tomorrow's Fajr adhan after Isha's last event. */
+export function nextEventIn(day: DayTimes, now: Date): NextEvent {
+  const t = now.getTime();
+  const found = dayEvents(day).find((e) => e.at.getTime() > t);
+  if (found) return { ...found, isTomorrow: false };
+  const fajr = PRAYERS[0];
+  return { kind: 'adhan', key: fajr.key, name: fajr.name, at: day.nextFajr, isTomorrow: true };
+}
+
+export function nextEvent(now: Date, cfg: PrayerConfig): NextEvent {
+  return nextEventIn(computeDay(cfg, now), now);
 }
 
 /** Every calendar day from `first` to `last` inclusive (local dates; time parts ignored). */

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PRAYERS, computeRange } from '@/features/prayer/engine';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTimeShort, toArabicIndic } from '@/shared/lib/arabic';
-import { WEEKDAYS_AR, isSameDay, monthName } from '@/shared/lib/gregorian';
+import { WEEKDAYS_AR, isSameDay, isoDate, monthName } from '@/shared/lib/gregorian';
 import { hijriMonthRange } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
@@ -21,8 +21,6 @@ const FRIDAY = 5;
 const YEAR_MIN = 1938;
 const YEAR_MAX = 2076;
 
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const iso = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 interface RowVM {
@@ -64,7 +62,7 @@ export default function MonthScreen() {
   const rows = useMemo<RowVM[]>(() => {
     const todayDate = new Date(ty, tm, td);
     return computeRange(cfg, first, last).map((r) => ({
-      key: iso(r.date),
+      key: isoDate(r.date),
       date: r.date,
       num: toArabicIndic(r.day),
       weekday: WEEKDAYS_AR[r.weekday],
@@ -91,7 +89,7 @@ export default function MonthScreen() {
       return { y: clamp(ny, YEAR_MIN, YEAR_MAX), m0: nm };
     });
 
-  const openDay = useCallback((date: Date) => router.navigate({ pathname: '/', params: { day: iso(date) } }), [router]);
+  const openDay = useCallback((date: Date) => router.navigate({ pathname: '/', params: { day: isoDate(date) } }), [router]);
 
   const listRef = useRef<ScrollView>(null);
   const scrollToToday = () => {

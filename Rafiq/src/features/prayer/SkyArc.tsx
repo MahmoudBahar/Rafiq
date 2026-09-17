@@ -160,7 +160,7 @@ export function SkyArc({ sky, day }: SkyArcProps) {
   );
 }
 
-interface HaloProps {
+export interface HaloProps {
   /** Centre in dp within the arc box. */
   x: number;
   y: number;
@@ -176,7 +176,7 @@ interface HaloProps {
 }
 
 /** Pulsing ring (or dot) drawn as a plain view, so the pulse never touches the SVG. */
-function Halo({ x, y, radius, grow, color, width, fill, opacity, pulse }: HaloProps) {
+export function Halo({ x, y, radius, grow, color, width, fill, opacity, pulse }: HaloProps) {
   const [lo, hi] = opacity;
   const style = useAnimatedStyle(() => ({
     opacity: interpolate(pulse.get(), [0, 1], [lo, hi]),

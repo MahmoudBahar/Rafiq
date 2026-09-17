@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } from '@/features/prayer/engine';
 import { FineTune } from '@/features/prayer/FineTune';
+import { IqamaTune } from '@/features/prayer/IqamaTune';
 import { useLocate } from '@/features/prayer/useLocate';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
@@ -152,6 +153,8 @@ export default function SettingsScreen() {
           </View>
 
           <FineTune />
+
+          <IqamaTune />
 
           <View style={styles.section}>
             <SectionLabel>المظهر</SectionLabel>

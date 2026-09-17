@@ -76,6 +76,15 @@ function segments(t0: number, t1: number, gapAt: number | null): string[] {
   return out;
 }
 
+/** Point on the arc at `t` (0 = rise corner, 1 = set corner), in svg units. */
+export const arcPoint = (t: number): Pt => {
+  const p = quad(clamp01(t));
+  return { x: r1(p.x), y: r1(p.y) };
+};
+
+/** Path of the arc between `t0` and `t1`. */
+export const arcPath = (t0: number, t1: number): string => subArc(clamp01(t0), clamp01(t1));
+
 const progress = (now: number, from: Date, to: Date) =>
   clamp01((now - from.getTime()) / (to.getTime() - from.getTime()));
 

@@ -1,8 +1,17 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { sanitizeAdjustments, type Adjustments } from '@/shared/lib/adjustments';
+import { sanitizeIqama, type IqamaOffsets, IQAMA_DEFAULTS } from '@/shared/lib/iqama';
 import { kv } from './kv';
 
-export { ADJUST_LIMIT, clampAdjust, type Adjustments, type PrayerKey } from '@/shared/lib/adjustments';
+export {
+  ADJUST_LIMIT,
+  FARD_KEYS,
+  clampAdjust,
+  type Adjustments,
+  type FardKey,
+  type PrayerKey,
+} from '@/shared/lib/adjustments';
+export { IQAMA_DEFAULTS, IQAMA_LIMIT, clampIqama, isDefaultIqama, type IqamaOffsets } from '@/shared/lib/iqama';
 
 /** `daylight`: light between sunrise and Maghrib, dark otherwise. */
 export type ThemeMode = 'light' | 'dark' | 'system' | 'daylight';
@@ -40,6 +49,8 @@ export interface Settings {
   method: Method;
   madhab: Madhab;
   adjustments: Adjustments;
+  /** Minutes from adhan to iqama per prayer; 0 = no iqama for that prayer. */
+  iqama: IqamaOffsets;
   theme: ThemeMode;
   /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
   swipeHintShown: number;
@@ -56,6 +67,7 @@ export const DEFAULTS: Settings = {
   method: 'egypt',
   madhab: 'shafii',
   adjustments: {},
+  iqama: IQAMA_DEFAULTS,
   theme: 'system',
   swipeHintShown: 0,
   dateHintShown: 0,
@@ -68,7 +80,12 @@ function load(): Settings {
     const raw = kv.get(KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULTS, ...parsed, adjustments: sanitizeAdjustments(parsed.adjustments) };
+    return {
+      ...DEFAULTS,
+      ...parsed,
+      adjustments: sanitizeAdjustments(parsed.adjustments),
+      iqama: sanitizeIqama(parsed.iqama),
+    };
   } catch {
     return DEFAULTS;
   }

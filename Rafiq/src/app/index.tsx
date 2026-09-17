@@ -12,8 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CountdownDigits } from '@/features/prayer/CountdownDigits';
 import { DayCarousel, DaySwipeSurface } from '@/features/prayer/DayCarousel';
 import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
-import { COUNTRY, DEFAULT_CITY, getTimes, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
-import { PrayerList } from '@/features/prayer/PrayerList';
+import { COUNTRY, DEFAULT_CITY, getTimes, type NextEvent, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
+import { PrayerList, type RowRect } from '@/features/prayer/PrayerList';
 import { SkyArc } from '@/features/prayer/SkyArc';
 import { StarField } from '@/features/prayer/StarField';
 import { useCountdown } from '@/features/prayer/useCountdown';
@@ -21,7 +21,7 @@ import { useDayCarousel } from '@/features/prayer/useDayCarousel';
 import { useSky } from '@/features/prayer/useSky';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12 } from '@/shared/lib/arabic';
-import { gregorianString } from '@/shared/lib/gregorian';
+import { gregorianString, isoDate, parseIsoDate } from '@/shared/lib/gregorian';
 import { hijriString } from '@/shared/lib/hijri';
 import { useMotion } from '@/shared/lib/motion';
 import { useSettings } from '@/shared/storage/settings';
@@ -47,6 +47,19 @@ const SWIPE_SHOW_MS = 4500;
 const STEP_GAP_MS = 600;
 const DATE_PULSE_MS = [100, 1700];
 const DATE_SHOW_MS = 4000;
+
+/** Countdown caption and the line under the digits, by what is being counted to. */
+function eventLabels(next: NextEvent): { title: string; sub: string } {
+  const at = formatTime12(next.at);
+  switch (next.kind) {
+    case 'iqama':
+      return { title: `الإقامة · ${next.name}`, sub: `تقام الصلاة الساعة ${at}` };
+    case 'sunrise':
+      return { title: 'الشروق · نهاية وقت الفجر', sub: `الشروق الساعة ${at}` };
+    default:
+      return { title: `الصلاة القادمة · ${next.isTomorrow ? 'الفجر غداً' : next.name}`, sub: `الأذان الساعة ${at}` };
+  }
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -138,11 +151,13 @@ export default function HomeScreen() {
   const [seenDay, setSeenDay] = useState<string | undefined>(undefined);
   if (params.day !== seenDay) {
     setSeenDay(params.day);
-    if (params.day) {
-      const [py, pm, pd] = params.day.split('-').map(Number);
-      if (Number.isFinite(py) && Number.isFinite(pm) && Number.isFinite(pd)) {
-        setDayOffset(Math.round((Date.UTC(py, pm - 1, pd) - Date.UTC(y, mo, d)) / DAY_MS));
-      }
+    const target = parseIsoDate(params.day);
+    if (target) {
+      setDayOffset(
+        Math.round(
+          (Date.UTC(target.getFullYear(), target.getMonth(), target.getDate()) - Date.UTC(y, mo, d)) / DAY_MS,
+        ),
+      );
     }
   }
   useEffect(() => {
@@ -176,7 +191,19 @@ export default function HomeScreen() {
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
   const place = country ? `${city}، ${country}` : city;
-  const nextLabel = next.isTomorrow ? 'الفجر غداً' : next.name;
+  const labels = eventLabels(next);
+  const openPrayer = (off: number, key: PrayerKey, rect: RowRect) => {
+    router.push({
+      pathname: '/prayer/[key]',
+      params: {
+        key,
+        day: isoDate(new Date(y, mo, d + off)),
+        y: String(rect.y),
+        h: String(rect.h),
+        hl: highlightFor(off) === key ? '1' : '0',
+      },
+    });
+  };
   const openMonth = () => {
     if (settings.dateHintShown < HINT_MAX) update({ dateHintShown: HINT_MAX });
     dateTipCancelled.current = true;
@@ -232,11 +259,11 @@ export default function HomeScreen() {
               Android can measure a hair short and wrap its last word into a
               clipped second line (the "الصلاة القادمة ·" with no name bug). */}
           <Text size={12} weight="medium" color={c.tm} align="center" numberOfLines={1} style={styles.wide}>
-            الصلاة القادمة · {nextLabel}
+            {labels.title}
           </Text>
           <CountdownDigits at={next.at} />
           <Text size={12.5} weight="medium" color={c.ts} align="center" numberOfLines={1} style={styles.wide}>
-            الأذان الساعة {formatTime12(next.at)}
+            {labels.sub}
           </Text>
         </View>
         <SkyArc sky={sky} day={day} />
@@ -252,7 +279,13 @@ export default function HomeScreen() {
           <DayCarousel
             offset={dayOffset}
             values={carousel.values}
-            renderDay={(off) => <PrayerList times={timesByOffset.get(off) ?? day.times} nextKey={highlightFor(off)} />}
+            renderDay={(off) => (
+              <PrayerList
+                times={timesByOffset.get(off) ?? day.times}
+                nextKey={highlightFor(off)}
+                onPressPrayer={(key, rect) => openPrayer(off, key, rect)}
+              />
+            )}
           />
         </ScrollView>
         <DayPill date={dayOffset !== 0 ? viewDate : null} hint={hint} onToday={() => carousel.go(-dayOffset)} />
