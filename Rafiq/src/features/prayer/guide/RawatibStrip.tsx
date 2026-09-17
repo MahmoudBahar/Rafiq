@@ -30,7 +30,7 @@ export function RawatibStrip({ lit, delay }: RawatibStripProps) {
   return (
     <Animated.View entering={m.fadeInUp(delay, 420)} style={[styles.strip, { backgroundColor: c.surface, borderColor: c.border }]}>
       <Text size={11.5} weight="semi" color={c.tm}>
-        الرواتب · ثنتا عشرة ركعة في اليوم والليلة
+        الرواتب · اثنتا عشرة ركعة في اليوم والليلة
       </Text>
       <View style={styles.groups}>
         {groups.map((g, gi) => {

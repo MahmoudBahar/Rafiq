@@ -45,7 +45,6 @@ function Row({ time: p, isNext, onPress }: RowProps) {
   const timeColor = isNext ? c.herotext : p.isPrayer ? c.ts : c.tm;
   const weight = isNext ? 'bold' : p.isPrayer ? 'semi' : 'medium';
   const adhan = formatTime12(p.at);
-  const iqama = p.iqama ? formatTime12(p.iqama) : null;
 
   const press = () => {
     if (!onPress) return;
@@ -62,7 +61,7 @@ function Row({ time: p, isNext, onPress }: RowProps) {
     <View ref={box} collapsable={false}>
       <PressScale
         accessibilityRole="button"
-        accessibilityLabel={iqama ? `${p.name} ${adhan}، الإقامة ${iqama}` : `${p.name} ${adhan}`}
+        accessibilityLabel={`${p.name} ${adhan}`}
         accessibilityHint="يفتح صفحة السنن"
         onPress={press}
         pressedScale={0.98}
@@ -73,10 +72,10 @@ function Row({ time: p, isNext, onPress }: RowProps) {
                 backgroundColor: c.hero,
                 borderColor: c.hero,
                 borderRadius: radius.lg,
-                paddingVertical: 15,
+                paddingVertical: 16,
                 boxShadow: `0 8px 20px ${c.shadow}`,
               }
-            : { backgroundColor: c.surface, borderColor: c.border, borderRadius: radius.md, paddingVertical: 12 },
+            : { backgroundColor: c.surface, borderColor: c.border, borderRadius: radius.md, paddingVertical: 13 },
           !p.isPrayer && !isNext && { opacity: 0.65 },
         ]}
       >
@@ -86,16 +85,9 @@ function Row({ time: p, isNext, onPress }: RowProps) {
             {p.name}
           </Text>
         </View>
-        <View style={styles.times}>
-          <Text size={14.5} weight={weight} color={timeColor} style={styles.time}>
-            {adhan}
-          </Text>
-          {iqama ? (
-            <Text size={10.5} weight="medium" color={isNext ? c.herotext : c.tm} style={[styles.time, styles.iqama]}>
-              الإقامة {iqama}
-            </Text>
-          ) : null}
-        </View>
+        <Text size={14.5} weight={weight} color={timeColor} style={styles.time}>
+          {adhan}
+        </Text>
       </PressScale>
     </View>
   );
@@ -112,7 +104,5 @@ const styles = StyleSheet.create({
   },
   nameWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dot: { width: 7, height: 7, borderRadius: 999 },
-  times: { alignItems: 'flex-end' },
   time: { fontVariant: ['tabular-nums'] },
-  iqama: { opacity: 0.85, marginTop: -2 },
 });

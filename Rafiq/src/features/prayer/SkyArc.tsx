@@ -28,6 +28,8 @@ const MOON_R = 7;
 interface SkyArcProps {
   sky: SkyState;
   day: DayTimes;
+  /** Rise/set times and day length under the arc (the home shows them; the prayer page does not). */
+  footer?: boolean;
 }
 
 /**
@@ -36,7 +38,7 @@ interface SkyArcProps {
  * prop inside react-native-svg re-rasterises the whole canvas on the CPU each
  * frame, which is what dragged the idle home screen down to ~25 fps.
  */
-export function SkyArc({ sky, day }: SkyArcProps) {
+export function SkyArc({ sky, day, footer = true }: SkyArcProps) {
   const { c } = useTheme();
   const pulse = useOscillator(1500);
 
@@ -149,13 +151,15 @@ export function SkyArc({ sky, day }: SkyArcProps) {
         ) : null}
       </View>
 
-      <View style={styles.footer}>
-        <EndTimes kind="rise" sun={day.byKey.sunrise} moon={sky.moon.rise} />
-        <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
-          طول النهار {dayLength}
-        </Text>
-        <EndTimes kind="set" sun={day.sunset} moon={sky.moon.set} />
-      </View>
+      {footer ? (
+        <View style={styles.footer}>
+          <EndTimes kind="rise" sun={day.byKey.sunrise} moon={sky.moon.rise} />
+          <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
+            طول النهار {dayLength}
+          </Text>
+          <EndTimes kind="set" sun={day.sunset} moon={sky.moon.set} />
+        </View>
+      ) : null}
     </View>
   );
 }

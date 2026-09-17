@@ -37,10 +37,10 @@ export function FineTune() {
 
   return (
     <TunerSection
-      title="ضبط دقيق"
+      title="ضبط وقت الأذان"
       summary={summary(adj)}
       tuned={anyTuned}
-      hint="أضف أو اطرح دقائق لكل صلاة لمطابقة جدول مسجدك."
+      hint="أضف أو اطرح دقائق من وقت الأذان لكل صلاة لمطابقة جدول مسجدك."
       resetLabel="إعادة الضبط"
       onReset={() => update({ adjustments: {} })}
     >

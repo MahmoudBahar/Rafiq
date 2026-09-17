@@ -17,8 +17,8 @@ import { CountdownDigits } from '../CountdownDigits';
 import type { EventKind } from '../engine';
 
 /** Card height once settled, with and without the live countdown row. */
-export const HERO_H = 150;
-export const HERO_LIVE_H = 196;
+export const HERO_H = 158;
+export const HERO_LIVE_H = 204;
 export const HERO_MARGIN = 20;
 const SPRING = { damping: 18, stiffness: 170, mass: 0.9 };
 /** Fallback start when no row rectangle was passed: a short rise from below. */
@@ -91,9 +91,10 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
     });
   }, [started, origin, winH, settledH, reduced, originDy, originH, measured, progress]);
 
+  // The next prayer's row is drawn in the hero colours; its page keeps them.
   const highlighted = origin?.highlighted ?? false;
-  const fromBg = highlighted ? c.hero : c.surface;
-  const fromBorder = highlighted ? c.hero : c.border;
+  const bg = highlighted ? c.hero : c.surface;
+  const border = highlighted ? c.hero : c.border;
   const card = useAnimatedStyle(() => {
     const t = progress.get();
     return {
@@ -101,8 +102,8 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
       transform: [{ translateY: originDy.get() * (1 - t) }],
       height: interpolate(t, [0, 1], [originH.get(), settledH]),
       borderRadius: interpolate(t, [0, 1], [radius.md, radius.xl]),
-      backgroundColor: interpolateColor(t, [0, 1], [fromBg, c.surface]),
-      borderColor: interpolateColor(t, [0, 1], [fromBorder, c.border]),
+      backgroundColor: interpolateColor(t, [0, 1], [bg, bg]),
+      borderColor: interpolateColor(t, [0, 1], [border, border]),
     };
   });
   const rowLayer = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0, 0.5], [1, 0], 'clamp') }));
@@ -110,6 +111,10 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
 
   const rowText = highlighted ? c.herotext : c.tp;
   const rowTimeColor = highlighted ? c.herotext : c.ts;
+  const ink = highlighted ? c.herotext : c.tp;
+  const inkSoft = highlighted ? c.herotext : c.tm;
+  // Hex tokens: append an alpha byte for the translucent divider on the hero colour.
+  const rule = highlighted ? `${c.herotext}33` : c.border;
 
   return (
     <View ref={box} collapsable={false} style={[styles.slot, { top }]}>
@@ -129,31 +134,32 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
 
         <Animated.View style={[styles.fullLayer, fullLayer]}>
           <View style={styles.titleRow}>
-            <Display size={34} bold lineHeight={40}>
+            {/* Default display line height: Scheherazade's descenders clip in a tighter box. */}
+            <Display size={34} bold color={ink}>
               {title}
             </Display>
-            <Text size={12} weight="medium" color={c.tm}>
+            <Text size={12} weight="medium" color={inkSoft} style={highlighted && styles.soft}>
               {dayLabel}
             </Text>
           </View>
           <View style={styles.timesRow}>
             {times.map((t) => (
               <View key={t.label} style={styles.timeBlock}>
-                <Text size={11} weight="semi" color={c.tm}>
+                <Text size={11} weight="semi" color={inkSoft} style={highlighted && styles.soft}>
                   {t.label}
                 </Text>
-                <Text size={19} weight="bold" style={styles.tabular}>
+                <Text size={19} weight="bold" color={ink} style={styles.tabular}>
                   {formatTime12(t.at)}
                 </Text>
               </View>
             ))}
           </View>
           {live ? (
-            <View style={[styles.liveRow, { borderTopColor: c.border }]}>
+            <View style={[styles.liveRow, { borderTopColor: rule }]}>
               <Text size={11.5} weight="semi" color={c.accent}>
                 {LIVE_LABEL[live.kind]}
               </Text>
-              <CountdownDigits at={live.at} size={22} />
+              <CountdownDigits at={live.at} size={22} color={ink} />
             </View>
           ) : null}
         </Animated.View>
@@ -177,7 +183,8 @@ const styles = StyleSheet.create({
   },
   rowName: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dot: { width: 7, height: 7, borderRadius: 999 },
-  fullLayer: { ...FILL, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14, gap: 12 },
+  fullLayer: { ...FILL, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14, gap: 10 },
+  soft: { opacity: 0.72 },
   titleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
   timesRow: { flexDirection: 'row', gap: 28 },
   timeBlock: { gap: 0 },

@@ -5,6 +5,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 import { PRAYERS, getTimes, type PrayerKey } from '@/features/prayer/engine';
+import { DUHA_AFTER_SUNRISE_MIN, frozenSky } from '@/features/prayer/guide/frozenSky';
 import { HERO_H, HERO_LIVE_H, PrayerHero, type HeroOrigin, type HeroTime } from '@/features/prayer/guide/PrayerHero';
 import { RawatibStrip } from '@/features/prayer/guide/RawatibStrip';
 import { SkyBand } from '@/features/prayer/guide/SkyBand';
@@ -21,8 +22,7 @@ import { useTheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon } from '@/shared/ui/Icons';
 
 const MIN_MS = 60_000;
-/** Duha window: from a little after sunrise until a little before Dhuhr. */
-const DUHA_AFTER_SUNRISE_MIN = 15;
+/** Duha window closes this long before Dhuhr (it opens `DUHA_AFTER_SUNRISE_MIN` after sunrise). */
 const DUHA_BEFORE_DHUHR_MIN = 10;
 const EXIT_MS = 240;
 
@@ -43,6 +43,8 @@ export default function PrayerScreen() {
   const times = useMemo(() => getTimes(cfg, date), [cfg, date]);
   const row = times.find((t) => t.key === key) ?? times[0];
   const guide = guideFor(key, date);
+  // The home arc at this prayer's moment (sun, moon, star density), computed once.
+  const frozen = useMemo(() => frozenSky(cfg, date, key), [cfg, date, key]);
 
   // Morph origin from the pressed row (window dp); absent on a cold deep link.
   const origin = useMemo<HeroOrigin | null>(() => {
@@ -113,7 +115,7 @@ export default function PrayerScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        <SkyBand mood={guide.mood} height={bandH} arcTop={arcTop} progress={progress}>
+        <SkyBand frozen={frozen} height={bandH} arcTop={arcTop} progress={progress}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="رجوع"

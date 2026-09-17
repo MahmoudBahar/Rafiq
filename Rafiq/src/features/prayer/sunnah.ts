@@ -6,9 +6,6 @@ import type { PrayerKey } from './engine';
 
 export type Emphasis = 'muakkadah' | 'mustahabb' | 'none';
 
-/** Sky treatment of the page band. */
-export type Mood = 'dawn' | 'morning' | 'day' | 'afternoon' | 'dusk' | 'night';
-
 export interface Station {
   id: string;
   title: string;
@@ -33,7 +30,6 @@ export interface PrayerGuide {
   extras: Station[];
   /** Which of the twelve daily rawatib beads (0–11) belong here. */
   rawatib: number[];
-  mood: Mood;
 }
 
 const TAG: Record<Emphasis, string> = { muakkadah: 'سنة مؤكدة', mustahabb: 'سنة مستحبة', none: 'لا سنة راتبة' };
@@ -65,7 +61,6 @@ const GUIDES: Record<PrayerKey, PrayerGuide> = {
     after: station('fajr-after', AFTER, 0, 'none', 'لا نافلة بعد الفجر حتى تطلع الشمس'),
     extras: [],
     rawatib: range(0, 2),
-    mood: 'dawn',
   },
   sunrise: {
     key: 'sunrise',
@@ -77,7 +72,6 @@ const GUIDES: Record<PrayerKey, PrayerGuide> = {
       station('duha', 'صلاة الضحى', 2, 'mustahabb', 'ركعتان فأكثر بعد ارتفاع الشمس، وأفضلها حين يشتد الحر', [2, 8]),
     ],
     rawatib: [],
-    mood: 'morning',
   },
   dhuhr: {
     key: 'dhuhr',
@@ -87,7 +81,6 @@ const GUIDES: Record<PrayerKey, PrayerGuide> = {
     after: station('dhuhr-after', AFTER, 2, 'muakkadah', 'ركعتان، ويُستحب أربع'),
     extras: [],
     rawatib: range(2, 6),
-    mood: 'day',
   },
   asr: {
     key: 'asr',
@@ -97,7 +90,6 @@ const GUIDES: Record<PrayerKey, PrayerGuide> = {
     after: station('asr-after', AFTER, 0, 'none', 'لا نافلة بعد العصر حتى تغرب الشمس'),
     extras: [],
     rawatib: [],
-    mood: 'afternoon',
   },
   maghrib: {
     key: 'maghrib',
@@ -107,7 +99,6 @@ const GUIDES: Record<PrayerKey, PrayerGuide> = {
     after: station('maghrib-after', AFTER, 2, 'muakkadah', 'ركعتان مؤكدتان، والأفضل في البيت'),
     extras: [],
     rawatib: range(8, 2),
-    mood: 'dusk',
   },
   isha: {
     key: 'isha',
@@ -119,7 +110,6 @@ const GUIDES: Record<PrayerKey, PrayerGuide> = {
       station('witr', 'الوتر', 1, 'muakkadah', 'أقلّه ركعة وأكثره إحدى عشرة، وهو ختام صلاة الليل', [1, 11]),
     ],
     rawatib: range(10, 2),
-    mood: 'night',
   },
 };
 
@@ -132,7 +122,6 @@ const JUMUAH: PrayerGuide = {
   after: station('jumuah-after', AFTER, 4, 'muakkadah', 'أربع في المسجد، أو ركعتان في البيت'),
   extras: [],
   rawatib: [],
-  mood: 'day',
 };
 
 const FRIDAY = 5;
