@@ -34,11 +34,18 @@ const UPPER_LIMB = -0.833;
 const SUN_DIAMETER = 0.53;
 /** Depth below the horizon where twilight is fully out (degrees). */
 const TWILIGHT_DEPTH = 18;
-/** How far the disc sinks below the corner when fully set (svg units, its own diameter). */
+/** How far the disc sinks past the corner when fully set (svg units, its own diameter). */
 const DISC_DROP = 14;
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 const quad = (t: number): Pt => lerp(lerp(P_START, CTRL, t), lerp(CTRL, P_END, t), t);
+/** Unit tangent of the arc at `t`, pointing in the direction of travel (rise → set). */
+function tangent(t: number): Pt {
+  const x = (1 - t) * (CTRL.x - P_START.x) + t * (P_END.x - CTRL.x);
+  const y = (1 - t) * (CTRL.y - P_START.y) + t * (P_END.y - CTRL.y);
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -83,7 +90,8 @@ export interface SkySun {
   visible: boolean;
   x: number;
   y: number;
-  /** Where the twilight ember sits (the disc's position before it sinks). */
+  /** Where the twilight ember sits (the corner the disc sinks through). */
+  glowX: number;
   glowY: number;
   opacity: number;
   /** Accent trail from the rise corner to the sun, split around the moon; empty during twilight. */
@@ -130,6 +138,7 @@ const hiddenSun: SkySun = {
   visible: false,
   x: P_START.x,
   y: P_START.y,
+  glowX: P_START.x,
   glowY: P_START.y,
   opacity: 0,
   trail: [],
@@ -155,10 +164,15 @@ export function skyState({ now, day, moon, sunAlt }: SkyInputs): SkyState {
   if (inDay) {
     const t = progress(n, sunrise, sunset);
     const p = quad(t);
+    // The disc crosses the horizon along the arc's own line: back past the
+    // rise corner before sunrise, on past the set corner at sunset.
+    const dir = tangent(t);
+    const drop = (t < 0.5 ? -1 : 1) * DISC_DROP * sink;
     sun = {
       visible: true,
-      x: r1(p.x),
-      y: r1(p.y + DISC_DROP * sink),
+      x: r1(p.x + dir.x * drop),
+      y: r1(p.y + dir.y * drop),
+      glowX: r1(p.x),
       glowY: r1(p.y),
       opacity: 1 - sink,
       trail: segments(0, t, gapAt),

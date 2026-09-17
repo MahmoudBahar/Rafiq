@@ -96,7 +96,7 @@ export function SkyArc({ sky, day, footer = true }: SkyArcProps) {
             <>
               {sky.sun.glow > 0 ? (
                 <Circle
-                  cx={sky.sun.x}
+                  cx={sky.sun.glowX}
                   cy={sky.sun.glowY}
                   r={8 + 12 * sky.sun.glow}
                   fill={c.accent}
