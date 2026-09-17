@@ -90,9 +90,6 @@ export interface SkySun {
   visible: boolean;
   x: number;
   y: number;
-  /** Where the twilight ember sits (the corner the disc sinks through). */
-  glowX: number;
-  glowY: number;
   opacity: number;
   /** Accent trail from the rise corner to the sun, split around the moon; empty during twilight. */
   trail: string[];
@@ -138,8 +135,6 @@ const hiddenSun: SkySun = {
   visible: false,
   x: P_START.x,
   y: P_START.y,
-  glowX: P_START.x,
-  glowY: P_START.y,
   opacity: 0,
   trail: [],
   glow: 0,
@@ -172,11 +167,11 @@ export function skyState({ now, day, moon, sunAlt }: SkyInputs): SkyState {
       visible: true,
       x: r1(p.x + dir.x * drop),
       y: r1(p.y + dir.y * drop),
-      glowX: r1(p.x),
-      glowY: r1(p.y),
       opacity: 1 - sink,
       trail: segments(0, t, gapAt),
-      glow: twilight * Math.min(1, sink * 3), // ramps in as the disc starts to cross
+      // The ember sits on the disc and gives way to it: full while the disc is
+      // below the horizon, gone once it is fully up.
+      glow: twilight * sink,
     };
     stars = 0.15;
   } else if (inDawn || inDusk) {
