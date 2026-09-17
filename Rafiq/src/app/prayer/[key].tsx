@@ -106,8 +106,10 @@ export default function PrayerScreen() {
       back();
       return;
     }
-    bodyOp.set(withTiming(0, { duration: 200 }));
-    pageOp.set(withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }));
+    // The card leaves first; the page holds and then dissolves as the card
+    // lands, so the home is fully there exactly when the card meets its row.
+    bodyOp.set(withTiming(0, { duration: EXIT_MS * 0.8, easing: Easing.in(Easing.quad) }));
+    pageOp.set(withTiming(0, { duration: EXIT_MS, easing: Easing.in(Easing.cubic) }));
     progress.set(
       withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
         'worklet';
