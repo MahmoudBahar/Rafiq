@@ -76,9 +76,10 @@ export default function PrayerScreen() {
     ? `الإقامة ${formatTime12(row.iqama)} · بعد الأذان بـ ${toArabicIndic(delay)} دقيقة`
     : 'بلا إقامة محددة';
 
-  // Layout: back row, the frozen arc, then the card overlapping the arc's horizon.
+  // Layout: back row, the frozen arc, then the card tucked just under the arc box
+  // (the horizon sits 24 units above the box's bottom, so corner discs stay clear).
   const arcTop = insets.top + 48;
-  const heroTop = arcTop + ARC_HEIGHT - 12;
+  const heroTop = arcTop + ARC_HEIGHT - 4;
   const heroH = live ? HERO_LIVE_H : HERO_H;
   const bandH = heroTop + heroH + 22;
 

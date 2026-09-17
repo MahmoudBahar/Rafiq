@@ -31,6 +31,9 @@ export type Method =
   | 'tehran'
   | 'jafari';
 export type LocationMode = 'auto' | 'manual';
+/** `system` follows the device's reduce-motion setting; the others override it. */
+export type MotionMode = 'system' | 'full' | 'reduced';
+const MOTION_MODES: readonly MotionMode[] = ['system', 'full', 'reduced'];
 
 export interface Coords {
   latitude: number;
@@ -52,6 +55,7 @@ export interface Settings {
   /** Minutes from adhan to iqama per prayer; 0 = no iqama for that prayer. */
   iqama: IqamaOffsets;
   theme: ThemeMode;
+  motion: MotionMode;
   /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
   swipeHintShown: number;
   /** How many launches showed the "tap the date" tip; 3 = never again. */
@@ -69,6 +73,7 @@ export const DEFAULTS: Settings = {
   adjustments: {},
   iqama: IQAMA_DEFAULTS,
   theme: 'system',
+  motion: 'system',
   swipeHintShown: 0,
   dateHintShown: 0,
 };
@@ -85,6 +90,7 @@ function load(): Settings {
       ...parsed,
       adjustments: sanitizeAdjustments(parsed.adjustments),
       iqama: sanitizeIqama(parsed.iqama),
+      motion: MOTION_MODES.includes(parsed.motion as MotionMode) ? (parsed.motion as MotionMode) : 'system',
     };
   } catch {
     return DEFAULTS;

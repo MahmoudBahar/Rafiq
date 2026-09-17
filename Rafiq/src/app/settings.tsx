@@ -10,7 +10,7 @@ import { useLocate } from '@/features/prayer/useLocate';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
-import { useSettings, type Madhab, type Method, type ThemeMode } from '@/shared/storage/settings';
+import { useSettings, type Madhab, type Method, type MotionMode, type ThemeMode } from '@/shared/storage/settings';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { ChevronBackIcon, ChevronForwardIcon, MonitorIcon, MoonIcon, SunIcon, SunriseIcon } from '@/shared/ui/Icons';
@@ -188,6 +188,26 @@ export default function SettingsScreen() {
               {settings.theme === 'daylight'
                 ? 'نهاري: فاتح من الشروق إلى المغرب، وداكن ليلاً'
                 : 'تلقائي: يتبع مظهر نظام الجهاز'}
+            </Text>
+          </View>
+
+          <View style={styles.section}>
+            <SectionLabel>الحركة</SectionLabel>
+            <Segmented<MotionMode>
+              value={settings.motion}
+              onChange={(motion) => update({ motion })}
+              options={[
+                { key: 'system', label: 'تلقائي' },
+                { key: 'full', label: 'كاملة' },
+                { key: 'reduced', label: 'مخفّضة' },
+              ]}
+            />
+            <Text size={12} color={c.tm} style={styles.caption}>
+              {settings.motion === 'reduced'
+                ? 'مخفّضة: تظهر العناصر في مكانها مباشرة بلا انتقالات'
+                : settings.motion === 'full'
+                  ? 'كاملة: الحركة والانتقالات مفعّلة دائماً'
+                  : 'تلقائي: يتبع إعداد تقليل الحركة في الجهاز'}
             </Text>
           </View>
 

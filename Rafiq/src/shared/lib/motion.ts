@@ -1,8 +1,16 @@
 import { FadeIn, FadeInDown, FadeInUp, FadeOut, useReducedMotion } from 'react-native-reanimated';
+import { useSettings } from '@/shared/storage/settings';
 
-/** Entering/exiting presets that become no-ops when the OS asks for reduced motion. */
+/**
+ * Entering/exiting presets that become no-ops when motion is reduced: by the
+ * app's own setting, or by the OS when the setting says to follow it. The
+ * root layout mirrors the same choice into Reanimated's global config so
+ * timing/spring animations and layout transitions agree.
+ */
 export function useMotion() {
-  const reduced = useReducedMotion();
+  const { settings } = useSettings();
+  const system = useReducedMotion();
+  const reduced = settings.motion === 'reduced' || (settings.motion === 'system' && system);
   return {
     reduced,
     fadeIn: (delay = 0, duration = 220) => (reduced ? undefined : FadeIn.duration(duration).delay(delay)),

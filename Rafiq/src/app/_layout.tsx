@@ -13,6 +13,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { I18nManager, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ReduceMotion, ReducedMotionConfig } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DaylightProvider } from '@/features/prayer/DaylightProvider';
 import { SettingsProvider, useSettings } from '@/shared/storage/settings';
@@ -69,6 +70,10 @@ function RootStack() {
 
   return (
     <>
+      {/* Only mounted for an override: unmounting restores the device setting. */}
+      {settings.motion !== 'system' ? (
+        <ReducedMotionConfig mode={settings.motion === 'reduced' ? ReduceMotion.Always : ReduceMotion.Never} />
+      ) : null}
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
         <Stack.Protected guard={settings.onboarded}>
