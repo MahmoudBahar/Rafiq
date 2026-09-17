@@ -30,7 +30,7 @@ const DUHA_BEFORE_DHUHR_MIN = 10;
  * only once it has landed. (A short ease-in read as a cut: almost all of the
  * travel happened in its last few frames.)
  */
-const EXIT_MS = 420;
+const EXIT_MS = 300;
 
 const isPrayerKey = (k: string | undefined): k is PrayerKey => PRAYERS.some((p) => p.key === k);
 
@@ -102,7 +102,7 @@ export default function PrayerScreen() {
       back();
       return;
     }
-    bodyOp.set(withTiming(0, { duration: 260 }));
+    bodyOp.set(withTiming(0, { duration: 200 }));
     progress.set(
       withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
         'worklet';
