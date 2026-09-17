@@ -24,7 +24,13 @@ import { ChevronBackIcon } from '@/shared/ui/Icons';
 const MIN_MS = 60_000;
 /** Duha window closes this long before Dhuhr (it opens `DUHA_AFTER_SUNRISE_MIN` after sunrise). */
 const DUHA_BEFORE_DHUHR_MIN = 10;
-const EXIT_MS = 240;
+/**
+ * Mirror of the entrance: the card travels back over about the same time the
+ * spring took, fast at first and settling on the row, and the screen pops
+ * only once it has landed. (A short ease-in read as a cut: almost all of the
+ * travel happened in its last few frames.)
+ */
+const EXIT_MS = 420;
 
 const isPrayerKey = (k: string | undefined): k is PrayerKey => PRAYERS.some((p) => p.key === k);
 
@@ -96,9 +102,9 @@ export default function PrayerScreen() {
       back();
       return;
     }
-    bodyOp.set(withTiming(0, { duration: 200 }));
+    bodyOp.set(withTiming(0, { duration: 260 }));
     progress.set(
-      withTiming(0, { duration: EXIT_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
+      withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
         'worklet';
         if (finished) scheduleOnRN(back);
       }),
