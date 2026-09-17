@@ -36,3 +36,15 @@ export const addDays = (date: Date, days: number): Date =>
 
 export const isSameDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+/** `YYYY-MM-DD` of the local calendar day, for route params. */
+export const isoDate = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Inverse of `isoDate`; null when malformed. */
+export function parseIsoDate(s: string | undefined): Date | null {
+  if (!s) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  return new Date(y, m - 1, d);
+}

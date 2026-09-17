@@ -1,8 +1,17 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { sanitizeAdjustments, type Adjustments } from '@/shared/lib/adjustments';
+import { sanitizeIqama, type IqamaOffsets, IQAMA_DEFAULTS } from '@/shared/lib/iqama';
 import { kv } from './kv';
 
-export { ADJUST_LIMIT, clampAdjust, type Adjustments, type PrayerKey } from '@/shared/lib/adjustments';
+export {
+  ADJUST_LIMIT,
+  FARD_KEYS,
+  clampAdjust,
+  type Adjustments,
+  type FardKey,
+  type PrayerKey,
+} from '@/shared/lib/adjustments';
+export { IQAMA_DEFAULTS, IQAMA_LIMIT, clampIqama, isDefaultIqama, type IqamaOffsets } from '@/shared/lib/iqama';
 
 /** `daylight`: light between sunrise and Maghrib, dark otherwise. */
 export type ThemeMode = 'light' | 'dark' | 'system' | 'daylight';
@@ -22,6 +31,9 @@ export type Method =
   | 'tehran'
   | 'jafari';
 export type LocationMode = 'auto' | 'manual';
+/** `system` follows the device's reduce-motion setting; the others override it. */
+export type MotionMode = 'system' | 'full' | 'reduced';
+const MOTION_MODES: readonly MotionMode[] = ['system', 'full', 'reduced'];
 
 export interface Coords {
   latitude: number;
@@ -40,7 +52,10 @@ export interface Settings {
   method: Method;
   madhab: Madhab;
   adjustments: Adjustments;
+  /** Minutes from adhan to iqama per prayer; 0 = no iqama for that prayer. */
+  iqama: IqamaOffsets;
   theme: ThemeMode;
+  motion: MotionMode;
   /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
   swipeHintShown: number;
   /** How many launches showed the "tap the date" tip; 3 = never again. */
@@ -56,7 +71,9 @@ export const DEFAULTS: Settings = {
   method: 'egypt',
   madhab: 'shafii',
   adjustments: {},
+  iqama: IQAMA_DEFAULTS,
   theme: 'system',
+  motion: 'system',
   swipeHintShown: 0,
   dateHintShown: 0,
 };
@@ -68,7 +85,13 @@ function load(): Settings {
     const raw = kv.get(KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULTS, ...parsed, adjustments: sanitizeAdjustments(parsed.adjustments) };
+    return {
+      ...DEFAULTS,
+      ...parsed,
+      adjustments: sanitizeAdjustments(parsed.adjustments),
+      iqama: sanitizeIqama(parsed.iqama),
+      motion: MOTION_MODES.includes(parsed.motion as MotionMode) ? (parsed.motion as MotionMode) : 'system',
+    };
   } catch {
     return DEFAULTS;
   }

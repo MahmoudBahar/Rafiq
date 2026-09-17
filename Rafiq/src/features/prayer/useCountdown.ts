@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useWallClock } from '@/shared/lib/useWallClock';
-import { computeDay, nextPrayerIn, type DayTimes, type NextPrayer, type PrayerConfig } from './engine';
+import { computeDay, nextEventIn, type DayTimes, type NextEvent, type PrayerConfig } from './engine';
 
 export interface Countdown {
-  /** Coarse wall clock: refreshes every few seconds and right after the next prayer. */
+  /** Coarse wall clock: refreshes every few seconds and right after the next event. */
   now: Date;
   /** Today's computed times; recomputed only when config or the calendar day changes. */
   day: DayTimes;
-  next: NextPrayer;
+  /** Next adhan, iqama or sunrise. */
+  next: NextEvent;
 }
 
 /** Everything on the home screen except the ticking digits can live with this cadence. */
@@ -19,7 +20,7 @@ const COARSE_MS = 10_000;
  * screen is not re-rendered every second.
  */
 export function useCountdown(cfg: PrayerConfig): Countdown {
-  // The clock also wakes right after the next prayer (known from the previous
+  // The clock also wakes right after the next event (known from the previous
   // render), so the banner and highlight flip on time despite the coarse tick.
   const [wakeAt, setWakeAt] = useState<number | undefined>(undefined);
   const now = useWallClock(COARSE_MS, wakeAt);
@@ -30,7 +31,7 @@ export function useCountdown(cfg: PrayerConfig): Countdown {
   const d = now.getDate();
   const day = useMemo(() => computeDay(cfg, new Date(y, mo, d)), [cfg, y, mo, d]);
 
-  const next = nextPrayerIn(day, now);
+  const next = nextEventIn(day, now);
   const nextAt = next.at.getTime();
   if (nextAt !== wakeAt) setWakeAt(nextAt); // derived state, adjusted during render
 

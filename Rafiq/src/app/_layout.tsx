@@ -13,8 +13,10 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { I18nManager, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ReduceMotion, ReducedMotionConfig, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DaylightProvider } from '@/features/prayer/DaylightProvider';
+import { useMotion, useSystemReducedMotion } from '@/shared/lib/motion';
 import { SettingsProvider, useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
 
@@ -62,6 +64,12 @@ export default function RootLayout() {
 function RootStack() {
   const { settings } = useSettings();
   const { c, isDark } = useTheme();
+  const { reduced } = useMotion();
+  // Reanimated froze the device flag at launch. Its config component logs a
+  // dev warning whenever it is mounted, so it is mounted only when our answer
+  // (app setting, or the device switch flipped since launch) differs from it.
+  const atLaunch = useReducedMotion();
+  useSystemReducedMotion();
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(c.bg);
@@ -69,12 +77,27 @@ function RootStack() {
 
   return (
     <>
+      {reduced !== atLaunch ? (
+        <ReducedMotionConfig mode={reduced ? ReduceMotion.Always : ReduceMotion.Never} />
+      ) : null}
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
         <Stack.Protected guard={settings.onboarded}>
           <Stack.Screen name="index" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="month" options={{ animation: 'fade' }} />
+          {/* The page morphs from the pressed row itself; the stack only fades. It is
+              a transparent modal so the home stays rendered beneath it: on the way
+              back the page dissolves while the card travels and lands on its row. */}
+          <Stack.Screen
+            name="prayer/[key]"
+            options={{
+              presentation: 'transparentModal',
+              animation: 'fade',
+              animationDuration: 180,
+              contentStyle: { backgroundColor: 'transparent' },
+            }}
+          />
         </Stack.Protected>
         <Stack.Protected guard={!settings.onboarded}>
           <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />

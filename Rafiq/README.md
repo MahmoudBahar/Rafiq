@@ -24,8 +24,8 @@ Then keep `npx expo start` running while you work. The app requires a developmen
 
 ## Where things live
 
-- `src/app/` — routes (`_layout`, `onboarding`, `index`, `settings`)
-- `src/features/prayer/` — timetable, next-prayer logic, countdown, sun arc
+- `src/app/` — routes (`_layout`, `onboarding`, `index`, `settings`, `month`, `prayer/[key]`)
+- `src/features/prayer/` — timetable, next-event logic (adhan → iqama → sunrise), countdown, sun arc, settings tuners, Sunnah content (`sunnah.ts`) and the prayer page pieces (`guide/`)
 - `src/shared/` — theme tokens, settings storage, Arabic/Hijri helpers, UI kit
 - `assets/images/` — app icons and splash images
 - `app.json` — Expo config (icons, splash, `expo-localization` RTL plugin)

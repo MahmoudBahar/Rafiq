@@ -14,12 +14,13 @@ Rafiq shows the next prayer with a live countdown, today's full timetable, the H
 
 ## Features
 
-- **Next-prayer countdown** in Arabic-Indic digits, ticking every second, with the adhan time underneath.
-- **Daily timetable** for Fajr, Sunrise, Dhuhr, Asr, Maghrib and Isha, with the upcoming prayer highlighted.
+- **Live countdown** in Arabic-Indic digits that follows the mosque rhythm: the next adhan, then its iqama, then (after Fajr) sunrise.
+- **Daily timetable** for Fajr, Sunrise, Dhuhr, Asr, Maghrib and Isha with each prayer's iqama time, and the upcoming moment highlighted.
+- **Per-prayer pages** opened from the timetable: the pressed row morphs into a hero card under a sky band, followed by an animated timeline of the Sunnah rak'ah before and after the fard (Witr after Isha, Jumu'ah on Fridays, Duha from the sunrise row).
 - **Sun and moon arc** that moves across the header during the day and turns into a moon with stars at night.
 - **Hijri date** shown next to the location.
 - **Onboarding** with a location step: use the device location or pick a city manually.
-- **Settings** for location mode, calculation method, Asr madhab (الجمهور / الحنفي), and appearance (light, dark, or follow the system).
+- **Settings** for location mode, calculation method, Asr madhab (الجمهور / الحنفي), per-prayer fine-tuning of the adhan minutes, the iqama delay per prayer, and appearance (light, dark, daylight, or follow the system).
 - **Fully RTL and Arabic**, using IBM Plex Sans Arabic for UI text and Scheherazade New for display text.
 - **Persistent preferences** stored on device with `expo-sqlite/kv-store`.
 

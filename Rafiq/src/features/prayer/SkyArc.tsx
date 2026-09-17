@@ -28,6 +28,8 @@ const MOON_R = 7;
 interface SkyArcProps {
   sky: SkyState;
   day: DayTimes;
+  /** Rise/set times and day length under the arc (the home shows them; the prayer page does not). */
+  footer?: boolean;
 }
 
 /**
@@ -36,7 +38,7 @@ interface SkyArcProps {
  * prop inside react-native-svg re-rasterises the whole canvas on the CPU each
  * frame, which is what dragged the idle home screen down to ~25 fps.
  */
-export function SkyArc({ sky, day }: SkyArcProps) {
+export function SkyArc({ sky, day, footer = true }: SkyArcProps) {
   const { c } = useTheme();
   const pulse = useOscillator(1500);
 
@@ -95,7 +97,7 @@ export function SkyArc({ sky, day }: SkyArcProps) {
               {sky.sun.glow > 0 ? (
                 <Circle
                   cx={sky.sun.x}
-                  cy={sky.sun.glowY}
+                  cy={sky.sun.y}
                   r={8 + 12 * sky.sun.glow}
                   fill={c.accent}
                   opacity={0.06 + 0.2 * sky.sun.glow}
@@ -149,18 +151,20 @@ export function SkyArc({ sky, day }: SkyArcProps) {
         ) : null}
       </View>
 
-      <View style={styles.footer}>
-        <EndTimes kind="rise" sun={day.byKey.sunrise} moon={sky.moon.rise} />
-        <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
-          طول النهار {dayLength}
-        </Text>
-        <EndTimes kind="set" sun={day.sunset} moon={sky.moon.set} />
-      </View>
+      {footer ? (
+        <View style={styles.footer}>
+          <EndTimes kind="rise" sun={day.byKey.sunrise} moon={sky.moon.rise} />
+          <Text size={10} weight="semi" color={c.tm} align="center" style={styles.dayLength}>
+            طول النهار {dayLength}
+          </Text>
+          <EndTimes kind="set" sun={day.sunset} moon={sky.moon.set} />
+        </View>
+      ) : null}
     </View>
   );
 }
 
-interface HaloProps {
+export interface HaloProps {
   /** Centre in dp within the arc box. */
   x: number;
   y: number;
@@ -176,7 +180,7 @@ interface HaloProps {
 }
 
 /** Pulsing ring (or dot) drawn as a plain view, so the pulse never touches the SVG. */
-function Halo({ x, y, radius, grow, color, width, fill, opacity, pulse }: HaloProps) {
+export function Halo({ x, y, radius, grow, color, width, fill, opacity, pulse }: HaloProps) {
   const [lo, hi] = opacity;
   const style = useAnimatedStyle(() => ({
     opacity: interpolate(pulse.get(), [0, 1], [lo, hi]),
