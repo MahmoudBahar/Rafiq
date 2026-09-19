@@ -1,6 +1,6 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { sanitizeAdjustments, type Adjustments } from '@/shared/lib/adjustments';
-import { KHUTBAH_DEFAULT, sanitizeIqama, sanitizeKhutbah, type IqamaOffsets, IQAMA_DEFAULTS } from '@/shared/lib/iqama';
+import { sanitizeIqama, type IqamaOffsets, IQAMA_DEFAULTS } from '@/shared/lib/iqama';
 import { kv } from './kv';
 
 export {
@@ -11,7 +11,7 @@ export {
   type FardKey,
   type PrayerKey,
 } from '@/shared/lib/adjustments';
-export { IQAMA_DEFAULTS, IQAMA_LIMIT, KHUTBAH_DEFAULT, clampIqama, isDefaultIqama, type IqamaOffsets } from '@/shared/lib/iqama';
+export { IQAMA_DEFAULTS, IQAMA_LIMIT, clampIqama, isDefaultIqama, type IqamaOffsets } from '@/shared/lib/iqama';
 
 /** `daylight`: light between sunrise and Maghrib, dark otherwise. */
 export type ThemeMode = 'light' | 'dark' | 'system' | 'daylight';
@@ -54,8 +54,6 @@ export interface Settings {
   adjustments: Adjustments;
   /** Minutes from adhan to iqama per prayer; 0 = no iqama for that prayer. */
   iqama: IqamaOffsets;
-  /** Friday: minutes from the first adhan to the adhan of the khutbah; 0 = off. */
-  khutbah: number;
   theme: ThemeMode;
   motion: MotionMode;
   /** How many launches showed the "swipe to browse days" nudge; 3 = never again. */
@@ -74,7 +72,6 @@ export const DEFAULTS: Settings = {
   madhab: 'shafii',
   adjustments: {},
   iqama: IQAMA_DEFAULTS,
-  khutbah: KHUTBAH_DEFAULT,
   theme: 'system',
   motion: 'system',
   swipeHintShown: 0,
@@ -93,7 +90,6 @@ function load(): Settings {
       ...parsed,
       adjustments: sanitizeAdjustments(parsed.adjustments),
       iqama: sanitizeIqama(parsed.iqama),
-      khutbah: sanitizeKhutbah(parsed.khutbah),
       motion: MOTION_MODES.includes(parsed.motion as MotionMode) ? (parsed.motion as MotionMode) : 'system',
     };
   } catch {

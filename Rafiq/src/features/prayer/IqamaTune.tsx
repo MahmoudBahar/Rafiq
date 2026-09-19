@@ -3,7 +3,6 @@ import {
   FARD_KEYS,
   IQAMA_DEFAULTS,
   IQAMA_LIMIT,
-  KHUTBAH_DEFAULT,
   clampIqama,
   isDefaultIqama,
   useSettings,
@@ -32,7 +31,6 @@ function summary(iq: IqamaOffsets): string {
 export function IqamaTune() {
   const { settings, update } = useSettings();
   const iq = settings.iqama;
-  const kh = settings.khutbah;
 
   const setDelay = (key: FardKey, delta: number) => {
     update({ iqama: { ...iq, [key]: clampIqama(iq[key] + delta) } });
@@ -42,10 +40,10 @@ export function IqamaTune() {
     <TunerSection
       title="الإقامة"
       summary={summary(iq)}
-      tuned={!isDefaultIqama(iq) || kh !== KHUTBAH_DEFAULT}
-      hint="الدقائق بين الأذان والإقامة لكل صلاة كما في مسجدك، وبين أذان الجمعة الأول وصعود الإمام المنبر. صفر يعطّل."
+      tuned={!isDefaultIqama(iq)}
+      hint="الدقائق بين الأذان والإقامة لكل صلاة كما في مسجدك. صفر يعطّل الإقامة."
       resetLabel="إعادة الافتراضي"
-      onReset={() => update({ iqama: IQAMA_DEFAULTS, khutbah: KHUTBAH_DEFAULT })}
+      onReset={() => update({ iqama: IQAMA_DEFAULTS })}
     >
       {FARD_PRAYERS.map((p) => {
         const value = iq[p.key];
@@ -61,14 +59,6 @@ export function IqamaTune() {
           />
         );
       })}
-      <StepperRow
-        label="الخطبة (الجمعة)"
-        value={formatDelay(kh)}
-        neutral={kh === KHUTBAH_DEFAULT}
-        atMin={kh <= 0}
-        atMax={kh >= IQAMA_LIMIT}
-        onStep={(d) => update({ khutbah: clampIqama(kh + d) })}
-      />
     </TunerSection>
   );
 }

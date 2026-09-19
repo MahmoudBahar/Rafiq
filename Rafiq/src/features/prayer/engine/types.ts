@@ -38,16 +38,12 @@ export interface PrayerConfig {
   adjustments: Adjustments;
   /** Minutes from adhan to iqama per prayer; 0 = no iqama. */
   iqama: IqamaOffsets;
-  /** Friday: minutes from Dhuhr's first adhan to the adhan of the khutbah; 0 = off. */
-  khutbah: number;
 }
 
 export interface PrayerTime extends PrayerDef {
   at: Date;
-  /** Iqama moment; null for sunrise, for prayers whose delay is 0, and for Friday's Dhuhr. */
+  /** Iqama moment; null for sunrise and for prayers whose delay is 0. */
   iqama: Date | null;
-  /** Friday's Dhuhr only: the adhan of the khutbah (the imam on the minbar); null otherwise or when off. */
-  khutbah: Date | null;
 }
 
 /** One calendar day of times plus the neighbours the UI needs (sun arc, post-Isha wrap). */
@@ -63,8 +59,8 @@ export interface DayTimes {
   nextSunrise: Date;
 }
 
-/** What the home countdown runs toward: an adhan, that prayer's iqama, Friday's khutbah adhan, or sunrise (end of Fajr). */
-export type EventKind = 'adhan' | 'iqama' | 'khutbah' | 'sunrise';
+/** What the home countdown runs toward: an adhan, that prayer's iqama, or sunrise (end of Fajr). */
+export type EventKind = 'adhan' | 'iqama' | 'sunrise';
 
 export interface NextEvent {
   kind: EventKind;

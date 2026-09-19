@@ -17,10 +17,10 @@ export function usePrayerConfig(): PrayerConfig {
       ? (nearestCity(settings.coords)?.city ?? settings.coords)
       : cityByName(settings.city);
   const { latitude, longitude } = source;
-  const { method, madhab, khutbah } = settings;
+  const { method, madhab } = settings;
   const tuneKey = JSON.stringify([settings.adjustments, settings.iqama]);
   return useMemo(() => {
     const [adjustments, iqama] = JSON.parse(tuneKey) as [Adjustments, IqamaOffsets];
-    return { coords: { latitude, longitude }, method, madhab, adjustments, iqama, khutbah };
-  }, [latitude, longitude, method, madhab, khutbah, tuneKey]);
+    return { coords: { latitude, longitude }, method, madhab, adjustments, iqama };
+  }, [latitude, longitude, method, madhab, tuneKey]);
 }

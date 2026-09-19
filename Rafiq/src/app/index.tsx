@@ -54,8 +54,6 @@ function eventLabels(next: NextEvent): { title: string; sub: string } {
   switch (next.kind) {
     case 'iqama':
       return { title: `إقامة · ${next.name}`, sub: `تقام الصلاة الساعة ${at}` };
-    case 'khutbah':
-      return { title: 'أذان الخطبة · الجمعة', sub: `يصعد الإمام المنبر الساعة ${at}` };
     case 'sunrise':
       return { title: 'الشروق · نهاية وقت الفجر', sub: `الشروق الساعة ${at}` };
     default:

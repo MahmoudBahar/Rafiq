@@ -92,7 +92,6 @@ export default function PrayerScreen() {
     if (!today) return { label: isDuha ? 'ينتهي وقتها' : 'ينتهي الوقت', value: formatTime12(windowEnd) };
     const t = now.getTime();
     if (t < start.getTime()) return { label: isDuha ? 'تبدأ الضحى بعد' : 'يتبقى على الأذان', at: start };
-    if (row.khutbah && t < row.khutbah.getTime()) return { label: 'يتبقى على أذان الخطبة', at: row.khutbah };
     if (!isDuha && row.iqama && t < row.iqama.getTime()) return { label: 'يتبقى على الإقامة', at: row.iqama };
     if (t < windowEnd.getTime()) return { label: 'ينتهي الوقت بعد', at: windowEnd };
     return { label: isDuha ? 'انتهى وقتها' : 'انتهى الوقت', value: formatTime12(windowEnd) };
@@ -104,24 +103,17 @@ export default function PrayerScreen() {
           { label: 'من', at: new Date(row.at.getTime() + DUHA_AFTER_SUNRISE_MIN * MIN_MS) },
           { label: 'إلى', at: new Date((times.find((t) => t.key === 'dhuhr')?.at.getTime() ?? 0) - DUHA_BEFORE_DHUHR_MIN * MIN_MS) },
         ]
-      : row.khutbah
+      : row.iqama
         ? [
             { label: 'الأذان', at: row.at },
-            { label: 'الخطبة', at: row.khutbah },
+            { label: 'الإقامة', at: row.iqama },
           ]
-        : row.iqama
-          ? [
-              { label: 'الأذان', at: row.at },
-              { label: 'الإقامة', at: row.iqama },
-            ]
-          : [{ label: 'الأذان', at: row.at }];
+        : [{ label: 'الأذان', at: row.at }];
 
   const delay = key === 'sunrise' ? 0 : settings.iqama[key];
-  const fardNote = row.khutbah
-    ? `أذان الخطبة ${formatTime12(row.khutbah)} · ثم الخطبة فالصلاة`
-    : row.iqama
-      ? `الإقامة ${formatTime12(row.iqama)} · بعد الأذان بـ ${toArabicIndic(delay)} دقيقة`
-      : 'بلا إقامة محددة';
+  const fardNote = row.iqama
+    ? `الإقامة ${formatTime12(row.iqama)} · بعد الأذان بـ ${toArabicIndic(delay)} دقيقة`
+    : 'بلا إقامة محددة';
 
   // Layout: the band is the home header's measured height so its edge stays
   // put across the transition. The card sits fully inside it, a fixed margin
