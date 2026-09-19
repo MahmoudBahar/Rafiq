@@ -5,11 +5,13 @@
 Rafiq shows the next prayer with a live countdown, today's full timetable, the Hijri date, and a sun-and-moon arc that tracks the day. It is ad-free, works offline, and is designed to be calm rather than busy.
 
 <p align="center">
-  <img src="docs/screenshots/onboarding-welcome.png" width="180" alt="Welcome screen" />
-  <img src="docs/screenshots/onboarding-location.png" width="180" alt="Location step" />
-  <img src="docs/screenshots/home-light.png" width="180" alt="Home, light theme" />
-  <img src="docs/screenshots/home-dark.png" width="180" alt="Home, dark theme" />
-  <img src="docs/screenshots/settings-light.png" width="180" alt="Settings" />
+  <img src="docs/screenshots/onboarding-welcome.jpg" width="180" alt="Welcome screen" />
+  <img src="docs/screenshots/onboarding-location.jpg" width="180" alt="Location step" />
+  <img src="docs/screenshots/home.jpg" width="180" alt="Home" />
+  <img src="docs/screenshots/prayer-page.jpg" width="180" alt="Prayer page with Sunnah timeline" />
+  <img src="docs/screenshots/month-table.jpg" width="180" alt="Monthly timetable" />
+  <img src="docs/screenshots/settings.jpg" width="180" alt="Settings" />
+  <img src="docs/screenshots/calculation-method.jpg" width="180" alt="Calculation method picker" />
 </p>
 
 ## Features
