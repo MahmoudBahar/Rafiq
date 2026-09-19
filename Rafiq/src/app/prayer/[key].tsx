@@ -32,6 +32,8 @@ const DUHA_BEFORE_DHUHR_MIN = 10;
  * travel happened in its last few frames.)
  */
 const EXIT_MS = 300;
+/** Space between the card's bottom and the band's rounded edge. */
+const BAND_MARGIN = 22;
 
 const isPrayerKey = (k: string | undefined): k is PrayerKey => PRAYERS.some((p) => p.key === k);
 
@@ -113,15 +115,15 @@ export default function PrayerScreen() {
     ? `الإقامة ${formatTime12(row.iqama)} · بعد الأذان بـ ${toArabicIndic(delay)} دقيقة`
     : 'بلا إقامة محددة';
 
-  // Layout: back row, the frozen arc, then the card tucked just under the arc box
-  // (the horizon sits 24 units above the box's bottom, so corner discs stay clear).
-  const arcTop = insets.top + 48;
-  const heroTop = arcTop + ARC_HEIGHT - 4;
+  // Layout: the band is the home header's measured height so its edge stays
+  // put across the transition. The card sits fully inside it, a fixed margin
+  // above the edge; the arc box sits just above the card (the horizon is 24
+  // units above the box's bottom, so corner discs stay clear of the card).
   const heroH = HERO_H;
-  // The band is the home header's measured height so its edge stays put across
-  // the transition.
   const homeBand = Number(params.band);
-  const bandH = Number.isFinite(homeBand) && homeBand > 0 ? homeBand : heroTop + heroH + 22;
+  const bandH = Number.isFinite(homeBand) && homeBand > 0 ? homeBand : insets.top + 48 + ARC_HEIGHT - 4 + heroH + BAND_MARGIN;
+  const heroTop = bandH - BAND_MARGIN - heroH;
+  const arcTop = heroTop - ARC_HEIGHT + 4;
 
   // Morph progress and the reverse on the back button. Hardware back stays
   // native so Android's predictive peek keeps working.
