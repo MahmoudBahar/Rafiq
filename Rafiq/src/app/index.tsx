@@ -53,7 +53,7 @@ function eventLabels(next: NextEvent): { title: string; sub: string } {
   const at = formatTime12(next.at);
   switch (next.kind) {
     case 'iqama':
-      return { title: `الإقامة · ${next.name}`, sub: `تقام الصلاة الساعة ${at}` };
+      return { title: `إقامة ${next.name}`, sub: `تقام الصلاة الساعة ${at}` };
     case 'sunrise':
       return { title: 'الشروق · نهاية وقت الفجر', sub: `الشروق الساعة ${at}` };
     default:
