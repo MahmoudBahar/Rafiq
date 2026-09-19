@@ -192,6 +192,9 @@ export default function HomeScreen() {
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
   const place = country ? `${city}، ${country}` : city;
   const labels = eventLabels(next);
+  // The prayer page draws its sky band at exactly this height, so the band's
+  // rounded edge does not move between the two screens.
+  const [headerH, setHeaderH] = useState(0);
   const openPrayer = (off: number, key: PrayerKey, rect: RowRect) => {
     router.push({
       pathname: '/prayer/[key]',
@@ -201,6 +204,7 @@ export default function HomeScreen() {
         y: String(rect.y),
         h: String(rect.h),
         hl: highlightFor(off) === key ? '1' : '0',
+        band: String(headerH),
       },
     });
   };
@@ -213,7 +217,10 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      <View
+        style={[styles.header, { paddingTop: insets.top + 16 }]}
+        onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+      >
         <GradientBackground />
         <StarField visibility={sky.stars} />
         <View style={styles.topRow}>

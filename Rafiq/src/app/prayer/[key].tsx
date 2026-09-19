@@ -43,7 +43,7 @@ export default function PrayerScreen() {
   const { settings } = useSettings();
   const cfg = usePrayerConfig();
   const { now, next } = useCountdown(cfg);
-  const params = useLocalSearchParams<'/prayer/[key]', { day?: string; y?: string; h?: string; hl?: string }>();
+  const params = useLocalSearchParams<'/prayer/[key]', { day?: string; y?: string; h?: string; hl?: string; band?: string }>();
 
   const key: PrayerKey = isPrayerKey(params.key) ? params.key : 'fajr';
   const date = useMemo(() => parseIsoDate(params.day) ?? new Date(), [params.day]);
@@ -88,7 +88,10 @@ export default function PrayerScreen() {
   const arcTop = insets.top + 48;
   const heroTop = arcTop + ARC_HEIGHT - 4;
   const heroH = live ? HERO_LIVE_H : HERO_H;
-  const bandH = heroTop + heroH + 22;
+  // The band is the home header's measured height so its edge stays put across
+  // the transition; the taller live card overhangs that edge a little.
+  const homeBand = Number(params.band);
+  const bandH = Number.isFinite(homeBand) && homeBand > 0 ? homeBand : heroTop + heroH + 22;
 
   // Morph progress and the reverse on the back button. Hardware back stays
   // native so Android's predictive peek keeps working.
