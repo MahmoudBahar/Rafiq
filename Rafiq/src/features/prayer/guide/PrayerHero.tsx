@@ -5,6 +5,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import { formatTime12 } from '@/shared/lib/arabic';
@@ -98,6 +99,10 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
   const originH = useSharedValue(valid ? origin.h : settledH);
   const kicked = useRef(false);
   const [landed, setLanded] = useState(reduced);
+  // The shadow fades in once after landing (a blurred view is costly to fade,
+  // but this is one short fade on a settled page) and cuts out at the first
+  // frame of the return so it never rides back at full size.
+  const shadowIn = useSharedValue(reduced ? 1 : 0);
   useLayoutEffect(() => {
     if (kicked.current) return;
     kicked.current = true;
@@ -108,6 +113,9 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
     const id = setTimeout(() => setLanded(true), SHADOW_MS);
     return () => clearTimeout(id);
   }, [reduced]);
+  useEffect(() => {
+    if (landed && !reduced) shadowIn.set(withTiming(1, { duration: 220 }));
+  }, [landed, reduced, shadowIn]);
 
   // The next prayer's row is drawn in the hero colours; its page keeps them.
   const highlighted = origin?.highlighted ?? false;
@@ -127,7 +135,7 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
   }));
   // 2. The shadow shows only while the card is settled: on the way back it must
   // not ride along at full size (it is a full-size view inside the container).
-  const shadow = useAnimatedStyle(() => ({ opacity: progress.get() > 0.98 ? 1 : 0 }));
+  const shadow = useAnimatedStyle(() => ({ opacity: progress.get() > 0.98 ? shadowIn.get() : 0 }));
   const paint = { backgroundColor: bg };
   // Every style below reads `progress` directly: a helper worklet called from
   // these styles was seen with a frozen value on the UI thread.

@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
 import { dayMonthString, isSameDay, parseIsoDate, weekdayName } from '@/shared/lib/gregorian';
 import { useMotion } from '@/shared/lib/motion';
+import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { ARC_HEIGHT } from '@/features/prayer/sky';
 import { useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -98,10 +99,14 @@ export default function PrayerScreen() {
   // the time the card lands; the stack's pop then runs on an invisible screen.
   const pageOp = useSharedValue(1);
   const leaving = useRef(false);
+  // Hardware / gesture back plays the same return as the button; once the
+  // return has started the guard lifts so the final pop goes through.
+  const [returning, setReturning] = useState(false);
   const back = useCallback(() => router.back(), [router]);
-  const exit = () => {
+  const exit = useCallback(() => {
     if (leaving.current) return;
     leaving.current = true;
+    setReturning(true);
     if (reduced) {
       back();
       return;
@@ -116,7 +121,8 @@ export default function PrayerScreen() {
         if (finished) scheduleOnRN(back);
       }),
     );
-  };
+  }, [back, bodyOp, pageOp, progress, reduced]);
+  usePreventBack(!returning, exit);
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
   const pageStyle = useAnimatedStyle(() => ({ opacity: pageOp.get() }));
 
