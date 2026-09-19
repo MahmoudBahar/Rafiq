@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 import { PRAYERS, getTimes, type PrayerKey } from '@/features/prayer/engine';
 import { DUHA_AFTER_SUNRISE_MIN, frozenSky } from '@/features/prayer/guide/frozenSky';
-import { HERO_H, HERO_LIVE_H, PrayerHero, type HeroOrigin, type HeroTime } from '@/features/prayer/guide/PrayerHero';
+import { HERO_H, PrayerHero, type HeroFoot, type HeroOrigin, type HeroTime } from '@/features/prayer/guide/PrayerHero';
 import { RawatibStrip } from '@/features/prayer/guide/RawatibStrip';
 import { SkyBand } from '@/features/prayer/guide/SkyBand';
 import { PATH_START_MS, SunnahPath } from '@/features/prayer/guide/SunnahPath';
@@ -42,7 +42,7 @@ export default function PrayerScreen() {
   const { reduced } = useMotion();
   const { settings } = useSettings();
   const cfg = usePrayerConfig();
-  const { now, next } = useCountdown(cfg);
+  const { now } = useCountdown(cfg);
   const params = useLocalSearchParams<'/prayer/[key]', { day?: string; y?: string; h?: string; hl?: string; band?: string }>();
 
   const key: PrayerKey = isPrayerKey(params.key) ? params.key : 'fajr';
@@ -63,7 +63,37 @@ export default function PrayerScreen() {
   const today = isSameDay(date, now);
   const tomorrow = isSameDay(date, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
   const dayLabel = today ? 'اليوم' : tomorrow ? 'غداً' : `${weekdayName(date)} ${dayMonthString(date)}`;
-  const live = today && next.key === key && !next.isTomorrow ? { kind: next.kind, at: next.at } : null;
+
+  // Bottom row of the card, present on every page so all cards share one
+  // height: a ticking countdown to whatever this prayer's window reaches
+  // next, or the window's end once it has passed / on other days.
+  const windowEnd = useMemo(() => {
+    const at = (k: PrayerKey) => times.find((t) => t.key === k)?.at ?? row.at;
+    switch (key) {
+      case 'fajr':
+        return at('sunrise');
+      case 'sunrise':
+        return new Date(at('dhuhr').getTime() - DUHA_BEFORE_DHUHR_MIN * MIN_MS);
+      case 'dhuhr':
+        return at('asr');
+      case 'asr':
+        return at('maghrib');
+      case 'maghrib':
+        return at('isha');
+      default:
+        return getTimes(cfg, new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1))[0].at;
+    }
+  }, [cfg, date, key, row.at, times]);
+  const foot: HeroFoot = (() => {
+    const isDuha = key === 'sunrise';
+    const start = isDuha ? new Date(row.at.getTime() + DUHA_AFTER_SUNRISE_MIN * MIN_MS) : row.at;
+    if (!today) return { label: isDuha ? 'ينتهي وقتها' : 'ينتهي الوقت', value: formatTime12(windowEnd) };
+    const t = now.getTime();
+    if (t < start.getTime()) return { label: isDuha ? 'تبدأ الضحى بعد' : 'يتبقى على الأذان', at: start };
+    if (!isDuha && row.iqama && t < row.iqama.getTime()) return { label: 'يتبقى على الإقامة', at: row.iqama };
+    if (t < windowEnd.getTime()) return { label: 'ينتهي الوقت بعد', at: windowEnd };
+    return { label: isDuha ? 'انتهى وقتها' : 'انتهى الوقت', value: formatTime12(windowEnd) };
+  })();
 
   const heroTimes: HeroTime[] =
     key === 'sunrise'
@@ -87,9 +117,9 @@ export default function PrayerScreen() {
   // (the horizon sits 24 units above the box's bottom, so corner discs stay clear).
   const arcTop = insets.top + 48;
   const heroTop = arcTop + ARC_HEIGHT - 4;
-  const heroH = live ? HERO_LIVE_H : HERO_H;
+  const heroH = HERO_H;
   // The band is the home header's measured height so its edge stays put across
-  // the transition; the taller live card overhangs that edge a little.
+  // the transition.
   const homeBand = Number(params.band);
   const bandH = Number.isFinite(homeBand) && homeBand > 0 ? homeBand : heroTop + heroH + 22;
 
@@ -161,7 +191,7 @@ export default function PrayerScreen() {
           rowTime={formatTime12(row.at)}
           dayLabel={dayLabel}
           times={heroTimes}
-          live={live}
+          foot={foot}
           origin={origin}
           progress={progress}
           top={heroTop}

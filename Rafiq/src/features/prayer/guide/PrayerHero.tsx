@@ -14,11 +14,10 @@ import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Display, Text } from '@/shared/ui/Text';
 import { CountdownDigits } from '../CountdownDigits';
-import type { EventKind } from '../engine';
 
-/** Card height once settled, with and without the live countdown row. */
-export const HERO_H = 158;
-export const HERO_LIVE_H = 204;
+
+/** Card height once settled; every page's card has the bottom row, so one height. */
+export const HERO_H = 204;
 export const HERO_MARGIN = 20;
 /**
  * The background is three pieces so the card can change height without a
@@ -65,8 +64,8 @@ interface PrayerHeroProps {
   dayLabel: string;
   /** Adhan / iqama, or the Duha window. */
   times: HeroTime[];
-  /** Live countdown when this page's prayer is what the home screen counts to. */
-  live: { kind: EventKind; at: Date } | null;
+  /** Bottom row: a ticking countdown (`at`) or a static value. */
+  foot: HeroFoot;
   origin: HeroOrigin | null;
   /** Morph progress owned by the screen: 0 = on the row, 1 = settled. */
   progress: SharedValue<number>;
@@ -74,22 +73,24 @@ interface PrayerHeroProps {
   top: number;
 }
 
-const LIVE_LABEL: Record<EventKind, string> = {
-  adhan: 'يتبقى على الأذان',
-  iqama: 'يتبقى على الإقامة',
-  sunrise: 'يتبقى على الشروق',
-};
+export interface HeroFoot {
+  label: string;
+  /** Counted down to, ticking. */
+  at?: Date;
+  /** Shown instead when there is nothing to count to. */
+  value?: string;
+}
 
 /**
  * The hero card. It mounts invisible, measures where it will sit, then
  * springs from the pressed row's rectangle into place while its row-styled
  * layer cross-fades into the full card.
  */
-export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, origin, progress, top }: PrayerHeroProps) {
+export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, origin, progress, top }: PrayerHeroProps) {
   const { c } = useTheme();
   const { reduced } = useMotion();
   const { height: winH } = useWindowDimensions();
-  const settledH = live ? HERO_LIVE_H : HERO_H;
+  const settledH = HERO_H;
 
   // The card's window position is its slot's `top`: this screen fills the
   // window, so no measurement round trip is needed and the spring starts
@@ -221,14 +222,18 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, live, ori
               </View>
             ))}
           </View>
-          {live ? (
-            <View style={[styles.liveRow, { borderTopColor: rule }]}>
-              <Text size={11.5} weight="semi" color={c.accent}>
-                {LIVE_LABEL[live.kind]}
+          <View style={[styles.liveRow, { borderTopColor: rule }]}>
+            <Text size={11.5} weight="semi" color={foot.at ? c.accent : inkSoft} style={!foot.at && highlighted && styles.soft}>
+              {foot.label}
+            </Text>
+            {foot.at ? (
+              <CountdownDigits at={foot.at} size={22} color={ink} />
+            ) : (
+              <Text size={19} weight="bold" color={ink} style={styles.tabular}>
+                {foot.value}
               </Text>
-              <CountdownDigits at={live.at} size={22} color={ink} />
-            </View>
-          ) : null}
+            )}
+          </View>
         </Animated.View>
       </Animated.View>
     </View>
