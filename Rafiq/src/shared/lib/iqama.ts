@@ -25,3 +25,10 @@ export function sanitizeIqama(raw: unknown): IqamaOffsets {
 }
 
 export const isDefaultIqama = (iq: IqamaOffsets): boolean => FARD_KEYS.every((k) => iq[k] === IQAMA_DEFAULTS[k]);
+
+/** Friday: minutes from the first adhan to the adhan of the khutbah (the imam on the minbar); 0 = off. */
+export const KHUTBAH_DEFAULT = 20;
+export const sanitizeKhutbah = (raw: unknown): number => {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return raw !== undefined && Number.isFinite(n) ? clampIqama(n) : KHUTBAH_DEFAULT;
+};

@@ -32,13 +32,20 @@ function build(cfg: PrayerConfig, date: Date): PrayerTimes {
 
 const MIN_MS = 60_000;
 
-/** The six rows with each prayer's iqama attached. */
-function timesOf(pt: PrayerTimes, cfg: PrayerConfig): PrayerTime[] {
+const FRIDAY = 5;
+
+/** The six rows with each prayer's iqama attached; Friday's Dhuhr carries the khutbah adhan instead. */
+function timesOf(pt: PrayerTimes, cfg: PrayerConfig, date: Date): PrayerTime[] {
+  const jumuah = date.getDay() === FRIDAY;
   return PRAYERS.map((p) => {
     const at = pt[p.key];
+    if (jumuah && p.key === 'dhuhr') {
+      const khutbah = cfg.khutbah > 0 ? new Date(at.getTime() + cfg.khutbah * MIN_MS) : null;
+      return { ...p, at, iqama: null, khutbah };
+    }
     const delay = p.isPrayer ? cfg.iqama[p.key as keyof typeof cfg.iqama] : 0;
     const iqama = p.isPrayer && delay > 0 ? new Date(at.getTime() + delay * MIN_MS) : null;
-    return { ...p, at, iqama };
+    return { ...p, at, iqama, khutbah: null };
   });
 }
 
@@ -49,7 +56,7 @@ function shiftDays(date: Date, days: number): Date {
 }
 
 export function getTimes(cfg: PrayerConfig, date: Date): PrayerTime[] {
-  return timesOf(build(cfg, date), cfg);
+  return timesOf(build(cfg, date), cfg, date);
 }
 
 export function timeFor(key: PrayerKey, cfg: PrayerConfig, date: Date): Date {
@@ -60,7 +67,7 @@ export function timeFor(key: PrayerKey, cfg: PrayerConfig, date: Date): Date {
 export function computeDay(cfg: PrayerConfig, date: Date): DayTimes {
   const today = build(cfg, date);
   const tomorrow = build(cfg, shiftDays(date, 1));
-  const times = timesOf(today, cfg);
+  const times = timesOf(today, cfg, date);
   const byKey = Object.fromEntries(times.map((t) => [t.key, t.at])) as Record<PrayerKey, Date>;
   return { times, byKey, sunset: today.sunset, nextFajr: tomorrow.fajr, nextSunrise: tomorrow.sunrise };
 }
@@ -83,6 +90,9 @@ export function dayEvents(day: DayTimes): DayEvent[] {
     const following = day.times[i + 1]?.at ?? day.nextFajr;
     if (p.iqama && p.iqama.getTime() < following.getTime()) {
       out.push({ kind: 'iqama', key: p.key, name: p.name, at: p.iqama });
+    }
+    if (p.khutbah && p.khutbah.getTime() < following.getTime()) {
+      out.push({ kind: 'khutbah', key: p.key, name: 'الجمعة', at: p.khutbah });
     }
   });
   return out;
