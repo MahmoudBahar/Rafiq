@@ -7,6 +7,9 @@ import { PressScale } from '@/shared/ui/PressScale';
 import { Text } from '@/shared/ui/Text';
 import type { PrayerKey, PrayerTime } from './engine';
 
+/** Space between rows. The prayer page's card needs it to lay its shadow the way a row's falls. */
+export const ROW_GAP = 7;
+
 /** Window-relative rectangle of a pressed row, in dp, for the page morph. */
 export interface RowRect {
   x: number;
@@ -19,14 +22,16 @@ interface PrayerListProps {
   times: readonly PrayerTime[];
   /** Highlighted row; null when no row on this day is "next" (other days, or after Isha). */
   nextKey: PrayerKey | null;
+  /** The row open as a prayer page right now: its place is kept, but it is not drawn. */
+  hiddenKey?: PrayerKey | null;
   onPressPrayer?: (key: PrayerKey, rect: RowRect) => void;
 }
 
-export function PrayerList({ times, nextKey, onPressPrayer }: PrayerListProps) {
+export function PrayerList({ times, nextKey, hiddenKey = null, onPressPrayer }: PrayerListProps) {
   return (
     <View style={styles.list}>
       {times.map((p) => (
-        <Row key={p.key} time={p} isNext={p.key === nextKey} onPress={onPressPrayer} />
+        <Row key={p.key} time={p} isNext={p.key === nextKey} hidden={p.key === hiddenKey} onPress={onPressPrayer} />
       ))}
     </View>
   );
@@ -35,10 +40,11 @@ export function PrayerList({ times, nextKey, onPressPrayer }: PrayerListProps) {
 interface RowProps {
   time: PrayerTime;
   isNext: boolean;
+  hidden: boolean;
   onPress?: (key: PrayerKey, rect: RowRect) => void;
 }
 
-function Row({ time: p, isNext, onPress }: RowProps) {
+function Row({ time: p, isNext, hidden, onPress }: RowProps) {
   const { c } = useTheme();
   const box = useRef<View>(null);
   const nameColor = isNext ? c.herotext : p.isPrayer ? c.tp : c.tm;
@@ -58,7 +64,7 @@ function Row({ time: p, isNext, onPress }: RowProps) {
 
   return (
     // The measured wrapper: `collapsable={false}` keeps it a real native view on Android.
-    <View ref={box} collapsable={false}>
+    <View ref={box} collapsable={false} style={hidden ? styles.hidden : undefined}>
       <PressScale
         accessibilityRole="button"
         accessibilityLabel={`${p.name} ${adhan}`}
@@ -94,7 +100,8 @@ function Row({ time: p, isNext, onPress }: RowProps) {
 }
 
 const styles = StyleSheet.create({
-  list: { gap: 7 },
+  hidden: { opacity: 0 },
+  list: { gap: ROW_GAP },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

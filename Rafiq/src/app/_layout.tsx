@@ -29,6 +29,9 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.documentElement.setAttribute('lang', 'ar');
 }
 
+// A deep link into a pushed page still gets the tabs beneath it to go back to.
+export const unstable_settings = { anchor: '(tabs)' };
+
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -83,7 +86,7 @@ function RootStack() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
         <Stack.Protected guard={settings.onboarded}>
-          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="month" options={{ animation: 'fade' }} />
           {/* The page morphs from the pressed row itself; the stack only fades. It is
@@ -91,6 +94,16 @@ function RootStack() {
               back the page dissolves while the card travels and lands on its row. */}
           <Stack.Screen
             name="prayer/[key]"
+            options={{
+              presentation: 'transparentModal',
+              animation: 'fade',
+              animationDuration: 180,
+              contentStyle: { backgroundColor: 'transparent' },
+            }}
+          />
+          {/* Same arrangement for the azkar reader: the dial stays beneath it and its ground rises into the page. */}
+          <Stack.Screen
+            name="azkar/[set]"
             options={{
               presentation: 'transparentModal',
               animation: 'fade',

@@ -46,6 +46,18 @@ export const dark: Palette = {
   shadow: 'rgba(0,0,0,0.4)',
 };
 
+/**
+ * The azkar dial paints its own sky: morning is always the light sky and
+ * evening the night sky, whatever the app theme, because there the sky is the
+ * subject rather than the chrome. Text that sits on it takes its colours here.
+ */
+export const dialSky = {
+  morning: { top: light.skytop, bot: light.skybot, text: light.tp, sub: light.ts, muted: light.tm },
+  evening: { top: dark.skytop, bot: dark.skybot, text: dark.tp, sub: dark.ts, muted: dark.tm },
+  dusk: light.accent,
+  moon: dark.hero,
+} as const;
+
 export const fonts = {
   display: 'ScheherazadeNew_400Regular',
   displayBold: 'ScheherazadeNew_700Bold',

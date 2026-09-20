@@ -3,8 +3,8 @@ import { Platform } from 'react-native';
 
 /**
  * The app's haptic vocabulary, kept deliberately small: the wheel's detents
- * and end stops, the day pager locking into place, the nav bar tabs, and the
- * fine-tune steppers.
+ * and end stops, the day pager locking into place, the nav bar tabs, the
+ * fine-tune steppers, and the tasbih beads of the azkar reader.
  * Fire-and-forget, React-free and safe to call from `scheduleOnRN`. On
  * Android the system `performHapticFeedback` constants are used: expo's
  * impact styles there are 40–60 ms waveforms that read as a buzz.
@@ -41,4 +41,20 @@ export function detent() {
 /** A hard end: the wheel pushed past its last row, a stepper at its limit. */
 export function stop() {
   androidOr(Haptics.AndroidHaptics.Long_Press, impact(Haptics.ImpactFeedbackStyle.Heavy));
+}
+
+const BEAD_GAP_MS = 25;
+let lastBead = 0;
+
+/** A tasbih bead sliding across. Throttled for fast tapping. */
+export function bead() {
+  const t = Date.now();
+  if (t - lastBead < BEAD_GAP_MS) return;
+  lastBead = t;
+  androidOr(Haptics.AndroidHaptics.Clock_Tick, impact(Haptics.ImpactFeedbackStyle.Soft));
+}
+
+/** A zekr, or the whole set, completed. */
+export function success() {
+  androidOr(Haptics.AndroidHaptics.Confirm, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
 }

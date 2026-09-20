@@ -13,6 +13,7 @@ import { CountdownDigits } from '@/features/prayer/CountdownDigits';
 import { DayCarousel, DaySwipeSurface } from '@/features/prayer/DayCarousel';
 import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
 import { COUNTRY, DEFAULT_CITY, getTimes, type NextEvent, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
+import { useOpenRow } from '@/features/prayer/openRow';
 import { PrayerList, type RowRect } from '@/features/prayer/PrayerList';
 import { SkyArc } from '@/features/prayer/SkyArc';
 import { StarField } from '@/features/prayer/StarField';
@@ -30,13 +31,11 @@ import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronDownIcon, GearIcon, PinIcon } from '@/shared/ui/Icons';
 import { PressScale } from '@/shared/ui/PressScale';
-import { TabBar } from '@/shared/ui/TabBar';
+import { useTabBarInset } from '@/shared/ui/TabBar';
+import { TabScene } from '@/shared/ui/TabScene';
 import { Text } from '@/shared/ui/Text';
 import { TipBubble } from '@/shared/ui/TipBubble';
-import { Toast } from '@/shared/ui/Toast';
 
-const TOAST_MS = 1800;
-const TAB_BAR_HEIGHT = 58;
 const DAY_MS = 86_400_000;
 // First-launch tutorial: a swipe hint, then a "tap the date" tip. Each step
 // shows on at most HINT_MAX launches and stops for good once used.
@@ -85,6 +84,7 @@ export default function HomeScreen() {
     [hintDone, update],
   );
   const carousel = useDayCarousel(dayOffset, commit);
+  const openRow = useOpenRow();
 
   // Date tip: the header date block pulses under a small bubble.
   const [dateHint, setDateHint] = useState(false);
@@ -173,21 +173,7 @@ export default function HomeScreen() {
   }, [pillShowing, m.reduced, slotH]);
   const slotStyle = useAnimatedStyle(() => ({ height: slotH.get() }));
 
-  const [toast, setToast] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = () => {
-    setToast(true);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(false), TOAST_MS);
-  };
-  useEffect(
-    () => () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
-  const tabBottom = insets.bottom + 14;
+  const tabInset = useTabBarInset();
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
   const place = country ? `${city}، ${country}` : city;
@@ -216,7 +202,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+    <TabScene name="index" side="start" launch style={{ backgroundColor: c.bg }}>
       <View
         style={[styles.header, { paddingTop: insets.top + 16 }]}
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
@@ -279,7 +265,7 @@ export default function HomeScreen() {
 
       <DaySwipeSurface gesture={carousel.gesture}>
         <ScrollView
-          contentContainerStyle={[styles.listContent, { paddingBottom: tabBottom + TAB_BAR_HEIGHT + 16 }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabInset + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={slotStyle} />
@@ -290,6 +276,7 @@ export default function HomeScreen() {
               <PrayerList
                 times={timesByOffset.get(off) ?? day.times}
                 nextKey={highlightFor(off)}
+                hiddenKey={openRow && openRow.day === isoDate(new Date(y, mo, d + off)) ? openRow.key : null}
                 onPressPrayer={(key, rect) => openPrayer(off, key, rect)}
               />
             )}
@@ -298,18 +285,11 @@ export default function HomeScreen() {
         <DayPill date={dayOffset !== 0 ? viewDate : null} hint={hint} onToday={() => carousel.go(-dayOffset)} />
       </DaySwipeSurface>
 
-      <TabBar bottom={tabBottom} onComingSoon={showToast} />
-      <Toast
-        message="قريبًا في الإصدار القادم إِنْ شَاءَ اللّٰه"
-        visible={toast}
-        bottom={tabBottom + TAB_BAR_HEIGHT + 14}
-      />
-    </View>
+    </TabScene>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   header: {
     paddingHorizontal: 24,
     borderBottomStartRadius: 32,
