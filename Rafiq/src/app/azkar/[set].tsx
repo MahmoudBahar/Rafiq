@@ -16,13 +16,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 import { AZKAR_SETS, isAzkarSetId, type AzkarSetId } from '@/features/azkar/data';
 import { flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
-import { BeadStrand, roundAt, roundsOf } from '@/features/azkar/reader/BeadStrand';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
 import { ZekrPage } from '@/features/azkar/reader/ZekrPage';
 import { useAzkarClock } from '@/features/azkar/time';
 import { DayCarousel } from '@/features/prayer/DayCarousel';
-import { useDayCarousel } from '@/features/prayer/useDayCarousel';
+import { COL_PAD, useDayCarousel } from '@/features/prayer/useDayCarousel';
 import { toArabicIndic } from '@/shared/lib/arabic';
 import { bead, success } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
@@ -57,7 +56,7 @@ export default function AzkarReaderScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { c } = useTheme();
-  const { reduced, fadeIn } = useMotion();
+  const { reduced } = useMotion();
 
   const valid = isAzkarSetId(params.set);
   const setId: AzkarSetId = isAzkarSetId(params.set) ? params.set : 'morning';
@@ -84,11 +83,14 @@ export default function AzkarReaderScreen() {
 
   // Counting state for the page in view, on the UI thread.
   const count = useSharedValue(said);
+  // The page `count` speaks for. Each page's strand follows `count` only while it is that page.
+  const owner = useSharedValue(index);
   const target = useSharedValue(total);
   const locked = useSharedValue(false);
   const glow = useSharedValue(0);
   useEffect(() => {
     count.set(said);
+    owner.set(index);
     target.set(total);
     locked.set(false);
     // Seeded when the page changes only: between taps the UI thread is ahead of React.
@@ -192,7 +194,6 @@ export default function AzkarReaderScreen() {
 
   if (!valid) return null;
 
-  const rounds = roundsOf(total);
   const position = index < n ? `${toArabicIndic(index + 1)} من ${toArabicIndic(n)}` : 'تمّت';
 
   return (
@@ -251,24 +252,20 @@ export default function AzkarReaderScreen() {
                             onResume={() => go(progress.firstIncomplete - n)}
                           />
                         ) : (
-                          <ZekrPage zekr={items[i]} showVirtue={showVirtue && i === index} />
+                          <ZekrPage
+                            zekr={items[i]}
+                            page={i}
+                            owner={owner}
+                            count={count}
+                            glow={glow}
+                            said={Math.min(counts[i] ?? 0, items[i].count)}
+                            width={width - COL_PAD * 2}
+                            showVirtue={showVirtue && i === index}
+                          />
                         )
                       }
                     />
                   </View>
-                  {zekr ? (
-                    <Animated.View key={zekr.id} entering={fadeIn(60, 260)} style={styles.counter}>
-                      <BeadStrand width={width} total={total} count={count} initial={said} glow={glow} />
-                      <Text size={17} weight="bold" align="center" style={styles.count}>
-                        {`${toArabicIndic(said)} من ${toArabicIndic(total)}`}
-                      </Text>
-                      <Text size={11.5} color={c.tm} align="center" style={styles.count}>
-                        {rounds > 1
-                          ? `الجولة ${toArabicIndic(roundAt(said, total))} من ${toArabicIndic(rounds)} · اضغط في أي مكان للعدّ`
-                          : 'اضغط في أي مكان للعدّ'}
-                      </Text>
-                    </Animated.View>
-                  ) : null}
                 </View>
               </GestureDetector>
 
@@ -354,8 +351,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   pages: { flex: 1, paddingTop: 52 },
-  counter: { gap: 2 },
-  count: { alignSelf: 'stretch', fontVariant: ['tabular-nums'] },
   controls: {
     position: 'absolute',
     start: 20,

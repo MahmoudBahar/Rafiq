@@ -3,11 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useTheme } from '@/shared/theme/useTheme';
 import { TabBar, useTabBarInset } from '@/shared/ui/TabBar';
-import { TAB_ENTER_MS } from '@/shared/ui/TabScene';
+import { tabTravelMs } from '@/shared/ui/tabMotion';
 import { Toast } from '@/shared/ui/Toast';
 
 const TOAST_MS = 1800;
-const HOLD_MS = TAB_ENTER_MS + 60;
 const still = () => ({ sceneStyle: {} });
 
 /**
@@ -15,13 +14,15 @@ const still = () => ({ sceneStyle: {} });
  * pill can travel between tabs; pages pushed on the root stack (settings, the
  * month table, a prayer, the azkar reader) cover it.
  *
- * The navigator's own scene fade is not used: it puts the alpha on a view of
- * its own, and Android spreads that alpha over each stacked layer of a screen
- * separately, so the azkar sky flashed its day gradient through the night one.
- * Each tab fades itself in instead (see TabScene). The navigator is still given
- * a transition, one that changes nothing, because that is what keeps the tab
- * being left attached underneath while the new one fades in over it. Tabs are
- * mounted up front so the first visit has nothing to wait for.
+ * The navigator does not animate between tabs: the pages slide themselves, in
+ * step with the pill (see TabScene). For that both pages must simply be there,
+ * side by side, so they are mounted up front and never detached. With
+ * detaching on, the native screen container re-attaches the later tab whenever
+ * the earlier one comes back, which blanked it for the first frames of the
+ * slide. The navigator is still handed a transition, one that changes
+ * nothing: without one it sets the tab being left to `display: none` on the
+ * spot, and the page would vanish instead of sliding out. A tab that is not
+ * chosen is parked off-screen by its TabScene.
  */
 export default function TabsLayout() {
   const { c } = useTheme();
@@ -45,13 +46,16 @@ export default function TabsLayout() {
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Tabs
         backBehavior="firstRoute"
+        detachInactiveScreens={false}
         tabBar={(props) => <TabBar {...props} onComingSoon={showToast} />}
         screenOptions={{
           headerShown: false,
           lazy: false,
-          sceneStyle: { backgroundColor: c.bg },
+          // Each page paints its own ground and slides with it. The navigator's scene wrapper stays
+          // put, so an opaque one would hide the neighbouring page for the whole slide.
+          sceneStyle: { backgroundColor: 'transparent' },
           sceneStyleInterpolator: still,
-          transitionSpec: { animation: 'timing', config: { duration: HOLD_MS } },
+          transitionSpec: { animation: 'timing', config: { duration: tabTravelMs(1) } },
         }}
       >
         <Tabs.Screen name="index" />

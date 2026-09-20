@@ -35,7 +35,7 @@ export default function AzkarScreen() {
   const focused = useIsFocused();
   const tabInset = useTabBarInset();
   const clock = useAzkarClock();
-  const { side, values, pan, tap, toggle } = useDial(clock.side);
+  const { side, values, pan, toggle } = useDial(clock.side);
   const progress = {
     morning: useAzkarProgress('morning', clock.dayKey),
     evening: useAzkarProgress('evening', clock.dayKey),
@@ -79,9 +79,6 @@ export default function AzkarScreen() {
           onAccessibilityAction={toggle}
         >
           <DialSky values={values} horizon={horizon} />
-          <GestureDetector gesture={tap}>
-            <View style={[styles.disc, { top: centerBottom, height: horizon - centerBottom }]} />
-          </GestureDetector>
           <DialBodies values={values} cx={size.w / 2} cy={horizon} radius={radius} />
 
           <View style={[styles.header, { top, height: HEADER_H }]} pointerEvents="none">
@@ -114,7 +111,6 @@ export default function AzkarScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  disc: { position: 'absolute', left: 0, right: 0 },
   header: { position: 'absolute', left: 0, right: 0 },
   headerLayer: { ...StyleSheet.absoluteFill, justifyContent: 'center' },
   wide: { alignSelf: 'stretch' },

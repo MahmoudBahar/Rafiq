@@ -18,6 +18,7 @@ import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { AzkarIcon, ClockIcon, CompassIcon, TasbihIcon, type IconProps } from './Icons';
 import { BAR_PAD, ICON, PILL_H, layoutFor, type BarLayout } from './tabBarLayout';
+import { tabTravelMs } from './tabMotion';
 import { Text } from './Text';
 
 export const TAB_BAR_HEIGHT = PILL_H + BAR_PAD * 2;
@@ -48,8 +49,6 @@ const LABEL_SIZE = 12.5;
 const LABEL_LINE = 19;
 /** An intrinsic-width RTL label on Android can measure a hair short and clip. */
 const LABEL_SLACK = 2;
-const BASE_MS = 420;
-const PER_TAB_MS = 60;
 /** The settle after arrival, as a fraction of the travel clock. */
 const TAIL = 0.3;
 const WOBBLE_PX = 5;
@@ -169,7 +168,7 @@ export function TabBar({ state, navigation, onComingSoon }: TabBarProps) {
       const t = table.get();
       if (t.length === 0 || to.get() === active) return;
       const now = frameAt(p.get(), from.get(), t[to.get()], to.get());
-      const distance = Math.abs(active - to.get());
+      const travel = tabTravelMs(Math.abs(active - to.get()));
       from.set({ L: now.L, R: now.R, x: now.x, lab: now.lab });
       to.set(active);
       if (reduced) {
@@ -177,7 +176,7 @@ export function TabBar({ state, navigation, onComingSoon }: TabBarProps) {
         return;
       }
       p.set(0);
-      p.set(withTiming(1 + TAIL, { duration: (BASE_MS + PER_TAB_MS * distance) * (1 + TAIL), easing: Easing.linear }));
+      p.set(withTiming(1 + TAIL, { duration: travel * (1 + TAIL), easing: Easing.linear }));
     });
   }, [active, reduced, table, from, to, p]);
 

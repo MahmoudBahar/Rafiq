@@ -48,10 +48,13 @@ function across(count: number, n: number) {
 interface BeadStrandProps {
   width: number;
   total: number;
-  /** Repetitions said so far, owned by the reader and written on the UI thread. */
+  /** This strand's page, and the page the reader's live `count` currently belongs to. */
+  page: number;
+  owner: SharedValue<number>;
+  /** Repetitions of the page in view, written on the UI thread so a bead moves with the tap. */
   count: SharedValue<number>;
-  /** The count at mount, so beads already across start there instead of travelling. */
-  initial: number;
+  /** This page's saved count: what a neighbouring page shows, and where beads start. */
+  said: number;
   /** 0 → 1 → 0 when the zekr completes. */
   glow: SharedValue<number>;
 }
@@ -62,8 +65,13 @@ interface BeadStrandProps {
  * is an analytic parabola in physical pixels, so under forced RTL the strand
  * simply runs the other way. Every bead owns one shared value that only moves
  * when that bead's side flips: a tap animates one view, not the whole strand.
+ *
+ * Each page of the reader carries its own strand, so it slides with its zekr.
+ * Only the page in view follows the live count; the others show what is saved,
+ * and so does a page for the frame in which the live count is still its
+ * predecessor's.
  */
-export function BeadStrand({ width, total, count, initial, glow }: BeadStrandProps) {
+export function BeadStrand({ width, total, page, owner, count, said, glow }: BeadStrandProps) {
   const { c } = useTheme();
   const n = beadsPerRound(total);
   const span = width - PAD * 2;
@@ -99,8 +107,10 @@ export function BeadStrand({ width, total, count, initial, glow }: BeadStrandPro
           key={i}
           index={i}
           n={n}
+          page={page}
+          owner={owner}
           count={count}
-          startsAcross={across(initial, n) > i}
+          said={said}
           glow={glow}
           size={size}
           width={width}
@@ -118,8 +128,10 @@ export function BeadStrand({ width, total, count, initial, glow }: BeadStrandPro
 interface BeadProps {
   index: number;
   n: number;
+  page: number;
+  owner: SharedValue<number>;
   count: SharedValue<number>;
-  startsAcross: boolean;
+  said: number;
   glow: SharedValue<number>;
   size: number;
   width: number;
@@ -131,10 +143,10 @@ interface BeadProps {
   lit: string;
 }
 
-function Bead({ index, n, count, startsAcross, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
-  const pos = useSharedValue(startsAcross ? 1 : 0);
+function Bead({ index, n, page, owner, count, said, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
+  const pos = useSharedValue(across(said, n) > index ? 1 : 0);
   useAnimatedReaction(
-    () => across(count.get(), n) > index,
+    () => across(owner.get() === page ? count.get() : said, n) > index,
     (over, was) => {
       if (was === null || over === was) return;
       pos.set(over ? withSpring(1, CROSS) : withDelay(index * RETURN_STAGGER_MS, withSpring(0, RETURN)));
@@ -149,7 +161,7 @@ function Bead({ index, n, count, startsAcross, glow, size, width, rtl, sRest, sD
       transform: [
         { translateX: curveX(s, width, rtl) - size / 2 },
         { translateY: curveY(s) - size / 2 },
-        { scale: 1 + 0.22 * glow.get() * (p > 0.5 ? 1 : 0) },
+        { scale: 1 + 0.22 * glow.get() * (p > 0.5 && owner.get() === page ? 1 : 0) },
       ],
     };
   });

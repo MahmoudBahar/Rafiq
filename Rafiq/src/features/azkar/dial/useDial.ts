@@ -31,8 +31,8 @@ export interface DialValues {
 const angleOf = (side: AzkarSetId) => (side === 'evening' ? 180 : 0);
 
 /**
- * The dial's rotation: a horizontal drag anywhere on the sky turns it, a
- * release (or a tap on the disc) settles it on one of the two sides with a
+ * The dial's rotation: a horizontal drag anywhere on the sky turns it (a tap
+ * does nothing, so a stray touch never swaps the set), a release settles it on one of the two sides with a
  * spring, and a detent is felt as it crosses the half-way point. `side` is the React-side answer
  * and flips as the dial crosses the half-way point.
  */
@@ -86,18 +86,6 @@ export function useDial(clockSide: AzkarSetId) {
     [settle, start, theta, touched, width],
   );
 
-  const tap = useMemo(
-    () =>
-      Gesture.Tap()
-        .maxDistance(10)
-        .onEnd((_e, ok) => {
-          if (!ok) return;
-          touched.set(true);
-          settle(goal.get() === 0 ? 180 : 0, 0);
-        }),
-    [goal, settle, touched],
-  );
-
   // The hour moved on (Fajr or Asr passed): follow it, unless the user has turned the dial themselves.
   useEffect(() => {
     const angle = angleOf(clockSide);
@@ -116,5 +104,5 @@ export function useDial(clockSide: AzkarSetId) {
   }, [goal, settle, touched]);
 
   const values: DialValues = useMemo(() => ({ theta, t }), [theta, t]);
-  return { side, values, pan, tap, toggle };
+  return { side, values, pan, toggle };
 }
