@@ -54,7 +54,7 @@ function Layer({ set, progress, onStart }: LayerProps) {
   const started = progress.counts.some((n) => n > 0);
   const action = progress.complete ? 'أعد القراءة' : started ? 'تابع' : 'ابدأ';
   const status = progress.complete
-    ? 'أتممتها اليوم، تقبّل الله'
+    ? 'أتممتها اليوم، تقبّل اللّٰه'
     : started
       ? `${toArabicIndic(progress.done)} من ${toArabicIndic(progress.total)}`
       : `${toArabicIndic(progress.total)} ذكرًا`;

@@ -1,7 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
-import { moonPath } from '@/features/prayer/moonPath';
+import Svg, { Circle, Defs, G, Path, RadialGradient, Stop } from 'react-native-svg';
 import { useOscillator } from '@/shared/lib/useOscillator';
 import { dialSky } from '@/shared/theme/tokens';
 import { SKY_DIR, type DialValues } from './useDial';
@@ -10,9 +9,21 @@ const SUN = 44;
 const MOON = 40;
 const HALO = 104;
 const RING_COLOR = 'rgba(166,138,91,0.55)';
-/** A waning crescent: lit on the left, the side the sun went down on. */
-const MOON_PHASE = 0.8;
-const MOON_R = MOON / 2;
+const MOON_R = MOON / 2 - 1;
+/**
+ * The classic crescent: a disc with a slightly smaller disc bitten out of it, so the horns wrap
+ * past the half. Drawn as one path from the two arcs between the circles' crossing points; an SVG
+ * mask would do the same at a higher cost. Lit on the left, the bite along +x before the tilt.
+ */
+const BITE_R = MOON_R * 0.842;
+const BITE_OFFSET = MOON_R * 0.416;
+const CROSS_X = (BITE_OFFSET ** 2 + MOON_R ** 2 - BITE_R ** 2) / (2 * BITE_OFFSET);
+const CROSS_Y = Math.sqrt(MOON_R ** 2 - CROSS_X ** 2);
+const CRESCENT =
+  `M${CROSS_X},${-CROSS_Y} A${MOON_R},${MOON_R} 0 1,0 ${CROSS_X},${CROSS_Y} ` +
+  `A${BITE_R},${BITE_R} 0 1,1 ${CROSS_X},${-CROSS_Y} Z`;
+/** Leaning back, the way the crescent is usually drawn; the user picked this one from drawn candidates. */
+const MOON_TILT_DEG = -48;
 
 interface DialBodiesProps {
   values: DialValues;
@@ -63,8 +74,20 @@ export function DialBodies({ values, cx, cy, radius }: DialBodiesProps) {
         <View style={[styles.sun, { backgroundColor: dialSky.dusk }]} />
       </Animated.View>
       <Animated.View style={[styles.body, { margin: -HALO / 2 }, moon]}>
-        <Svg width={MOON} height={MOON} viewBox={`${-MOON_R} ${-MOON_R} ${MOON} ${MOON}`}>
-          <Path d={moonPath(MOON_PHASE, MOON_R - 1)} fill={dialSky.moon} />
+        {/* The glow is a radial fade to nothing, centred on the lit limb. A flat translucent disc
+            here read as a coloured plate behind the moon rather than as light. */}
+        <Svg width={HALO} height={HALO} viewBox={`${-HALO / 2} ${-HALO / 2} ${HALO} ${HALO}`}>
+          <Defs>
+            <RadialGradient id="moonGlow" cx={-MOON_R * 0.35} cy={0} r={HALO / 2} gradientUnits="userSpaceOnUse">
+              <Stop offset="0" stopColor={dialSky.moon} stopOpacity={0.42} />
+              <Stop offset="0.35" stopColor={dialSky.moon} stopOpacity={0.16} />
+              <Stop offset="1" stopColor={dialSky.moon} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <G rotation={MOON_TILT_DEG}>
+            <Circle cx={0} cy={0} r={HALO / 2} fill="url(#moonGlow)" />
+            <Path d={CRESCENT} fill={dialSky.moon} />
+          </G>
         </Svg>
       </Animated.View>
     </View>

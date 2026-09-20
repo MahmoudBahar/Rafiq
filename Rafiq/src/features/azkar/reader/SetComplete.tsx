@@ -25,7 +25,7 @@ export function SetComplete({ title, done, total, onBack, onResume }: SetComplet
     <View style={styles.page}>
       <Animated.View entering={m.fadeInUp(80)} style={styles.block}>
         <Display size={34} align="center" style={styles.wide}>
-          {complete ? 'تقبّل الله منك' : 'بلغت آخر الأذكار'}
+          {complete ? 'تقبّل اللّٰه منك' : 'بلغت آخر الأذكار'}
         </Display>
         <Text size={14} color={c.ts} align="center" style={styles.wide}>
           {complete

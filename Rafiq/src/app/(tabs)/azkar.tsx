@@ -64,7 +64,10 @@ export default function AzkarScreen() {
     <TabScene
       name="azkar"
       side="end"
-      style={{ backgroundColor: side === 'morning' ? dialSky.morning.bot : dialSky.evening.bot }}
+      // Clipped to the page: the dial's ring is wider than the screen, and would otherwise hang over
+      // the neighbouring tab while the pages slide. The page's own colour is the ground's: a sky
+      // colour here showed as a light hairline down the edge of the ground band during the slide.
+      style={{ overflow: 'hidden', backgroundColor: c.bg }}
       onLayout={(e) => setMeasured({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
     >
       {focused ? <StatusBar style={side === 'morning' ? 'dark' : 'light'} /> : null}

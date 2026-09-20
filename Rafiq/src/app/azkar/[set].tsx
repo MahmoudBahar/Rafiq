@@ -74,9 +74,13 @@ export default function AzkarReaderScreen() {
   const total = zekr?.count ?? 0;
   const said = index < n ? Math.min(counts[index] ?? 0, total) : 0;
 
+  // The page whose zekr has just been completed and is waiting out its glow before turning. It is
+  // forgotten on every page turn: left standing, coming back to a finished zekr turned it away again.
+  const [justDone, setJustDone] = useState<number | null>(null);
   const onCommit = useCallback((delta: number) => {
     setIndex((i) => i + delta);
     setShowVirtue(false);
+    setJustDone(null);
   }, []);
   const bounds = useMemo(() => ({ min: 0, max: n }), [n]);
   const pager = useDayCarousel(index, onCommit, bounds);
@@ -101,7 +105,6 @@ export default function AzkarReaderScreen() {
 
   // A zekr just completed on this page: hold for the glow, then turn the page.
   const { go } = pager;
-  const [justDone, setJustDone] = useState<number | null>(null);
   useEffect(() => {
     if (justDone === null || justDone !== index) return;
     const timer = setTimeout(() => go(1), reduced ? ADVANCE_REDUCED_MS : ADVANCE_MS);
