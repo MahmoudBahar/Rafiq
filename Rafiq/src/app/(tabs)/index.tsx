@@ -13,6 +13,7 @@ import { CountdownDigits } from '@/features/prayer/CountdownDigits';
 import { DayCarousel, DaySwipeSurface } from '@/features/prayer/DayCarousel';
 import { DayPill, PILL_SLOT } from '@/features/prayer/DayPill';
 import { COUNTRY, DEFAULT_CITY, getTimes, type NextEvent, type PrayerKey, type PrayerTime } from '@/features/prayer/engine';
+import { useOpenRow } from '@/features/prayer/openRow';
 import { PrayerList, type RowRect } from '@/features/prayer/PrayerList';
 import { SkyArc } from '@/features/prayer/SkyArc';
 import { StarField } from '@/features/prayer/StarField';
@@ -83,6 +84,7 @@ export default function HomeScreen() {
     [hintDone, update],
   );
   const carousel = useDayCarousel(dayOffset, commit);
+  const openRow = useOpenRow();
 
   // Date tip: the header date block pulses under a small bubble.
   const [dateHint, setDateHint] = useState(false);
@@ -274,6 +276,7 @@ export default function HomeScreen() {
               <PrayerList
                 times={timesByOffset.get(off) ?? day.times}
                 nextKey={highlightFor(off)}
+                hiddenKey={openRow && openRow.day === isoDate(new Date(y, mo, d + off)) ? openRow.key : null}
                 onPressPrayer={(key, rect) => openPrayer(off, key, rect)}
               />
             )}

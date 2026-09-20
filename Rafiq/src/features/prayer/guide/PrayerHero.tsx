@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { ROW_GAP } from '@/features/prayer/PrayerList';
 import { formatTime12 } from '@/shared/lib/arabic';
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
@@ -31,13 +32,19 @@ const PX = PixelRatio.get();
 /** Fill inset so the settled card's outline (on the shadow view) shows around the pieces. */
 const INSET = 1;
 /**
- * No overlap between the strip and the caps: the strip's scaled height is
- * exactly the card's height minus the caps, so the pieces meet edge to edge.
- * (A hairline gap seen earlier came from a scale computed without the
- * overlap that was then in use, not from the pieces themselves.)
+ * The strip runs a little way under each cap. Meeting edge to edge left a
+ * hairline: the joint falls at 29 dp, which is not a whole number of physical
+ * pixels on most screens (108.75 px at 3.75x), so each piece was drawn at
+ * partial coverage along that row and the page showed through. It only showed
+ * on the way back, when the backing shadow view is hidden, and mostly on the
+ * cream next-prayer card. The pieces are one opaque colour and the caps are
+ * drawn over the strip, so the overlap itself cannot be seen.
  */
-const OVERLAP = 0;
+const OVERLAP = 1;
 const SPRING = { damping: 18, stiffness: 170, mass: 0.9 };
+/** The row-shaped box under the card shows only while the card is within ~4 dp of the row's height. */
+const RING_UNTIL = 0.03;
+const RING_ROOM = 32;
 /** The shadow is mounted, static, once the visible travel is over. */
 const SHADOW_MS = 480;
 /** Fallback start when no row rectangle was passed: a short rise from below. */
@@ -138,16 +145,27 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, ori
   // not ride along at full size (it is a full-size view inside the container).
   const shadow = useAnimatedStyle(() => ({ opacity: progress.get() > 0.98 ? shadowIn.get() : 0 }));
   const paint = { backgroundColor: bg };
+  // The home row's own box (fill, outline and, for the next-prayer row, its shadow), at the row's
+  // size, under the pieces. The pieces are inset by the border's width, so it shows around them
+  // only; while the card is taller than the row its bottom edge is hidden behind them. It is
+  // filled like the row because an outline alone left a hairline of page between it and the
+  // pieces (the inset is not a whole number of pixels). It is there
+  // as the card lifts off and again as it lands, so that handing over to the real row, which
+  // has that border and shadow, changes nothing the eye can catch.
+  const rowRadius = highlighted ? radius.lg : radius.md;
+  // Only over the last few dp of height: the box is as tall as the row and a border's width wider
+  // than the pieces, so while the card is still taller it would stick out at the sides as ears.
+  const ring = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0, RING_UNTIL], [1, 0], 'clamp') }));
   // Every style below reads `progress` directly: a helper worklet called from
   // these styles was seen with a frozen value on the UI thread.
   const capTop = useAnimatedStyle(() => {
-    const r = interpolate(progress.get(), [0, 1], [radius.md, radius.xl]);
+    const r = interpolate(progress.get(), [0, 1], [rowRadius - INSET, radius.xl]);
     return { borderTopStartRadius: r, borderTopEndRadius: r };
   });
   const capBottom = useAnimatedStyle(() => {
     const t = progress.get();
     const h = snap(interpolate(t, [0, 1], [originH.get(), settledH]));
-    const r = interpolate(t, [0, 1], [radius.md, radius.xl]);
+    const r = interpolate(t, [0, 1], [rowRadius - INSET, radius.xl]);
     return { borderBottomStartRadius: r, borderBottomEndRadius: r, transform: [{ translateY: h - settledH }] };
   });
   const midStyle = useAnimatedStyle(() => {
@@ -182,6 +200,22 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, ori
           <Animated.View
             style={[styles.shadow, { backgroundColor: bg, borderColor: border, boxShadow: `0 12px 30px ${c.shadow}` }, shadow]}
           />
+        ) : null}
+        {valid ? (
+          // Clipped just below the row: on the home the next row is drawn after this one and
+          // covers the shadow that falls on it, so the shadow only ever shows in the gap. One
+          // physical pixel short: the gap is not a whole number of pixels, and rounding it up
+          // laid the shadow over the next row's top border.
+          <View pointerEvents="none" style={[styles.ringClip, { height: RING_ROOM + origin.h + ROW_GAP - 1 / PX }]}>
+            <Animated.View
+              style={[
+                styles.ring,
+                { height: origin.h, borderRadius: rowRadius, borderColor: border, backgroundColor: bg },
+                highlighted && { boxShadow: `0 8px 20px ${c.shadow}` },
+                ring,
+              ]}
+            />
+          </View>
         ) : null}
         {/* Strip, then the caps. */}
         <Animated.View style={[styles.mid, { top: INSET + CAP - OVERLAP, height: mid + 2 * OVERLAP }, paint, midStyle]} />
@@ -248,6 +282,9 @@ const styles = StyleSheet.create({
   card: { flex: 1 },
   // Settled card: outline and shadow live here, under the borderless pieces.
   shadow: { ...FILL, borderRadius: radius.xl, borderWidth: 1 },
+  // Room above and beside the row for its shadow (the row above is drawn first, so the shadow does fall on it).
+  ringClip: { position: 'absolute', top: -RING_ROOM, start: -HERO_MARGIN, end: -HERO_MARGIN, overflow: 'hidden' },
+  ring: { position: 'absolute', top: RING_ROOM, start: HERO_MARGIN, end: HERO_MARGIN, borderWidth: 1 },
   cap: { position: 'absolute', start: INSET, end: INSET, height: CAP },
   capTop: { top: INSET },
   capBottom: { bottom: INSET },
@@ -257,7 +294,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    // The home row's padding plus its border: the text must not move when the real row takes over.
+    paddingHorizontal: 19,
   },
   rowName: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dot: { width: 7, height: 7, borderRadius: 999 },

@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
+import { setOpenRow } from '@/features/prayer/openRow';
 import { PRAYERS, getTimes, type PrayerKey } from '@/features/prayer/engine';
 import { DUHA_AFTER_SUNRISE_MIN, frozenSky } from '@/features/prayer/guide/frozenSky';
 import { HERO_H, PrayerHero, type HeroFoot, type HeroOrigin, type HeroTime } from '@/features/prayer/guide/PrayerHero';
@@ -32,6 +33,8 @@ const DUHA_BEFORE_DHUHR_MIN = 10;
  * travel happened in its last few frames.)
  */
 const EXIT_MS = 300;
+/** After the stack's 180 ms fade-in has covered the home, its row can go without being seen to. */
+const ROW_HIDE_MS = 260;
 /** Space between the card's bottom and the band's rounded edge. */
 const BAND_MARGIN = 22;
 
@@ -40,6 +43,7 @@ const isPrayerKey = (k: string | undefined): k is PrayerKey => PRAYERS.some((p) 
 export default function PrayerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: winH } = useWindowDimensions();
   const { c } = useTheme();
   const { reduced } = useMotion();
   const { settings } = useSettings();
@@ -128,16 +132,31 @@ export default function PrayerScreen() {
   // Morph progress and the reverse on the back button. Hardware back stays
   // native so Android's predictive peek keeps working.
   const progress = useSharedValue(0);
-  const bodyOp = useSharedValue(1);
-  // The page dissolves while the card travels back, so the home (already
-  // mounted underneath, its row exactly under the card) is fully visible by
-  // the time the card lands; the stack's pop then runs on an invisible screen.
-  const pageOp = useSharedValue(1);
+  // The card is the home row, lifted off. While this page is open the home keeps
+  // that row's place empty (see openRow), so the return can clear the whole page
+  // early and fly the card back over the real home into its empty place. On
+  // landing the real row is switched back on and the page pops: the card's last
+  // frame is the row verbatim, so the swap and the stack's fade are not seen.
+  // The row is only hidden once the page has faded in over it, never before:
+  // an empty place showing under the incoming page would read as a blink.
+  const restOp = useSharedValue(1);
+  const dayIso = params.day ?? null;
+  useEffect(() => {
+    if (!dayIso) return;
+    const hide = setTimeout(() => setOpenRow({ key, day: dayIso }), ROW_HIDE_MS);
+    return () => {
+      clearTimeout(hide);
+      setOpenRow(null);
+    };
+  }, [key, dayIso]);
   const leaving = useRef(false);
   // Hardware / gesture back plays the same return as the button; once the
   // return has started the guard lifts so the final pop goes through.
   const [returning, setReturning] = useState(false);
-  const back = useCallback(() => router.back(), [router]);
+  const back = useCallback(() => {
+    setOpenRow(null);
+    router.back();
+  }, [router]);
   const exit = useCallback(() => {
     if (leaving.current) return;
     leaving.current = true;
@@ -146,65 +165,66 @@ export default function PrayerScreen() {
       back();
       return;
     }
-    // The card leaves first; the page holds and then dissolves as the card
-    // lands, so the home is fully there exactly when the card meets its row.
-    bodyOp.set(withTiming(0, { duration: EXIT_MS * 0.8, easing: Easing.in(Easing.quad) }));
-    pageOp.set(withTiming(0, { duration: EXIT_MS, easing: Easing.in(Easing.cubic) }));
+    restOp.set(withTiming(0, { duration: EXIT_MS * 0.3, easing: Easing.out(Easing.quad) }));
     progress.set(
       withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
         'worklet';
         if (finished) scheduleOnRN(back);
       }),
     );
-  }, [back, bodyOp, pageOp, progress, reduced]);
+  }, [back, progress, reduced, restOp]);
   usePreventBack(!returning, exit);
-  const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
-  const pageStyle = useAnimatedStyle(() => ({ opacity: pageOp.get() }));
+  const restStyle = useAnimatedStyle(() => ({ opacity: restOp.get() }));
 
   const stationCount = stationsOf(guide).length;
   const stripDelay = PATH_START_MS + stationCount * 90 + 200;
 
   return (
-    <Animated.View style={[styles.screen, { backgroundColor: c.bg }, pageStyle]}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        <SkyBand frozen={frozen} height={bandH} arcTop={arcTop}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="رجوع"
-            onPress={exit}
-            style={({ pressed }) => [
-              styles.back,
-              { top: insets.top + 12, backgroundColor: c.surface, borderColor: c.border },
-              pressed && { transform: [{ scale: 1.06 }] },
-            ]}
-          >
-            <ChevronBackIcon size={16} color={c.tp} />
-          </Pressable>
-        </SkyBand>
-        {/* Sibling of the band, not a child: the band clips to its rounded bottom
-            and the card begins below it, on the pressed row. */}
-        <PrayerHero
-          title={guide.title}
-          rowName={row.name}
-          rowTime={formatTime12(row.at)}
-          dayLabel={dayLabel}
-          times={heroTimes}
-          foot={foot}
-          origin={origin}
-          progress={progress}
-          top={heroTop}
-        />
-
-        <Animated.View style={[styles.body, bodyStyle]}>
-          <SunnahPath guide={guide} fardNote={fardNote} />
-          {guide.fardRakaat > 0 ? <RawatibStrip lit={guide.rawatib} delay={stripDelay} /> : null}
+    <View style={styles.screen}>
+      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+        {/* Everything but the card, faded as one picture (off-screen compositing): otherwise
+            Android spreads the alpha over every view separately and stacked views fade at
+            different rates. The card itself never fades, so its pieces never show their joints. */}
+        <Animated.View
+          needsOffscreenAlphaCompositing
+          style={[{ minHeight: winH, paddingBottom: insets.bottom + 40, backgroundColor: c.bg }, restStyle]}
+        >
+          <SkyBand frozen={frozen} height={bandH} arcTop={arcTop}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="رجوع"
+              onPress={exit}
+              style={({ pressed }) => [
+                styles.back,
+                { top: insets.top + 12, backgroundColor: c.surface, borderColor: c.border },
+                pressed && { transform: [{ scale: 1.06 }] },
+              ]}
+            >
+              <ChevronBackIcon size={16} color={c.tp} />
+            </Pressable>
+          </SkyBand>
+          <View style={styles.body}>
+            <SunnahPath guide={guide} fardNote={fardNote} />
+            {guide.fardRakaat > 0 ? <RawatibStrip lit={guide.rawatib} delay={stripDelay} /> : null}
+          </View>
         </Animated.View>
+        {/* Outside the band: the band clips to its rounded bottom and the card begins
+            below it, on the pressed row. Drawn after the rest, so it stays on top. */}
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <PrayerHero
+            title={guide.title}
+            rowName={row.name}
+            rowTime={formatTime12(row.at)}
+            dayLabel={dayLabel}
+            times={heroTimes}
+            foot={foot}
+            origin={origin}
+            progress={progress}
+            top={heroTop}
+          />
+        </View>
       </ScrollView>
-    </Animated.View>
+    </View>
   );
 }
 
