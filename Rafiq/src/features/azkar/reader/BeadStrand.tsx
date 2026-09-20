@@ -29,6 +29,16 @@ export const roundsOf = (total: number) => Math.ceil(total / beadsPerRound(total
 export const roundAt = (count: number, total: number) =>
   Math.min(roundsOf(total), Math.floor(Math.max(0, count - 1) / beadsPerRound(total)) + 1);
 
+/** The thread: a parabola over `s` ∈ 0..1 in reading order, in physical pixels. Beads ride the same curve. */
+function curveX(s: number, width: number, rtl: boolean) {
+  'worklet';
+  return rtl ? width - PAD - s * (width - PAD * 2) : PAD + s * (width - PAD * 2);
+}
+function curveY(s: number) {
+  'worklet';
+  return TOP + 4 * SAG * s * (1 - s);
+}
+
 /** Beads across in the current round. A full round stays full until the next tap starts a new one. */
 function across(count: number, n: number) {
   'worklet';
@@ -61,8 +71,8 @@ export function BeadStrand({ width, total, count, initial, glow }: BeadStrandPro
   const step = (size * 1.08) / span;
   const s0 = size / 2 / span;
   const rtl = I18nManager.isRTL;
-  const xAt = (s: number) => (rtl ? width - PAD - s * span : PAD + s * span);
-  const yAt = (s: number) => TOP + 4 * SAG * s * (1 - s);
+  const xAt = (s: number) => curveX(s, width, rtl);
+  const yAt = (s: number) => curveY(s);
 
   const thread = Array.from({ length: THREAD_SEGMENTS }, (_, k) => {
     const a = k / THREAD_SEGMENTS;
@@ -93,20 +103,16 @@ export function BeadStrand({ width, total, count, initial, glow }: BeadStrandPro
           startsAcross={across(initial, n) > i}
           glow={glow}
           size={size}
-          rest={{ x: xAt(s0 + (n - 1 - i) * step), y: yAt(s0 + (n - 1 - i) * step) }}
-          done={{ x: xAt(1 - s0 - i * step), y: yAt(1 - s0 - i * step) }}
-          sag={SAG * 0.35}
+          width={width}
+          rtl={rtl}
+          sRest={s0 + (n - 1 - i) * step}
+          sDone={1 - s0 - i * step}
           idle={c.selbr}
           lit={c.accent}
         />
       ))}
     </View>
   );
-}
-
-interface Point {
-  x: number;
-  y: number;
 }
 
 interface BeadProps {
@@ -116,14 +122,16 @@ interface BeadProps {
   startsAcross: boolean;
   glow: SharedValue<number>;
   size: number;
-  rest: Point;
-  done: Point;
-  sag: number;
+  width: number;
+  rtl: boolean;
+  /** Where the bead waits and where it ends up, as positions along the thread. */
+  sRest: number;
+  sDone: number;
   idle: string;
   lit: string;
 }
 
-function Bead({ index, n, count, startsAcross, glow, size, rest, done, sag, idle, lit }: BeadProps) {
+function Bead({ index, n, count, startsAcross, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
   const pos = useSharedValue(startsAcross ? 1 : 0);
   useAnimatedReaction(
     () => across(count.get(), n) > index,
@@ -134,13 +142,13 @@ function Bead({ index, n, count, startsAcross, glow, size, rest, done, sag, idle
   );
   const style = useAnimatedStyle(() => {
     const p = pos.get();
-    // Dip a little below the straight line between the two ends, as a bead on a slack thread would.
-    const dip = sag * 4 * p * (1 - p);
+    // Travel is along the thread itself; the spring's overshoot stays on it too.
+    const s = Math.min(1, Math.max(0, sRest + (sDone - sRest) * p));
     return {
       backgroundColor: interpolateColor(p, [0, 1], [idle, lit]),
       transform: [
-        { translateX: rest.x + (done.x - rest.x) * p - size / 2 },
-        { translateY: rest.y + (done.y - rest.y) * p + dip - size / 2 },
+        { translateX: curveX(s, width, rtl) - size / 2 },
+        { translateY: curveY(s) - size / 2 },
         { scale: 1 + 0.22 * glow.get() * (p > 0.5 ? 1 : 0) },
       ],
     };

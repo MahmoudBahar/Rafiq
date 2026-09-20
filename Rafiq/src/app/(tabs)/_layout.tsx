@@ -1,39 +1,30 @@
-import { Tabs, type BottomTabNavigationOptions } from 'expo-router/js-tabs';
+import { Tabs } from 'expo-router/js-tabs';
 import { useEffect, useRef, useState } from 'react';
-import { I18nManager, View } from 'react-native';
-import { useMotion } from '@/shared/lib/motion';
+import { View } from 'react-native';
 import { useTheme } from '@/shared/theme/useTheme';
 import { TabBar, useTabBarInset } from '@/shared/ui/TabBar';
+import { TAB_ENTER_MS } from '@/shared/ui/TabScene';
 import { Toast } from '@/shared/ui/Toast';
 
 const TOAST_MS = 1800;
-const SHIFT = 36;
-// The navigator slides later tabs in from the right. Under forced RTL the
-// second tab sits to the left of the first, so the slide is mirrored here.
-const DIR = I18nManager.isRTL ? -1 : 1;
-
-const shift: NonNullable<BottomTabNavigationOptions['sceneStyleInterpolator']> = ({ current }) => ({
-  sceneStyle: {
-    opacity: current.progress.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] }),
-    transform: [
-      {
-        translateX: current.progress.interpolate({
-          inputRange: [-1, 0, 1],
-          outputRange: [-SHIFT * DIR, 0, SHIFT * DIR],
-        }),
-      },
-    ],
-  },
-});
+const HOLD_MS = TAB_ENTER_MS + 60;
+const still = () => ({ sceneStyle: {} });
 
 /**
  * The tabbed part of the app. The floating bar belongs to the navigator so its
  * pill can travel between tabs; pages pushed on the root stack (settings, the
  * month table, a prayer, the azkar reader) cover it.
+ *
+ * The navigator's own scene fade is not used: it puts the alpha on a view of
+ * its own, and Android spreads that alpha over each stacked layer of a screen
+ * separately, so the azkar sky flashed its day gradient through the night one.
+ * Each tab fades itself in instead (see TabScene). The navigator is still given
+ * a transition, one that changes nothing, because that is what keeps the tab
+ * being left attached underneath while the new one fades in over it. Tabs are
+ * mounted up front so the first visit has nothing to wait for.
  */
 export default function TabsLayout() {
   const { c } = useTheme();
-  const { reduced } = useMotion();
   const tabInset = useTabBarInset();
 
   const [toast, setToast] = useState(false);
@@ -57,9 +48,10 @@ export default function TabsLayout() {
         tabBar={(props) => <TabBar {...props} onComingSoon={showToast} />}
         screenOptions={{
           headerShown: false,
+          lazy: false,
           sceneStyle: { backgroundColor: c.bg },
-          sceneStyleInterpolator: shift,
-          transitionSpec: { animation: 'timing', config: { duration: reduced ? 0 : 240 } },
+          sceneStyleInterpolator: still,
+          transitionSpec: { animation: 'timing', config: { duration: HOLD_MS } },
         }}
       >
         <Tabs.Screen name="index" />

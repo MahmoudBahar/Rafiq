@@ -20,7 +20,6 @@ const SNAP = { damping: 18, stiffness: 140, mass: 1 };
 /** A full-width drag turns the dial a little more than half a turn. */
 const DRAG_GAIN = 1.15;
 const RUBBER = 0.35;
-const LANDED_DEG = 1.5;
 
 export interface DialValues {
   /** 0 = sun up (morning), 180 = moon up (evening). */
@@ -34,7 +33,7 @@ const angleOf = (side: AzkarSetId) => (side === 'evening' ? 180 : 0);
 /**
  * The dial's rotation: a horizontal drag anywhere on the sky turns it, a
  * release (or a tap on the disc) settles it on one of the two sides with a
- * spring, and a detent is felt as it lands. `side` is the React-side answer
+ * spring, and a detent is felt as it crosses the half-way point. `side` is the React-side answer
  * and flips as the dial crosses the half-way point.
  */
 export function useDial(clockSide: AzkarSetId) {
@@ -44,7 +43,6 @@ export function useDial(clockSide: AzkarSetId) {
   const theta = useSharedValue(angleOf(clockSide));
   const start = useSharedValue(0);
   const goal = useSharedValue(angleOf(clockSide));
-  const armed = useSharedValue(false);
   // Once the user has turned the dial themselves, the clock stops steering it.
   const touched = useSharedValue(false);
   const t = useDerivedValue(() => Math.min(1, Math.max(0, theta.get() / 180)));
@@ -53,25 +51,18 @@ export function useDial(clockSide: AzkarSetId) {
     () => (target: number, velocity: number) => {
       'worklet';
       goal.set(target);
-      armed.set(true);
       theta.set(withSpring(target, { ...SNAP, velocity }));
     },
-    [armed, goal, theta],
+    [goal, theta],
   );
 
   useAnimatedReaction(
-    () => armed.get() && Math.abs(theta.get() - goal.get()) < LANDED_DEG,
-    (landed, was) => {
-      if (landed && !was) {
-        armed.set(false);
-        scheduleOnRN(detent);
-      }
-    },
-  );
-  useAnimatedReaction(
     () => theta.get() > 90,
     (evening, was) => {
-      if (was !== null && evening !== was) scheduleOnRN(setSide, evening ? 'evening' : 'morning');
+      if (was === null || evening === was) return;
+      // Felt as the dial tips over the half-way point, where the sky itself changes hands.
+      scheduleOnRN(detent);
+      scheduleOnRN(setSide, evening ? 'evening' : 'morning');
     },
   );
 
@@ -82,7 +73,6 @@ export function useDial(clockSide: AzkarSetId) {
         .failOffsetY([-16, 16])
         .onStart(() => {
           start.set(theta.get());
-          armed.set(false);
           touched.set(true);
         })
         .onUpdate((e) => {
@@ -93,7 +83,7 @@ export function useDial(clockSide: AzkarSetId) {
           const v = ((-e.velocityX * SKY_DIR) / width) * 180 * DRAG_GAIN;
           settle(theta.get() + v * 0.12 > 90 ? 180 : 0, v);
         }),
-    [armed, settle, start, theta, touched, width],
+    [settle, start, theta, touched, width],
   );
 
   const tap = useMemo(

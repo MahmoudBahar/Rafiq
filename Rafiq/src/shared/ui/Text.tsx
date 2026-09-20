@@ -45,9 +45,15 @@ export interface DisplayProps extends Omit<TextProps, 'weight'> {
   bold?: boolean;
 }
 
-/** Arabic display text (Scheherazade New) for titles and the wordmark. */
+/**
+ * Arabic display text (Scheherazade New) for titles and the wordmark.
+ * The face's descenders and stacked marks reach well past a comfortable line
+ * box, and Android clips text to its view. The padding gives the glyphs room
+ * to draw; the equal negative margin keeps the layout where the line box put it.
+ */
 export function Display({ size = 28, bold = false, color, lineHeight, align, style, ...rest }: DisplayProps) {
   const { c } = useTheme();
+  const room = Math.round(size * 0.3);
   return (
     <RNText
       accessibilityLanguage="ar"
@@ -60,6 +66,8 @@ export function Display({ size = 28, bold = false, color, lineHeight, align, sty
           writingDirection: 'rtl',
           textAlign: align,
           lineHeight: lineHeight ?? Math.round(size * 1.35),
+          paddingVertical: room,
+          marginVertical: -room,
         },
         style,
       ]}

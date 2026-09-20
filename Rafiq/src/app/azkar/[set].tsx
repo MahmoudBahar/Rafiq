@@ -218,7 +218,7 @@ export default function AzkarReaderScreen() {
             {position}
           </Text>
         </View>
-        <StoryProgress items={items} counts={counts} index={index} count={count} done={dialSky.dusk} track="rgba(128,128,128,0.32)" />
+        <StoryProgress items={items} counts={counts} index={index} said={said} done={dialSky.dusk} track="rgba(128,128,128,0.32)" />
       </Animated.View>
 
       <Animated.View style={[styles.sheet, { top: bandH, backgroundColor: c.bg }, sheetStyle]}>
@@ -275,16 +275,7 @@ export default function AzkarReaderScreen() {
               {/* Siblings of the counting surface, not children: pressing them never counts. */}
               {zekr ? (
                 <View style={[styles.controls, { bottom: insets.bottom + 14 }]} pointerEvents="box-none">
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => go(1)}
-                    hitSlop={10}
-                    style={({ pressed }) => [styles.chip, { borderColor: c.selbr }, pressed && styles.pressed]}
-                  >
-                    <Text size={12} weight="medium" color={c.ts}>
-                      {said >= total ? 'التالي' : 'تخطَّ'}
-                    </Text>
-                  </Pressable>
+                  {/* Pages advance to the left under RTL: each button sits on the side its page comes from. */}
                   <Pressable
                     accessibilityRole="button"
                     disabled={index === 0}
@@ -299,6 +290,16 @@ export default function AzkarReaderScreen() {
                   >
                     <Text size={12} weight="medium" color={c.ts}>
                       السابق
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => go(1)}
+                    hitSlop={10}
+                    style={({ pressed }) => [styles.chip, { borderColor: c.selbr }, pressed && styles.pressed]}
+                  >
+                    <Text size={12} weight="medium" color={c.ts}>
+                      {said >= total ? 'التالي' : 'تخطَّ'}
                     </Text>
                   </Pressable>
                 </View>

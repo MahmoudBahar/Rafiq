@@ -16,7 +16,7 @@ import { useMotion } from '@/shared/lib/motion';
 import { physicalLeft } from '@/shared/lib/rtl';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
-import { ClockIcon, CompassIcon, MoonIcon, TasbihIcon, type IconProps } from './Icons';
+import { AzkarIcon, ClockIcon, CompassIcon, TasbihIcon, type IconProps } from './Icons';
 import { BAR_PAD, ICON, PILL_H, layoutFor, type BarLayout } from './tabBarLayout';
 import { Text } from './Text';
 
@@ -39,7 +39,7 @@ interface Item {
 
 const ITEMS: readonly Item[] = [
   { key: 'index', label: 'الصلاة', Icon: ClockIcon },
-  { key: 'azkar', label: 'الأذكار', Icon: MoonIcon },
+  { key: 'azkar', label: 'الأذكار', Icon: AzkarIcon },
   { key: 'tasbih', label: 'التسبيح', Icon: TasbihIcon, soon: true },
   { key: 'qibla', label: 'القبلة', Icon: CompassIcon, soon: true },
 ];
@@ -48,8 +48,8 @@ const LABEL_SIZE = 12.5;
 const LABEL_LINE = 19;
 /** An intrinsic-width RTL label on Android can measure a hair short and clip. */
 const LABEL_SLACK = 2;
-const BASE_MS = 820;
-const PER_TAB_MS = 130;
+const BASE_MS = 420;
+const PER_TAB_MS = 60;
 /** The settle after arrival, as a fraction of the travel clock. */
 const TAIL = 0.3;
 const WOBBLE_PX = 5;

@@ -1,7 +1,7 @@
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { useAzkarClock } from '@/features/azkar/time';
 import { dialSky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { useTabBarInset } from '@/shared/ui/TabBar';
+import { TabScene } from '@/shared/ui/TabScene';
 import { Display, Text } from '@/shared/ui/Text';
 
 /** Ground showing above the floating bar; the hint line lives on it. */
@@ -40,7 +41,10 @@ export default function AzkarScreen() {
     evening: useAzkarProgress('evening', clock.dayKey),
   };
 
-  const [size, setSize] = useState({ w: 0, h: 0 });
+  // The window is the first answer, so the dial is drawn on the very first frame; layout then corrects it.
+  const window = useWindowDimensions();
+  const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
+  const size = measured ?? { w: window.width, h: window.height };
   const horizon = size.h - tabInset - GROUND_LIP;
   const top = insets.top + 12;
   // As large as the width allows, but never so tall that the body on top crowds the text above it.
@@ -57,51 +61,54 @@ export default function AzkarScreen() {
   };
 
   return (
-    <View style={styles.screen} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+    <TabScene
+      name="azkar"
+      side="end"
+      style={{ backgroundColor: side === 'morning' ? dialSky.morning.bot : dialSky.evening.bot }}
+      onLayout={(e) => setMeasured({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
       {focused ? <StatusBar style={side === 'morning' ? 'dark' : 'light'} /> : null}
-      {size.h > 0 ? (
-        <GestureDetector gesture={pan}>
-          <View
-            style={styles.screen}
-            accessible
-            accessibilityRole="adjustable"
-            accessibilityLabel="وقت الأذكار"
-            accessibilityValue={{ text: side === 'morning' ? 'الصباح' : 'المساء' }}
-            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-            onAccessibilityAction={toggle}
-          >
-            <DialSky values={values} horizon={horizon} />
-            <GestureDetector gesture={tap}>
-              <View style={[styles.disc, { top: centerBottom, height: horizon - centerBottom }]} />
-            </GestureDetector>
-            <DialBodies values={values} cx={size.w / 2} cy={horizon} radius={radius} />
+      <GestureDetector gesture={pan}>
+        <View
+          style={styles.screen}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="وقت الأذكار"
+          accessibilityValue={{ text: side === 'morning' ? 'الصباح' : 'المساء' }}
+          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+          onAccessibilityAction={toggle}
+        >
+          <DialSky values={values} horizon={horizon} />
+          <GestureDetector gesture={tap}>
+            <View style={[styles.disc, { top: centerBottom, height: horizon - centerBottom }]} />
+          </GestureDetector>
+          <DialBodies values={values} cx={size.w / 2} cy={horizon} radius={radius} />
 
-            <View style={[styles.header, { top, height: HEADER_H }]} pointerEvents="none">
-              <Animated.View style={[styles.headerLayer, onMorning]}>
-                <Display size={32} color={dialSky.morning.text} align="center" style={styles.wide}>
-                  الأذكار
-                </Display>
-              </Animated.View>
-              <Animated.View style={[styles.headerLayer, onEvening]}>
-                <Display size={32} color={dialSky.evening.text} align="center" style={styles.wide}>
-                  الأذكار
-                </Display>
-              </Animated.View>
-            </View>
-
-            <View style={[styles.center, { top: top + HEADER_H, height: centerBottom - top - HEADER_H }]} pointerEvents="box-none">
-              <DialCenter values={values} side={side} progress={progress} onStart={start} />
-            </View>
-
-            <View style={[styles.ground, { top: horizon, backgroundColor: c.bg }]} pointerEvents="none">
-              <Text size={11.5} color={c.tm} align="center" style={styles.hint}>
-                اسحب يمينًا أو يسارًا للتبديل بين الصباح والمساء
-              </Text>
-            </View>
+          <View style={[styles.header, { top, height: HEADER_H }]} pointerEvents="none">
+            <Animated.View style={[styles.headerLayer, onMorning]}>
+              <Display size={32} color={dialSky.morning.text} align="center" style={styles.wide}>
+                الأذكار
+              </Display>
+            </Animated.View>
+            <Animated.View style={[styles.headerLayer, onEvening]}>
+              <Display size={32} color={dialSky.evening.text} align="center" style={styles.wide}>
+                الأذكار
+              </Display>
+            </Animated.View>
           </View>
-        </GestureDetector>
-      ) : null}
-    </View>
+
+          <View style={[styles.center, { top: top + HEADER_H, height: centerBottom - top - HEADER_H }]} pointerEvents="box-none">
+            <DialCenter values={values} side={side} progress={progress} onStart={start} />
+          </View>
+
+          <View style={[styles.ground, { top: horizon, backgroundColor: c.bg }]} pointerEvents="none">
+            <Text size={11.5} color={c.tm} align="center" style={styles.hint}>
+              اسحب يمينًا أو يسارًا للتبديل بين الصباح والمساء
+            </Text>
+          </View>
+        </View>
+      </GestureDetector>
+    </TabScene>
   );
 }
 

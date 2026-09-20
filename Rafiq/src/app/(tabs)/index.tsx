@@ -31,6 +31,7 @@ import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronDownIcon, GearIcon, PinIcon } from '@/shared/ui/Icons';
 import { PressScale } from '@/shared/ui/PressScale';
 import { useTabBarInset } from '@/shared/ui/TabBar';
+import { TabScene } from '@/shared/ui/TabScene';
 import { Text } from '@/shared/ui/Text';
 import { TipBubble } from '@/shared/ui/TipBubble';
 
@@ -199,7 +200,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+    <TabScene name="index" side="start" launch style={{ backgroundColor: c.bg }}>
       <View
         style={[styles.header, { paddingTop: insets.top + 16 }]}
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
@@ -281,12 +282,11 @@ export default function HomeScreen() {
         <DayPill date={dayOffset !== 0 ? viewDate : null} hint={hint} onToday={() => carousel.go(-dayOffset)} />
       </DaySwipeSurface>
 
-    </View>
+    </TabScene>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   header: {
     paddingHorizontal: 24,
     borderBottomStartRadius: 32,

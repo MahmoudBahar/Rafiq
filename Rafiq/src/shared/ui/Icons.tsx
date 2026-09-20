@@ -132,6 +132,19 @@ export function MoonIcon({ size, color, strokeWidth = 1.8 }: IconProps) {
   );
 }
 
+/** The azkar tab: an open book under a small star. The crescent is kept for the moon itself. */
+export function AzkarIcon({ size, color, strokeWidth = 1.8 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M12 10.4c-1.9-1.3-4.3-1.8-7-1.6v10c2.7-.2 5.1.3 7 1.6" {...s} />
+      <Path d="M12 10.4c1.9-1.3 4.3-1.8 7-1.6v10c-2.7-.2-5.1.3-7 1.6" {...s} />
+      <Path d="M12 10.4v10" {...s} />
+      <Path d="M12 1.9l.75 1.85 1.85.75-1.85.75L12 7.1l-.75-1.85-1.85-.75 1.85-.75z" {...s} strokeWidth={1.3} />
+    </Base>
+  );
+}
+
 export function TasbihIcon({ size, color, strokeWidth = 1.8 }: IconProps) {
   const s = strokeProps(color, strokeWidth);
   return (
