@@ -18,6 +18,14 @@ const COMMIT_FRACTION = 0.22;
 const COMMIT_VELOCITY = 650;
 const NUDGE_PX = 34;
 const SPRING = { damping: 20, stiffness: 220 };
+/** How far a drag past the last page follows the finger. */
+const EDGE_RUBBER = 0.35;
+
+/** First and last page, for a pager over a finite list (the azkar reader). Days have none. */
+export interface PageBounds {
+  min: number;
+  max: number;
+}
 const NUDGE_SPRING = { damping: 14, stiffness: 180 };
 
 export interface CarouselValues {
@@ -42,11 +50,16 @@ export interface CarouselValues {
  *
  * Direction: days run in reading order, so under RTL tomorrow sits to the
  * LEFT of today. Finger moving right reveals it (next day); left → previous.
+ *
+ * With `bounds` the strip ends: a drag past either end rubber-bands and springs back.
  */
-export function useDayCarousel(offset: number, onCommit: (delta: number) => void) {
+export function useDayCarousel(offset: number, onCommit: (delta: number) => void, bounds?: PageBounds) {
   const { width } = useWindowDimensions();
   const { reduced } = useMotion();
   const dir = I18nManager.isRTL ? 1 : -1;
+
+  const min = bounds?.min ?? -Infinity;
+  const max = bounds?.max ?? Infinity;
 
   const center = useSharedValue(offset);
   const tx = useSharedValue(0);
@@ -68,6 +81,11 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
     return (delta: number) => {
       'worklet';
       if (busy.get() || delta === 0) return;
+      const target = center.get() + delta;
+      if (target < min || target > max) {
+        tx.set(withSpring(0, SPRING));
+        return;
+      }
       busy.set(true);
       if (reduced || Math.abs(delta) !== 1) {
         const finish = () => {
@@ -104,7 +122,7 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
         }),
       );
     };
-  }, [busy, center, dir, onCommit, op, reduced, tx, width]);
+  }, [busy, center, dir, max, min, onCommit, op, reduced, tx, width]);
 
   const gesture = useMemo(
     () =>
@@ -113,7 +131,10 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
         .failOffsetY([-12, 12])
         .onUpdate((e) => {
           // A plain assignment also cancels a running nudge.
-          if (!busy.get()) tx.set(Math.max(-width, Math.min(width, e.translationX)));
+          if (busy.get()) return;
+          const x = Math.max(-width, Math.min(width, e.translationX));
+          const target = center.get() + Math.sign(x) * dir;
+          tx.set(target < min || target > max ? x * EDGE_RUBBER : x);
         })
         .onEnd((e) => {
           if (busy.get()) return;
@@ -125,7 +146,7 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
             tx.set(withSpring(0, SPRING));
           }
         }),
-    [busy, commitPage, dir, tx, width],
+    [busy, center, commitPage, dir, max, min, tx, width],
   );
 
   const values: CarouselValues = useMemo(() => ({ center, tx, op, dir, width }), [center, tx, op, dir, width]);

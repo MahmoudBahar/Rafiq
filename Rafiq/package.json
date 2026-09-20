@@ -54,6 +54,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "azkar:build": "node ./scripts/build-azkar.mjs ../azkar_obj.json",
     "postinstall": "patch-package"
   },
   "private": true,

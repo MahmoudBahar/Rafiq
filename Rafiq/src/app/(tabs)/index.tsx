@@ -30,13 +30,10 @@ import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronDownIcon, GearIcon, PinIcon } from '@/shared/ui/Icons';
 import { PressScale } from '@/shared/ui/PressScale';
-import { TabBar } from '@/shared/ui/TabBar';
+import { useTabBarInset } from '@/shared/ui/TabBar';
 import { Text } from '@/shared/ui/Text';
 import { TipBubble } from '@/shared/ui/TipBubble';
-import { Toast } from '@/shared/ui/Toast';
 
-const TOAST_MS = 1800;
-const TAB_BAR_HEIGHT = 58;
 const DAY_MS = 86_400_000;
 // First-launch tutorial: a swipe hint, then a "tap the date" tip. Each step
 // shows on at most HINT_MAX launches and stops for good once used.
@@ -173,21 +170,7 @@ export default function HomeScreen() {
   }, [pillShowing, m.reduced, slotH]);
   const slotStyle = useAnimatedStyle(() => ({ height: slotH.get() }));
 
-  const [toast, setToast] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = () => {
-    setToast(true);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(false), TOAST_MS);
-  };
-  useEffect(
-    () => () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
-  const tabBottom = insets.bottom + 14;
+  const tabInset = useTabBarInset();
   const city = settings.city ?? DEFAULT_CITY;
   const country = settings.country ?? (settings.locationMode === 'manual' || !settings.coords ? COUNTRY : null);
   const place = country ? `${city}، ${country}` : city;
@@ -279,7 +262,7 @@ export default function HomeScreen() {
 
       <DaySwipeSurface gesture={carousel.gesture}>
         <ScrollView
-          contentContainerStyle={[styles.listContent, { paddingBottom: tabBottom + TAB_BAR_HEIGHT + 16 }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabInset + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={slotStyle} />
@@ -298,12 +281,6 @@ export default function HomeScreen() {
         <DayPill date={dayOffset !== 0 ? viewDate : null} hint={hint} onToday={() => carousel.go(-dayOffset)} />
       </DaySwipeSurface>
 
-      <TabBar bottom={tabBottom} onComingSoon={showToast} />
-      <Toast
-        message="قريبًا في الإصدار القادم إِنْ شَاءَ اللّٰه"
-        visible={toast}
-        bottom={tabBottom + TAB_BAR_HEIGHT + 14}
-      />
     </View>
   );
 }

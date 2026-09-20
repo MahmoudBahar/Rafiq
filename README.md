@@ -19,6 +19,7 @@ Rafiq shows the next prayer with a live countdown, today's full timetable, the H
 - **Live countdown** in Arabic-Indic digits that follows the mosque rhythm: the next adhan, then its iqama, then (after Fajr) sunrise.
 - **Daily timetable** for Fajr, Sunrise, Dhuhr, Asr, Maghrib and Isha with each prayer's iqama time, and the upcoming moment highlighted.
 - **Per-prayer pages** opened from the timetable: the pressed row morphs into a hero card under a sky band, followed by an animated timeline of the Sunnah rak'ah before and after the fard (Witr after Isha, Jumu'ah on Fridays, Duha from the sunrise row).
+- **Morning and evening azkar** behind a sun and moon dial: drag it and the sun sets, the moon rises and the sky turns with them. It opens on the set the hour calls for (morning from Fajr, evening from Asr). The reader shows one zekr per page; tap anywhere to count and a bead slides across a hanging tasbih strand. Progress is kept for the day and starts fresh at Fajr.
 - **Sun and moon arc** that moves across the header during the day and turns into a moon with stars at night.
 - **Hijri date** shown next to the location.
 - **Onboarding** with a location step: use the device location or pick a city manually.
@@ -138,7 +139,8 @@ Layouts use logical properties only (`start`/`end`, `marginStart`, `flexDirectio
 
 - Real prayer-time calculation from the device location and the selected method and madhab (the current timetable is a fixed placeholder that the settings adjust).
 - Adhan and pre-prayer notifications.
-- Azkar, tasbih, and qibla tabs, which currently show a "coming soon" notice.
+- More azkar categories beyond morning and evening.
+- Tasbih and qibla tabs, which currently show a "coming soon" notice.
 - Widgets and lock-screen surfaces.
 
 ## License
