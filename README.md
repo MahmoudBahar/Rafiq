@@ -42,6 +42,7 @@ Rafiq shows the next prayer with a live countdown, today's full timetable, the H
 - [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) with React Native 0.86 and React 19
 - [Expo Router](https://docs.expo.dev/router/introduction/) for file-based navigation
 - [React Native Reanimated 4](https://docs.swmansion.com/react-native-reanimated/) for animation
+  - `package.json` turns on Reanimated's `ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS` and `IOS_SYNCHRONOUSLY_UPDATE_UI_PROPS` [feature flags](https://docs.swmansion.com/react-native-reanimated/docs/guides/feature-flags/): transform and opacity updates go straight to the native views instead of through a Fabric commit on every frame. On a 120 Hz Android phone this took an idle animated frame from about 10 ms to 6 ms. They are compile-time flags, so changing them needs a native rebuild. The documented cost: while a view is being moved by an animation, a plain `Pressable` inside it is touchable where it was, not where it looks.
 - [react-native-svg](https://github.com/software-mansion/react-native-svg) for the arc, mark, icons, and gradients
 - `expo-sqlite/kv-store` for local persistence
 - `expo-localization` to force right-to-left layout at build time

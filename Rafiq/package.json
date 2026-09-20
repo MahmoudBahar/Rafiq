@@ -58,6 +58,12 @@
     "postinstall": "patch-package"
   },
   "private": true,
+  "reanimated": {
+    "staticFeatureFlags": {
+      "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true,
+      "IOS_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
+    }
+  },
   "expo": {
     "autolinking": {
       "android": {
