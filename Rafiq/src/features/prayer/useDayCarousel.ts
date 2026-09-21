@@ -3,6 +3,7 @@ import { I18nManager, useWindowDimensions } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import {
   Easing,
+  useAnimatedReaction,
   useSharedValue,
   withSequence,
   withSpring,
@@ -77,6 +78,17 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
     });
   }, [offset, reduced, center, tx, op, busy]);
 
+  // The detent of a slide is felt as the incoming page crosses the middle of the
+  // screen, where a real pager's catch would be, not once it has come to rest.
+  // Only a committed turn counts (`busy`): a drag that is let go springs back in
+  // silence, and one already past half-way clicks as it is released.
+  useAnimatedReaction(
+    () => busy.get() && Math.abs(tx.get()) >= width / 2,
+    (past, was) => {
+      if (past && was === false) scheduleOnRN(detent);
+    },
+  );
+
   const commitPage = useMemo(() => {
     return (delta: number) => {
       'worklet';
@@ -117,7 +129,6 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
           }
           center.set(center.get() + delta);
           tx.set(0);
-          scheduleOnRN(detent);
           scheduleOnRN(onCommit, delta);
         }),
       );
