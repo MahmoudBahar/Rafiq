@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnUI } from 'react-native-worklets';
-import { click } from '@/shared/lib/haptics';
+import { click, warning } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { physicalLeft } from '@/shared/lib/rtl';
 import { radius } from '@/shared/theme/tokens';
@@ -199,11 +199,13 @@ export function TabBar({ state, navigation, onComingSoon }: TabBarProps) {
   });
 
   const press = (item: Item) => {
-    click();
     if (item.soon) {
+      warning();
       onComingSoon();
       return;
     }
+    // The tab already open has no key to press: only a change of page clicks.
+    if (item.key !== routeName) click();
     const route = state.routes.find((r) => r.name === item.key);
     if (!route) return;
     const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
