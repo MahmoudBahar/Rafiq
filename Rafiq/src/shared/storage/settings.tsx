@@ -16,20 +16,20 @@ export { IQAMA_DEFAULTS, IQAMA_LIMIT, clampIqama, isDefaultIqama, type IqamaOffs
 /** `daylight`: light between sunrise and Maghrib, dark otherwise. */
 export type ThemeMode = 'light' | 'dark' | 'system' | 'daylight';
 export type Madhab = 'shafii' | 'hanafi';
-export type Method =
-  | 'egypt'
-  | 'mwl'
-  | 'ummalqura'
-  | 'karachi'
-  | 'isna'
-  | 'moonsighting'
-  | 'dubai'
-  | 'kuwait'
-  | 'qatar'
-  | 'turkey'
-  | 'singapore'
-  | 'tehran'
-  | 'jafari';
+const METHOD_IDS = [
+  'egypt',
+  'mwl',
+  'ummalqura',
+  'karachi',
+  'isna',
+  'moonsighting',
+  'dubai',
+  'kuwait',
+  'qatar',
+  'turkey',
+  'singapore',
+] as const;
+export type Method = (typeof METHOD_IDS)[number];
 export type LocationMode = 'auto' | 'manual';
 /** `system` follows the device's reduce-motion setting; the others override it. */
 export type MotionMode = 'system' | 'full' | 'reduced';
@@ -90,6 +90,8 @@ function load(): Settings {
       ...parsed,
       adjustments: sanitizeAdjustments(parsed.adjustments),
       iqama: sanitizeIqama(parsed.iqama),
+      // A method that has since left the list (Tehran, Jafari) falls back to the default.
+      method: METHOD_IDS.includes(parsed.method as Method) ? (parsed.method as Method) : DEFAULTS.method,
       motion: MOTION_MODES.includes(parsed.motion as MotionMode) ? (parsed.motion as MotionMode) : 'system',
     };
   } catch {
