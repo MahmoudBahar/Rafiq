@@ -19,8 +19,14 @@ interface Saved {
 const KEY = (set: AzkarSetId) => `rafiq.azkar.progress.v1.${set}`;
 const WRITE_DELAY_MS = 600;
 
-const cache: Partial<Record<AzkarSetId, Saved>> = {};
-const dirty = new Set<AzkarSetId>();
+// Keyed by set and day: around Fajr the tab (still on yesterday's key) and a freshly
+// opened reader (today's) are mounted together, and one entry per set had each
+// evicting the other: a new snapshot object on every read, and a blank could be
+// the value that reached the delayed write.
+const cache = new Map<string, Saved>();
+const slot = (set: AzkarSetId, day: string) => `${set}|${day}`;
+/** The latest value owed to storage, per set. */
+const dirty = new Map<AzkarSetId, Saved>();
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let watching = false;
@@ -32,8 +38,8 @@ const blank = (set: AzkarSetId, day: string): Saved => ({
 });
 
 function read(set: AzkarSetId, day: string): Saved {
-  const hit = cache[set];
-  if (hit && hit.day === day) return hit;
+  const hit = cache.get(slot(set, day));
+  if (hit) return hit;
   let next = blank(set, day);
   try {
     const raw = kv.get(KEY(set));
@@ -51,7 +57,7 @@ function read(set: AzkarSetId, day: string): Saved {
   } catch {
     // unreadable progress is simply a fresh day
   }
-  cache[set] = next;
+  cache.set(slot(set, day), next);
   return next;
 }
 
@@ -59,9 +65,7 @@ function read(set: AzkarSetId, day: string): Saved {
 export function flushAzkarProgress() {
   if (timer) clearTimeout(timer);
   timer = null;
-  for (const set of dirty) {
-    const value = cache[set];
-    if (!value) continue;
+  for (const [set, value] of dirty) {
     try {
       kv.set(KEY(set), JSON.stringify(value));
     } catch {
@@ -72,8 +76,8 @@ export function flushAzkarProgress() {
 }
 
 function commit(set: AzkarSetId, next: Saved) {
-  cache[set] = next;
-  dirty.add(set);
+  cache.set(slot(set, next.day), next);
+  dirty.set(set, next);
   listeners.forEach((l) => l());
   if (timer) clearTimeout(timer);
   timer = setTimeout(flushAzkarProgress, WRITE_DELAY_MS);
