@@ -22,6 +22,29 @@ export function setOpenRow(next: OpenRow | null) {
   listeners.forEach((l) => l());
 }
 
+/** Window-relative top and height of the open row's place on the home, in dp. */
+export interface RowPlace {
+  y: number;
+  h: number;
+}
+type Measurer = (done: (place: RowPlace | null) => void) => void;
+let measurer: Measurer | null = null;
+
+/** The home row whose place is being kept registers how to measure it. */
+export function setOpenRowMeasurer(next: Measurer | null) {
+  measurer = next;
+}
+
+/**
+ * Where the open row's place is right now. The page was given the row's
+ * rectangle when it opened, but the home lives on underneath (the next prayer
+ * changing resizes two rows), so the return asks again before it sets off.
+ */
+export function measureOpenRow(done: (place: RowPlace | null) => void) {
+  if (measurer) measurer(done);
+  else done(null);
+}
+
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {

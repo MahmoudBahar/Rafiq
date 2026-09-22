@@ -76,6 +76,14 @@ interface PrayerHeroProps {
   origin: HeroOrigin | null;
   /** Morph progress owned by the screen: 0 = on the row, 1 = settled. */
   progress: SharedValue<number>;
+  /**
+   * Window top and height of the row's place on the home. Owned by the screen,
+   * which measures the place again before the return.
+   */
+  rowY: SharedValue<number>;
+  rowH: SharedValue<number>;
+  /** The page's scroll offset: the card sits in the scrolled content, the row does not. */
+  scrollY: SharedValue<number>;
   /** Final top of the card inside the band. */
   top: number;
 }
@@ -93,7 +101,20 @@ export interface HeroFoot {
  * springs from the pressed row's rectangle into place while its row-styled
  * layer cross-fades into the full card.
  */
-export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, origin, progress, top }: PrayerHeroProps) {
+export function PrayerHero({
+  title,
+  rowName,
+  rowTime,
+  dayLabel,
+  times,
+  foot,
+  origin,
+  progress,
+  rowY,
+  rowH,
+  scrollY,
+  top,
+}: PrayerHeroProps) {
   const { c } = useTheme();
   const { reduced } = useMotion();
   const { height: winH } = useWindowDimensions();
@@ -103,8 +124,6 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, ori
   // window, so no measurement round trip is needed and the spring starts
   // before the first paint. Missing or absurd params fall back to a short rise.
   const valid = origin !== null && origin.h > 0 && origin.y >= 0 && origin.y < winH;
-  const originDy = useSharedValue(valid ? origin.y - top : FALLBACK_DY);
-  const originH = useSharedValue(valid ? origin.h : settledH);
   const kicked = useRef(false);
   const [landed, setLanded] = useState(reduced);
   // The shadow fades in once after landing (a blurred view is costly to fade,
@@ -138,9 +157,12 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, ori
     'worklet';
     return Math.round(v * PX) / PX;
   };
-  const card = useAnimatedStyle(() => ({
-    transform: [{ translateY: snap(originDy.get() * (1 - progress.get())) }],
-  }));
+  // The way to the row is measured from where the card is now: once the page has
+  // been scrolled the card has gone up with it, and the row is that much further.
+  const card = useAnimatedStyle(() => {
+    const dy = valid ? rowY.get() - top + scrollY.get() : FALLBACK_DY;
+    return { transform: [{ translateY: snap(dy * (1 - progress.get())) }] };
+  });
   // 2. The shadow shows only while the card is settled: on the way back it must
   // not ride along at full size (it is a full-size view inside the container).
   const shadow = useAnimatedStyle(() => ({ opacity: progress.get() > 0.98 ? shadowIn.get() : 0 }));
@@ -164,26 +186,39 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, ori
   });
   const capBottom = useAnimatedStyle(() => {
     const t = progress.get();
-    const h = snap(interpolate(t, [0, 1], [originH.get(), settledH]));
+    const h = snap(interpolate(t, [0, 1], [valid ? rowH.get() : settledH, settledH]));
     const r = interpolate(t, [0, 1], [rowRadius - INSET, radius.xl]);
     return { borderBottomStartRadius: r, borderBottomEndRadius: r, transform: [{ translateY: h - settledH }] };
   });
   const midStyle = useAnimatedStyle(() => {
     // Scale about the top edge (RN scales about the centre, so shift up by the
     // lost half). With `h` snapped, the strip's ends land on whole pixels too.
-    const h = snap(interpolate(progress.get(), [0, 1], [originH.get(), settledH]));
+    const h = snap(interpolate(progress.get(), [0, 1], [valid ? rowH.get() : settledH, settledH]));
     const natural = mid + 2 * OVERLAP;
     // Target length: the card height minus both caps and both insets.
     const sc = Math.max(0.001, (h - 2 * CAP - 2 * INSET + 2 * OVERLAP) / natural);
     return { transform: [{ translateY: (-(1 - sc) * natural) / 2 }, { scaleY: sc }] };
   });
-  // The row layer stays centred in the short box; the full layer waits for room.
+  // The text is cut at the box's bottom edge. Both layers are as tall as the settled
+  // card, and on the way back the box shrinks over the live home with nothing behind
+  // it to hide what hangs out. Done with a pair of opposite translations, since a
+  // clip that changed height would be a layout pass per frame.
+  const clip = useAnimatedStyle(() => {
+    const h = snap(interpolate(progress.get(), [0, 1], [valid ? rowH.get() : settledH, settledH]));
+    return { transform: [{ translateY: h - settledH }] };
+  });
+  const unclip = useAnimatedStyle(() => {
+    const h = snap(interpolate(progress.get(), [0, 1], [valid ? rowH.get() : settledH, settledH]));
+    return { transform: [{ translateY: settledH - h }] };
+  });
+  // The row layer stays centred in the short box. The two fades overlap so the box
+  // never travels blank.
   const rowLayer = useAnimatedStyle(() => {
     const t = progress.get();
-    const h = interpolate(t, [0, 1], [originH.get(), settledH]);
-    return { opacity: interpolate(t, [0, 0.5], [1, 0], 'clamp'), transform: [{ translateY: (h - settledH) / 2 }] };
+    const h = interpolate(t, [0, 1], [valid ? rowH.get() : settledH, settledH]);
+    return { opacity: interpolate(t, [0, 0.6], [1, 0], 'clamp'), transform: [{ translateY: (h - settledH) / 2 }] };
   });
-  const fullLayer = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0.5, 1], [0, 1], 'clamp') }));
+  const fullLayer = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0.4, 1], [0, 1], 'clamp') }));
 
   const rowText = highlighted ? c.herotext : c.tp;
   const rowTimeColor = highlighted ? c.herotext : c.ts;
@@ -221,53 +256,57 @@ export function PrayerHero({ title, rowName, rowTime, dayLabel, times, foot, ori
         <Animated.View style={[styles.mid, { top: INSET + CAP - OVERLAP, height: mid + 2 * OVERLAP }, paint, midStyle]} />
         <Animated.View style={[styles.cap, styles.capTop, paint, capTop]} />
         <Animated.View style={[styles.cap, styles.capBottom, paint, capBottom]} />
-        {/* Frame one: the home row, verbatim. */}
-        <Animated.View pointerEvents="none" style={[styles.rowLayer, rowLayer]}>
-          <View style={styles.rowName}>
-            <View style={[styles.dot, { backgroundColor: c.accent, opacity: highlighted ? 1 : 0 }]} />
-            <Text size={16} weight={highlighted ? 'bold' : 'semi'} color={rowText}>
-              {rowName}
-            </Text>
-          </View>
-          <Text size={14.5} weight={highlighted ? 'bold' : 'semi'} color={rowTimeColor} style={styles.tabular}>
-            {rowTime}
-          </Text>
-        </Animated.View>
-
-        <Animated.View style={[styles.fullLayer, fullLayer]}>
-          <View style={styles.titleRow}>
-            {/* Default display line height: Scheherazade's descenders clip in a tighter box. */}
-            <Display size={34} bold color={ink}>
-              {title}
-            </Display>
-            <Text size={12} weight="medium" color={inkSoft} style={highlighted && styles.soft}>
-              {dayLabel}
-            </Text>
-          </View>
-          <View style={styles.timesRow}>
-            {times.map((t) => (
-              <View key={t.label} style={styles.timeBlock}>
-                <Text size={11} weight="semi" color={inkSoft} style={highlighted && styles.soft}>
-                  {t.label}
-                </Text>
-                <Text size={19} weight="bold" color={ink} style={styles.tabular}>
-                  {formatTime12(t.at)}
+        <Animated.View pointerEvents="none" style={[styles.clip, clip]}>
+          <Animated.View style={[styles.unclip, unclip]}>
+            {/* Frame one: the home row, verbatim. */}
+            <Animated.View pointerEvents="none" style={[styles.rowLayer, rowLayer]}>
+              <View style={styles.rowName}>
+                <View style={[styles.dot, { backgroundColor: c.accent, opacity: highlighted ? 1 : 0 }]} />
+                <Text size={16} weight={highlighted ? 'bold' : 'semi'} color={rowText}>
+                  {rowName}
                 </Text>
               </View>
-            ))}
-          </View>
-          <View style={[styles.liveRow, { borderTopColor: rule }]}>
-            <Text size={11.5} weight="semi" color={foot.at ? c.accent : inkSoft} style={!foot.at && highlighted && styles.soft}>
-              {foot.label}
-            </Text>
-            {foot.at ? (
-              <CountdownDigits at={foot.at} size={22} color={ink} />
-            ) : (
-              <Text size={19} weight="bold" color={ink} style={styles.tabular}>
-                {foot.value}
+              <Text size={14.5} weight={highlighted ? 'bold' : 'semi'} color={rowTimeColor} style={styles.tabular}>
+                {rowTime}
               </Text>
-            )}
-          </View>
+            </Animated.View>
+
+            <Animated.View style={[styles.fullLayer, fullLayer]}>
+              <View style={styles.titleRow}>
+                {/* Default display line height: Scheherazade's descenders clip in a tighter box. */}
+                <Display size={34} bold color={ink}>
+                  {title}
+                </Display>
+                <Text size={12} weight="medium" color={inkSoft} style={highlighted && styles.soft}>
+                  {dayLabel}
+                </Text>
+              </View>
+              <View style={styles.timesRow}>
+                {times.map((t) => (
+                  <View key={t.label} style={styles.timeBlock}>
+                    <Text size={11} weight="semi" color={inkSoft} style={highlighted && styles.soft}>
+                      {t.label}
+                    </Text>
+                    <Text size={19} weight="bold" color={ink} style={styles.tabular}>
+                      {formatTime12(t.at)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <View style={[styles.liveRow, { borderTopColor: rule }]}>
+                <Text size={11.5} weight="semi" color={foot.at ? c.accent : inkSoft} style={!foot.at && highlighted && styles.soft}>
+                  {foot.label}
+                </Text>
+                {foot.at ? (
+                  <CountdownDigits at={foot.at} size={22} color={ink} />
+                ) : (
+                  <Text size={19} weight="bold" color={ink} style={styles.tabular}>
+                    {foot.value}
+                  </Text>
+                )}
+              </View>
+            </Animated.View>
+          </Animated.View>
         </Animated.View>
       </Animated.View>
     </View>
@@ -289,6 +328,8 @@ const styles = StyleSheet.create({
   capTop: { top: INSET },
   capBottom: { bottom: INSET },
   mid: { position: 'absolute', start: INSET, end: INSET },
+  clip: { ...FILL, overflow: 'hidden' },
+  unclip: FILL,
   rowLayer: {
     ...FILL,
     flexDirection: 'row',

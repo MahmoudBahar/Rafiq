@@ -1,10 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedRef,
+  useAnimatedStyle,
+  useScrollViewOffset,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
-import { setOpenRow } from '@/features/prayer/openRow';
+import { measureOpenRow, setOpenRow } from '@/features/prayer/openRow';
 import { PRAYERS, getTimes, type PrayerKey } from '@/features/prayer/engine';
 import { DUHA_AFTER_SUNRISE_MIN, frozenSky } from '@/features/prayer/guide/frozenSky';
 import { HERO_H, PrayerHero, type HeroFoot, type HeroOrigin, type HeroTime } from '@/features/prayer/guide/PrayerHero';
@@ -140,6 +147,12 @@ export default function PrayerScreen() {
   // The row is only hidden once the page has faded in over it, never before:
   // an empty place showing under the incoming page would read as a blink.
   const restOp = useSharedValue(1);
+  // Where the card returns to: the pressed row's rectangle, measured again as the
+  // return starts, and the page's scroll offset, which has carried the card up.
+  const rowY = useSharedValue(origin?.y ?? -1);
+  const rowH = useSharedValue(origin?.h ?? 0);
+  const scroller = useAnimatedRef<Animated.ScrollView>();
+  const scrollY = useScrollViewOffset(scroller);
   const dayIso = params.day ?? null;
   useEffect(() => {
     if (!dayIso) return;
@@ -165,14 +178,20 @@ export default function PrayerScreen() {
       back();
       return;
     }
-    restOp.set(withTiming(0, { duration: EXIT_MS * 0.3, easing: Easing.out(Easing.quad) }));
-    progress.set(
-      withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
-        'worklet';
-        if (finished) scheduleOnRN(back);
-      }),
-    );
-  }, [back, progress, reduced, restOp]);
+    measureOpenRow((place) => {
+      if (place && place.h > 0 && place.y >= 0) {
+        rowY.set(place.y);
+        rowH.set(place.h);
+      }
+      restOp.set(withTiming(0, { duration: EXIT_MS * 0.3, easing: Easing.out(Easing.quad) }));
+      progress.set(
+        withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
+          'worklet';
+          if (finished) scheduleOnRN(back);
+        }),
+      );
+    });
+  }, [back, progress, reduced, restOp, rowH, rowY]);
   usePreventBack(!returning, exit);
   const restStyle = useAnimatedStyle(() => ({ opacity: restOp.get() }));
 
@@ -181,7 +200,7 @@ export default function PrayerScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <Animated.ScrollView ref={scroller} showsVerticalScrollIndicator={false} bounces={false} scrollEnabled={!returning}>
         {/* Everything but the card, faded as one picture (off-screen compositing): otherwise
             Android spreads the alpha over every view separately and stacked views fade at
             different rates. The card itself never fades, so its pieces never show their joints. */}
@@ -189,7 +208,7 @@ export default function PrayerScreen() {
           needsOffscreenAlphaCompositing
           style={[{ minHeight: winH, paddingBottom: insets.bottom + 40, backgroundColor: c.bg }, restStyle]}
         >
-          <SkyBand frozen={frozen} height={bandH} arcTop={arcTop}>
+          <SkyBand frozen={frozen} height={bandH} arcTop={arcTop} skyHidden={returning}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="رجوع"
@@ -220,10 +239,13 @@ export default function PrayerScreen() {
             foot={foot}
             origin={origin}
             progress={progress}
+            rowY={rowY}
+            rowH={rowH}
+            scrollY={scrollY}
             top={heroTop}
           />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
