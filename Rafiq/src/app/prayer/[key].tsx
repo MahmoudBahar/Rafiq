@@ -163,13 +163,18 @@ export default function PrayerScreen() {
     };
   }, [key, dayIso]);
   const leaving = useRef(false);
-  // Hardware / gesture back plays the same return as the button; once the
-  // return has started the guard lifts so the final pop goes through.
+  // Hardware / gesture back plays the same return as the button. The guard stays
+  // up for the whole return (a second press during it was popping the page
+  // natively, mid-flight or before the return had drawn a frame) and lifts only
+  // for the final pop, which waits one render for the lifted guard to be in place.
   const [returning, setReturning] = useState(false);
-  const back = useCallback(() => {
+  const [popping, setPopping] = useState(false);
+  const back = useCallback(() => setPopping(true), []);
+  useEffect(() => {
+    if (!popping) return;
     setOpenRow(null);
     router.back();
-  }, [router]);
+  }, [popping, router]);
   const exit = useCallback(() => {
     if (leaving.current) return;
     leaving.current = true;
@@ -192,7 +197,7 @@ export default function PrayerScreen() {
       );
     });
   }, [back, progress, reduced, restOp, rowH, rowY]);
-  usePreventBack(!returning, exit);
+  usePreventBack(!popping, exit);
   const restStyle = useAnimatedStyle(() => ({ opacity: restOp.get() }));
 
   const stationCount = stationsOf(guide).length;
@@ -243,6 +248,7 @@ export default function PrayerScreen() {
             rowH={rowH}
             scrollY={scrollY}
             top={heroTop}
+            returning={returning}
           />
         </View>
       </Animated.ScrollView>

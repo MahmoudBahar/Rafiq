@@ -86,6 +86,8 @@ interface PrayerHeroProps {
   scrollY: SharedValue<number>;
   /** Final top of the card inside the band. */
   top: number;
+  /** The return has begun. */
+  returning: boolean;
 }
 
 export interface HeroFoot {
@@ -114,6 +116,7 @@ export function PrayerHero({
   rowH,
   scrollY,
   top,
+  returning,
 }: PrayerHeroProps) {
   const { c } = useTheme();
   const { reduced } = useMotion();
@@ -165,6 +168,10 @@ export function PrayerHero({
   });
   // 2. The shadow shows only while the card is settled: on the way back it must
   // not ride along at full size (it is a full-size view inside the container).
+  // It is taken down by React (see below), not by this style alone: a settled
+  // animated opacity is handed back to React as the view's own, and a one-frame
+  // change written at the same instant as the return's first commit was seen to
+  // lose the race, leaving a full-size opaque box travelling back over the rows.
   const shadow = useAnimatedStyle(() => ({ opacity: progress.get() > 0.98 ? shadowIn.get() : 0 }));
   const paint = { backgroundColor: bg };
   // The home row's own box (fill, outline and, for the next-prayer row, its shadow), at the row's
@@ -231,7 +238,7 @@ export function PrayerHero({
     <View style={[styles.slot, { top, height: settledH }]}>
       <Animated.View style={[styles.card, card]}>
         {/* Mounted after landing (a blurred shadow is costly to re-render while the card moves). */}
-        {landed ? (
+        {landed && !returning ? (
           <Animated.View
             style={[styles.shadow, { backgroundColor: bg, borderColor: border, boxShadow: `0 12px 30px ${c.shadow}` }, shadow]}
           />
