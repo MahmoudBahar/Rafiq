@@ -100,6 +100,8 @@ export function DrumPicker({
   // open time so live selection updates don't re-scroll the wheel.
   const [prevVisible, setPrevVisible] = useState(visible);
   const [closing, setClosing] = useState(false);
+  // Open and at rest: the backdrop and the panel then carry plain styles, not animated ones.
+  const [settled, setSettled] = useState(false);
   const [openIndex, setOpenIndex] = useState(selectedIndex);
   // Only rows near the lens are mounted; `center` follows the wheel per detent.
   const [center, setCenter] = useState(selectedIndex);
@@ -110,6 +112,7 @@ export function DrumPicker({
       setCenter(selectedIndex);
     } else {
       setClosing(true);
+      setSettled(false);
     }
   }
   const mounted = visible || closing;
@@ -134,6 +137,7 @@ export function DrumPicker({
     [onFocusChange],
   );
   const finishClose = useCallback(() => setClosing(false), []);
+  const finishOpen = useCallback(() => setSettled(true), []);
   const settle = useCallback(
     (index: number) => {
       const key = items[index]?.key;
@@ -156,7 +160,12 @@ export function DrumPicker({
       } else {
         dim.set(withTiming(1, { duration: 220 }));
         panelOp.set(withTiming(1, { duration: 200 }));
-        panelScale.set(withSpring(1, SPRING));
+        panelScale.set(
+          withSpring(1, SPRING, (finished) => {
+            'worklet';
+            if (finished) scheduleOnRN(finishOpen);
+          }),
+        );
       }
       return;
     }
@@ -175,7 +184,7 @@ export function DrumPicker({
         if (finished) scheduleOnRN(finishClose);
       }),
     );
-  }, [visible, closing, reduced, openIndex, dim, panelOp, panelScale, scrollY, armed, finishClose]);
+  }, [visible, closing, reduced, openIndex, dim, panelOp, panelScale, scrollY, armed, finishClose, finishOpen]);
 
   const pan = useMemo(
     () =>
@@ -271,6 +280,13 @@ export function DrumPicker({
   }));
   const columnStyle = useAnimatedStyle(() => ({ transform: [{ translateY: PAD - scrollY.get() }] }));
 
+  // At rest the open picker is drawn with plain styles. Animated opacity and scale are
+  // written straight to the native views, and React still holds the values they had on the
+  // first render (hidden): after a trip to the background a commit put those back, and the
+  // backdrop or the panel was gone with the picker still open. Plain styles are React's own,
+  // so there is nothing stale to restore. The animated ones come back for the close.
+  const still = settled || (reduced && visible);
+
   if (!mounted) return null;
 
   // Tapping the selected row closes; tapping another row turns the wheel,
@@ -294,7 +310,7 @@ export function DrumPicker({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+      <Animated.View style={[StyleSheet.absoluteFill, still ? null : backdropStyle]}>
         <BlurView
           style={StyleSheet.absoluteFill}
           intensity={25}
@@ -313,7 +329,7 @@ export function DrumPicker({
           style={[
             styles.panel,
             { width: panelW, backgroundColor: c.surface, boxShadow: `0 16px 40px ${c.shadow}` },
-            panelStyle,
+            still ? null : panelStyle,
           ]}
         >
           <Text size={15} weight="bold" align="center" style={styles.title}>

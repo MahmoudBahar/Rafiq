@@ -3,7 +3,8 @@ import { Platform } from 'react-native';
 
 /**
  * The app's haptic vocabulary, kept deliberately small: the wheel's detents
- * and end stops, the day pager locking into place, the nav bar tabs, the
+ * and end stops, the day pager locking into place, the nav bar tabs (a click
+ * for a change of page, a refusal for a tab that is not there yet), the
  * fine-tune steppers, and the tasbih beads of the azkar reader.
  * Fire-and-forget, React-free and safe to call from `scheduleOnRN`. On
  * Android the system `performHapticFeedback` constants are used: expo's
@@ -25,6 +26,11 @@ const impact = (style: Haptics.ImpactFeedbackStyle) => () => Haptics.impactAsync
 /** A nav bar tab or a fine-tune stepper pressed. */
 export function click() {
   androidOr(Haptics.AndroidHaptics.Virtual_Key, impact(Haptics.ImpactFeedbackStyle.Light));
+}
+
+/** A nav bar tab that leads nowhere yet. */
+export function warning() {
+  androidOr(Haptics.AndroidHaptics.Reject, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
 }
 
 const DETENT_GAP_MS = 30;

@@ -1,10 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedRef,
+  useAnimatedStyle,
+  useScrollViewOffset,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
-import { setOpenRow } from '@/features/prayer/openRow';
+import { measureOpenRow, setOpenRow } from '@/features/prayer/openRow';
 import { PRAYERS, getTimes, type PrayerKey } from '@/features/prayer/engine';
 import { DUHA_AFTER_SUNRISE_MIN, frozenSky } from '@/features/prayer/guide/frozenSky';
 import { HERO_H, PrayerHero, type HeroFoot, type HeroOrigin, type HeroTime } from '@/features/prayer/guide/PrayerHero';
@@ -140,6 +147,12 @@ export default function PrayerScreen() {
   // The row is only hidden once the page has faded in over it, never before:
   // an empty place showing under the incoming page would read as a blink.
   const restOp = useSharedValue(1);
+  // Where the card returns to: the pressed row's rectangle, measured again as the
+  // return starts, and the page's scroll offset, which has carried the card up.
+  const rowY = useSharedValue(origin?.y ?? -1);
+  const rowH = useSharedValue(origin?.h ?? 0);
+  const scroller = useAnimatedRef<Animated.ScrollView>();
+  const scrollY = useScrollViewOffset(scroller);
   const dayIso = params.day ?? null;
   useEffect(() => {
     if (!dayIso) return;
@@ -150,13 +163,18 @@ export default function PrayerScreen() {
     };
   }, [key, dayIso]);
   const leaving = useRef(false);
-  // Hardware / gesture back plays the same return as the button; once the
-  // return has started the guard lifts so the final pop goes through.
+  // Hardware / gesture back plays the same return as the button. The guard stays
+  // up for the whole return (a second press during it was popping the page
+  // natively, mid-flight or before the return had drawn a frame) and lifts only
+  // for the final pop, which waits one render for the lifted guard to be in place.
   const [returning, setReturning] = useState(false);
-  const back = useCallback(() => {
+  const [popping, setPopping] = useState(false);
+  const back = useCallback(() => setPopping(true), []);
+  useEffect(() => {
+    if (!popping) return;
     setOpenRow(null);
     router.back();
-  }, [router]);
+  }, [popping, router]);
   const exit = useCallback(() => {
     if (leaving.current) return;
     leaving.current = true;
@@ -165,15 +183,21 @@ export default function PrayerScreen() {
       back();
       return;
     }
-    restOp.set(withTiming(0, { duration: EXIT_MS * 0.3, easing: Easing.out(Easing.quad) }));
-    progress.set(
-      withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
-        'worklet';
-        if (finished) scheduleOnRN(back);
-      }),
-    );
-  }, [back, progress, reduced, restOp]);
-  usePreventBack(!returning, exit);
+    measureOpenRow((place) => {
+      if (place && place.h > 0 && place.y >= 0) {
+        rowY.set(place.y);
+        rowH.set(place.h);
+      }
+      restOp.set(withTiming(0, { duration: EXIT_MS * 0.3, easing: Easing.out(Easing.quad) }));
+      progress.set(
+        withTiming(0, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
+          'worklet';
+          if (finished) scheduleOnRN(back);
+        }),
+      );
+    });
+  }, [back, progress, reduced, restOp, rowH, rowY]);
+  usePreventBack(!popping, exit);
   const restStyle = useAnimatedStyle(() => ({ opacity: restOp.get() }));
 
   const stationCount = stationsOf(guide).length;
@@ -181,7 +205,7 @@ export default function PrayerScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <Animated.ScrollView ref={scroller} showsVerticalScrollIndicator={false} bounces={false} scrollEnabled={!returning}>
         {/* Everything but the card, faded as one picture (off-screen compositing): otherwise
             Android spreads the alpha over every view separately and stacked views fade at
             different rates. The card itself never fades, so its pieces never show their joints. */}
@@ -189,7 +213,7 @@ export default function PrayerScreen() {
           needsOffscreenAlphaCompositing
           style={[{ minHeight: winH, paddingBottom: insets.bottom + 40, backgroundColor: c.bg }, restStyle]}
         >
-          <SkyBand frozen={frozen} height={bandH} arcTop={arcTop}>
+          <SkyBand frozen={frozen} height={bandH} arcTop={arcTop} skyHidden={returning}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="رجوع"
@@ -220,10 +244,14 @@ export default function PrayerScreen() {
             foot={foot}
             origin={origin}
             progress={progress}
+            rowY={rowY}
+            rowH={rowH}
+            scrollY={scrollY}
             top={heroTop}
+            returning={returning}
           />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }

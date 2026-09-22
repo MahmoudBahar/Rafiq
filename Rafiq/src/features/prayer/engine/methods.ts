@@ -21,15 +21,6 @@ function egyptian(): CalculationParameters {
   return p;
 }
 
-/** Shia Ithna-Ashari (Leva Institute, Qum): not an adhan preset, same angles Aladhan uses. */
-function jafari(): CalculationParameters {
-  const p = CalculationMethod.Other();
-  p.fajrAngle = 16;
-  p.maghribAngle = 4;
-  p.ishaAngle = 14;
-  return p;
-}
-
 /** Insertion order is display order; Egypt stays first because it is the default. */
 export const METHOD_BY_ID: Record<Method, MethodDef> = {
   egypt: {
@@ -97,18 +88,6 @@ export const METHOD_BY_ID: Record<Method, MethodDef> = {
     name: 'المجلس الإسلامي في سنغافورة',
     sub: 'سنغافورة وماليزيا',
     params: CalculationMethod.Singapore,
-  },
-  tehran: {
-    id: 'tehran',
-    name: 'معهد الجيوفيزياء – جامعة طهران',
-    sub: 'إيران',
-    params: CalculationMethod.Tehran,
-  },
-  jafari: {
-    id: 'jafari',
-    name: 'المذهب الجعفري – معهد ليوا، قم',
-    sub: 'الشيعة الإثنا عشرية',
-    params: jafari,
   },
 };
 

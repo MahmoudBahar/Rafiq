@@ -3,6 +3,7 @@ import { I18nManager, useWindowDimensions } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import {
   Easing,
+  useAnimatedReaction,
   useSharedValue,
   withSequence,
   withSpring,
@@ -77,6 +78,21 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
     });
   }, [offset, reduced, center, tx, op, busy]);
 
+  // The detent is felt each time the incoming page crosses the middle of the screen,
+  // where a real pager's catch would be, as the dial does at its half-way point:
+  // under a slow finger as it passes, and again if the finger brings it back; during
+  // the slide when it is let go before the middle. The one silent crossing is the
+  // commit's own reset, when the page snaps from a full width away to its place.
+  // The ends rubber-band to a third of the width at most, so they never reach it.
+  useAnimatedReaction(
+    () => Math.abs(tx.get()) >= width / 2,
+    (past, was) => {
+      if (was === null || past === was) return;
+      if (!past && busy.get()) return;
+      scheduleOnRN(detent);
+    },
+  );
+
   const commitPage = useMemo(() => {
     return (delta: number) => {
       'worklet';
@@ -117,7 +133,6 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
           }
           center.set(center.get() + delta);
           tx.set(0);
-          scheduleOnRN(detent);
           scheduleOnRN(onCommit, delta);
         }),
       );

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { formatTime12 } from '@/shared/lib/arabic';
 import { radius } from '@/shared/theme/tokens';
@@ -6,6 +6,7 @@ import { useTheme } from '@/shared/theme/useTheme';
 import { PressScale } from '@/shared/ui/PressScale';
 import { Text } from '@/shared/ui/Text';
 import type { PrayerKey, PrayerTime } from './engine';
+import { setOpenRowMeasurer } from './openRow';
 
 /** Space between rows. The prayer page's card needs it to lay its shadow the way a row's falls. */
 export const ROW_GAP = 7;
@@ -51,6 +52,18 @@ function Row({ time: p, isNext, hidden, onPress }: RowProps) {
   const timeColor = isNext ? c.herotext : p.isPrayer ? c.ts : c.tm;
   const weight = isNext ? 'bold' : p.isPrayer ? 'semi' : 'medium';
   const adhan = formatTime12(p.at);
+
+  // While its page is open, the page's return asks this row where its place is.
+  useEffect(() => {
+    if (!hidden) return;
+    const measure = (done: (place: { y: number; h: number } | null) => void) => {
+      const node = box.current;
+      if (!node) done(null);
+      else node.measureInWindow((_x, y, _w, h) => done({ y, h }));
+    };
+    setOpenRowMeasurer(measure);
+    return () => setOpenRowMeasurer(null);
+  }, [hidden]);
 
   const press = () => {
     if (!onPress) return;
