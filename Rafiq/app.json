@@ -99,7 +99,7 @@
           "locationWhenInUsePermission": "يحتاج رفيق إلى موقعك لحساب مواقيت الصلاة في مدينتك بدقة. لا يُشارك موقعك مع أي جهة.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "motionUsagePermission": false,
+          "motionUsagePermission": "لا يستخدم رفيق بيانات الحركة، ولن يطلب منك هذا الإذن.",
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
