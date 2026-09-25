@@ -5,3 +5,8 @@ Rafiq Islamic App Branding2/
 *.zip
 
 .DS_Store
+
+# local design prototype and azkar source data (kept out of the repo and EAS uploads)
+Islamic Prayer Times App/
+azkar_obj.json
+scrapper.py
