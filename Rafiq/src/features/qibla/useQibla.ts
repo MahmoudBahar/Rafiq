@@ -46,6 +46,8 @@ const SMOOTH_PER_FRAME = 0.18;
 const REDUCED_PER_FRAME = 0.5;
 const FRAME_MS = 1000 / 60;
 const LOCK_FADE_MS = 250;
+/** After subscribing, the fused heading is left to settle this long before a lock can ring. */
+const ARM_MS = 1500;
 const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15 };
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
@@ -89,6 +91,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const lockT = useSharedValue(0);
   const bearingSv = useSharedValue(bearing ?? 0);
   const haveTarget = useSharedValue(false);
+  /** The feed has settled since it started: only then does a lock get its cue. */
+  const primed = useSharedValue(false);
   useEffect(() => {
     bearingSv.set(bearing ?? 0);
   }, [bearing, bearingSv]);
@@ -101,6 +105,9 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const confidence: Confidence = coords ? sensed : 'no-location';
 
   // The readings the confidence tick folds; the listeners just drop values here.
+  // Plain refs for the JS side: a shared value read on the JS thread right after
+  // it was set there can still answer with the old value, so the JS side keeps
+  // its own copy of what it last wrote.
   const readings = useRef({
     sensorsAvailable: true,
     fieldAnomaly: false,
@@ -109,6 +116,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     jump: false,
     stableForMs: 0,
     interferenceUntil: 0,
+    /** The last heading handed to the UI thread, unwrapped; null before the first sample. */
+    lastTarget: null as number | null,
   });
   const stillness = useMemo(() => createStillness(STILLNESS), []);
   const fieldWatch = useMemo(() => createFieldWatch(), []);
@@ -143,10 +152,13 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           r.stableForMs = still.stableForMs;
           if (still.jump) r.interferenceUntil = Date.now() + INTERFERENCE_HOLD_MS;
           pitch.set(h.pitch);
-          target.set(unwrap(target.get(), trueHeading));
-          if (!haveTarget.get()) {
+          const first = r.lastTarget === null;
+          const next = first ? trueHeading : unwrap(r.lastTarget as number, trueHeading);
+          r.lastTarget = next;
+          target.set(next);
+          if (first) {
             // First reading: start there rather than sweeping in from zero.
-            heading.set(target.get());
+            heading.set(next);
             haveTarget.set(true);
           }
         }),
@@ -168,6 +180,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       else if (headingSub) subs.push(headingSub);
     })();
 
+    // The fused heading wanders for a moment after the sensors register; the lock cue
+    // is armed only once that has passed, so an opening never rings it.
+    const arm = setTimeout(() => primed.set(true), ARM_MS);
+
     const tick = setInterval(() => {
       const now = Date.now();
       const next = foldConfidence({
@@ -184,13 +200,17 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     return () => {
       cancelled = true;
       clearInterval(tick);
+      clearTimeout(arm);
       subs.forEach((s) => s.remove());
       r.fieldAnomaly = false;
       r.accuracy = null;
       r.stableForMs = 0;
+      r.lastTarget = null;
       haveTarget.set(false);
+      // The next first sample is an opening again, so it is silent again.
+      primed.set(false);
     };
-  }, [live, latitude, longitude, mode, stillness, fieldWatch, pitch, target, heading, haveTarget]);
+  }, [live, latitude, longitude, mode, stillness, fieldWatch, pitch, target, heading, haveTarget, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;
@@ -211,11 +231,12 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // The cue is for turning into the lock: a page that opens already on the
   // Qibla shows it without a sound, like the wheel, which is silent on open.
   const bandSv = useSharedValue<Band>('far');
-  const primed = useSharedValue(false);
   const shown = useSharedValue(-1);
   useAnimatedReaction(
-    () => delta.get(),
+    // Nothing to judge before the first sample: `delta` starts at 0, which is not a lock.
+    () => (haveTarget.get() ? delta.get() : null),
     (d) => {
+      if (d === null) return;
       const a = Math.abs(d);
       const prev = bandSv.get();
       const next: Band =
@@ -226,7 +247,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         scheduleOnRN(setBand, next);
         if (next === 'locked' && primed.get()) scheduleOnRN(lock);
       }
-      primed.set(true);
       const deg = next === 'locked' ? 0 : Math.round(a);
       const code = deg * 2 + (d >= 0 ? 1 : 0);
       if (code !== shown.get()) {
