@@ -11,6 +11,7 @@
     "astronomia": "^4.2.0",
     "expo": "~57.0.25",
     "expo-blur": "~57.0.3",
+    "expo-camera": "~57.0.5",
     "expo-constants": "~57.0.18",
     "expo-dev-client": "~57.0.19",
     "expo-device": "~57.0.2",
@@ -23,12 +24,14 @@
     "expo-localization": "~57.0.2",
     "expo-location": "~57.0.20",
     "expo-router": "~57.0.23",
+    "expo-sensors": "~57.0.3",
     "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "~57.0.3",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
+    "geomagnetism": "^0.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -45,7 +48,8 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "patch-package": "^8.0.1",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.2"
   },
   "scripts": {
     "start": "expo start",
@@ -55,7 +59,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "azkar:build": "node ./scripts/build-azkar.mjs ../azkar_obj.json",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "test": "vitest run"
   },
   "private": true,
   "reanimated": {
