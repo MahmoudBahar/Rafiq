@@ -42,7 +42,7 @@ const ITEMS: readonly Item[] = [
   { key: 'index', label: 'الصلاة', Icon: ClockIcon },
   { key: 'azkar', label: 'الأذكار', Icon: AzkarIcon },
   { key: 'tasbih', label: 'التسبيح', Icon: TasbihIcon, soon: true },
-  { key: 'qibla', label: 'القبلة', Icon: CompassIcon, soon: true },
+  { key: 'qibla', label: 'القبلة', Icon: CompassIcon },
 ];
 
 const LABEL_SIZE = 12.5;

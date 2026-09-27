@@ -63,7 +63,8 @@ export default function AzkarScreen() {
   return (
     <TabScene
       name="azkar"
-      side="end"
+      index={1}
+      slot={1}
       // Clipped to the page: the dial's ring is wider than the screen, and would otherwise hang over
       // the neighbouring tab while the pages slide. The page's own colour is the ground's: a sky
       // colour here showed as a light hairline down the edge of the ground band during the slide.

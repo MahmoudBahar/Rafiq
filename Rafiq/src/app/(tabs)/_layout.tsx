@@ -60,6 +60,7 @@ export default function TabsLayout() {
       >
         <Tabs.Screen name="index" />
         <Tabs.Screen name="azkar" />
+        <Tabs.Screen name="qibla" />
       </Tabs>
       <Toast message="قريبًا في الإصدار القادم إِنْ شَاءَ اللّٰه" visible={toast} bottom={tabInset + 14} />
     </View>
