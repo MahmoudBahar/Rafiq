@@ -8,10 +8,13 @@ export { KAABA, distanceToMeccaKm, qiblaBearing } from './bearing';
 export {
   FIELD_MAX_UT,
   FIELD_MIN_UT,
+  FIELD_PERSIST_MS,
   SETTLE_MS,
   confidence,
+  createFieldWatch,
   type Confidence,
   type ConfidenceInput,
+  type FieldWatch,
 } from './confidence';
 export { declinationFromHeading, declinationFromModel, magneticToTrue } from './declination';
 export {

@@ -1,10 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_MAX_UT, FIELD_MIN_UT, SETTLE_MS, confidence, type ConfidenceInput } from './confidence';
+import {
+  FIELD_MAX_UT,
+  FIELD_MIN_UT,
+  FIELD_PERSIST_MS,
+  SETTLE_MS,
+  confidence,
+  createFieldWatch,
+  type ConfidenceInput,
+} from './confidence';
+
+describe('createFieldWatch', () => {
+  it('accepts a charging phone on a desk (mid 60s µT) as normal', () => {
+    const w = createFieldWatch();
+    expect(w.push(66, 0)).toBe(false);
+    expect(w.push(66, 5000)).toBe(false);
+  });
+  it('ignores a brief excursion out of the band', () => {
+    const w = createFieldWatch();
+    w.push(45, 0);
+    expect(w.push(120, 200)).toBe(false);
+    expect(w.push(45, 400)).toBe(false);
+  });
+  it('flags a field that stays out of the band', () => {
+    const w = createFieldWatch();
+    w.push(45, 0);
+    w.push(120, 200);
+    expect(w.push(120, 200 + FIELD_PERSIST_MS)).toBe(true);
+    expect(w.push(120, 5000)).toBe(true);
+  });
+  it('flags a field that is far too weak as well', () => {
+    const w = createFieldWatch();
+    w.push(10, 0);
+    expect(w.push(10, FIELD_PERSIST_MS)).toBe(true);
+  });
+  it('clears as soon as the field is back in the band', () => {
+    const w = createFieldWatch();
+    w.push(120, 0);
+    w.push(120, FIELD_PERSIST_MS);
+    expect(w.push(50, FIELD_PERSIST_MS + 100)).toBe(false);
+  });
+  it('spans a band wide enough for the Earth and a phone’s error', () => {
+    expect(FIELD_MIN_UT).toBeLessThanOrEqual(22);
+    expect(FIELD_MAX_UT).toBeGreaterThanOrEqual(80);
+  });
+});
 
 const good: ConfidenceInput = {
   hasCoords: true,
   sensorsAvailable: true,
-  fieldMicroTesla: 45,
+  fieldAnomaly: false,
   jump: false,
   accuracy: 3,
   stableForMs: 0,
@@ -20,9 +64,8 @@ describe('confidence', () => {
   it('is unavailable without sensors', () => {
     expect(confidence({ ...good, sensorsAvailable: false })).toBe('unavailable');
   });
-  it('reports interference when the field is outside the Earth band', () => {
-    expect(confidence({ ...good, fieldMicroTesla: FIELD_MAX_UT + 10 })).toBe('interference');
-    expect(confidence({ ...good, fieldMicroTesla: FIELD_MIN_UT - 5 })).toBe('interference');
+  it('reports interference on a sustained field anomaly', () => {
+    expect(confidence({ ...good, fieldAnomaly: true })).toBe('interference');
   });
   it('reports interference on a jump while still, even at high accuracy', () => {
     expect(confidence({ ...good, jump: true })).toBe('interference');
@@ -38,8 +81,5 @@ describe('confidence', () => {
     expect(confidence({ ...good, accuracy: null, stableForMs: 0 })).toBe('settling');
     expect(confidence({ ...good, accuracy: -1, stableForMs: SETTLE_MS - 1 })).toBe('settling');
     expect(confidence({ ...good, accuracy: null, stableForMs: SETTLE_MS })).toBe('good');
-  });
-  it('treats an unknown field as normal', () => {
-    expect(confidence({ ...good, fieldMicroTesla: null })).toBe('good');
   });
 });

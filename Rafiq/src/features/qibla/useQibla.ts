@@ -17,6 +17,7 @@ import {
   LOCK_LEAVE_DEG,
   NEAR_DEG,
   confidence as foldConfidence,
+  createFieldWatch,
   createStillness,
   declinationFromHeading,
   declinationFromModel,
@@ -102,7 +103,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // The readings the confidence tick folds; the listeners just drop values here.
   const readings = useRef({
     sensorsAvailable: true,
-    field: null as number | null,
+    fieldAnomaly: false,
     accuracy: null as number | null,
     declination: null as number | null,
     jump: false,
@@ -110,6 +111,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     interferenceUntil: 0,
   });
   const stillness = useMemo(() => createStillness(STILLNESS), []);
+  const fieldWatch = useMemo(() => createFieldWatch(), []);
 
   // Sensors → `target` (JS thread). The declination comes from the platform's own
   // true/magnetic pair when it has one, else from the magnetic model.
@@ -153,7 +155,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       Magnetometer.setUpdateInterval(FIELD_INTERVAL_MS);
       subs.push(
         Magnetometer.addListener(({ x, y, z }) => {
-          r.field = Math.hypot(x, y, z);
+          r.fieldAnomaly = fieldWatch.push(Math.hypot(x, y, z), Date.now());
         }),
       );
 
@@ -171,7 +173,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       const next = foldConfidence({
         hasCoords: true,
         sensorsAvailable: r.sensorsAvailable,
-        fieldMicroTesla: r.field,
+        fieldAnomaly: r.fieldAnomaly,
         jump: now < r.interferenceUntil,
         accuracy: r.accuracy,
         stableForMs: r.stableForMs,
@@ -183,12 +185,12 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       cancelled = true;
       clearInterval(tick);
       subs.forEach((s) => s.remove());
-      r.field = null;
+      r.fieldAnomaly = false;
       r.accuracy = null;
       r.stableForMs = 0;
       haveTarget.set(false);
     };
-  }, [live, latitude, longitude, mode, stillness, pitch, target, heading, haveTarget]);
+  }, [live, latitude, longitude, mode, stillness, fieldWatch, pitch, target, heading, haveTarget]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;
@@ -206,7 +208,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   }, [frame, live]);
 
   // Band with hysteresis, the lock cue, and the turn hint's number, from the UI thread.
+  // The cue is for turning into the lock: a page that opens already on the
+  // Qibla shows it without a sound, like the wheel, which is silent on open.
   const bandSv = useSharedValue<Band>('far');
+  const primed = useSharedValue(false);
   const shown = useSharedValue(-1);
   useAnimatedReaction(
     () => delta.get(),
@@ -219,8 +224,9 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         bandSv.set(next);
         lockT.set(withTiming(next === 'locked' ? 1 : 0, { duration: LOCK_FADE_MS }));
         scheduleOnRN(setBand, next);
-        if (next === 'locked') scheduleOnRN(lock);
+        if (next === 'locked' && primed.get()) scheduleOnRN(lock);
       }
+      primed.set(true);
       const deg = next === 'locked' ? 0 : Math.round(a);
       const code = deg * 2 + (d >= 0 ? 1 : 0);
       if (code !== shown.get()) {
