@@ -23,6 +23,7 @@ import {
   headingsFromAttitude,
   magneticToTrue,
   qiblaBearing,
+  shortestDelta,
   toW3C,
   unwrap,
   type Band,
@@ -198,8 +199,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     const pull = 1 - Math.pow(1 - k, dt / FRAME_MS);
     const h = heading.get() + (target.get() - heading.get()) * pull;
     heading.set(h);
-    const d = (((bearingSv.get() - h) % 360) + 540) % 360; // 0..360
-    delta.set(d > 180 ? d - 360 : d);
+    delta.set(shortestDelta(bearingSv.get(), h));
   }, false);
   useEffect(() => {
     frame.setActive(live);

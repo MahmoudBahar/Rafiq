@@ -42,6 +42,30 @@ describe('headingsFromAttitude', () => {
   });
 });
 
+// Recorded on a Samsung S24 Ultra (2026-09-27) with the phone in known
+// postures, next to expo-location's own compass reading for the flat case.
+// Android's expo-sensors rotation already follows the W3C convention, so
+// `toW3C` leaves it alone; these pin that.
+const android = (a: number, b: number, g: number) => toW3C({ alpha: a * D, beta: b * D, gamma: g * D }, 'android');
+
+describe('Android device samples', () => {
+  it('flat on the desk, top pointing SSE (compass read 162° magnetic)', () => {
+    const h = headingsFromAttitude(android(-159.3, -0.2, -2.4));
+    expect(h.flatHeading).toBeCloseTo(159.3, 0);
+    expect(h.pitch).toBeCloseTo(-0.2, 0);
+  });
+  it('upright, back camera pointing SSE: the camera heading is steady and the pitch reads 88°', () => {
+    const h = headingsFromAttitude(android(-130.2, 88.2, -20.6));
+    expect(h.cameraHeading).toBeCloseTo(150.8, 0);
+    expect(h.pitch).toBeCloseTo(88.2, 0);
+  });
+  it('flat with the right side lowered: gamma is positive and the flat heading does not move', () => {
+    const h = headingsFromAttitude(android(-114.7, -1.3, 14.2));
+    expect(h.flatHeading).toBeCloseTo(114.7, 0);
+    expect(h.pitch).toBeCloseTo(-1.3, 0);
+  });
+});
+
 describe('toW3C', () => {
   it('passes Android rotation through unchanged', () => {
     const r = toW3C({ alpha: 1, beta: 0.5, gamma: 0.1 }, 'android');

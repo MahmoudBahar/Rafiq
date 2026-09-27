@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Line, Rect } from 'react-native-svg';
+import { physicalLeft } from '@/shared/lib/rtl';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
 import type { QiblaValues } from '../useQibla';
@@ -34,6 +35,8 @@ export function CompassDial({ values, bearing, size, dimmed }: CompassDialProps)
   const b = bearing ?? 0;
 
   const world = useAnimatedStyle(() => ({ transform: [{ rotate: `${-heading.get()}deg` }] }));
+  // The letters ride the ring but stay upright: they undo the ring's turn.
+  const upright = useAnimatedStyle(() => ({ transform: [{ rotate: `${heading.get()}deg` }] }));
   const mat = useAnimatedStyle(() => ({
     transform: [{ rotate: `${bearing === null ? 0 : b - heading.get()}deg` }, { scale: 1 + 0.04 * lockT.get() }],
   }));
@@ -70,17 +73,17 @@ export function CompassDial({ values, bearing, size, dimmed }: CompassDialProps)
         {POINTS.map((p, i) => {
           const a = (i * Math.PI) / 2;
           const d = r - 26;
-          // Physical positions: `left` here must not flip under RTL.
+          // Physical positions: RN flips `left` under RTL, and a compass must not mirror.
           return (
-            <View
+            <Animated.View
               key={p}
-              style={[styles.point, { left: r + d * Math.sin(a) - 12, top: r - d * Math.cos(a) - 12 }]}
+              style={[styles.point, physicalLeft(r + d * Math.sin(a) - 12), { top: r - d * Math.cos(a) - 12 }, upright]}
               pointerEvents="none"
             >
               <Text size={13} weight="semi" color={i === 0 ? c.accent : c.ts} align="center" style={styles.pointText}>
                 {p}
               </Text>
-            </View>
+            </Animated.View>
           );
         })}
       </Animated.View>
@@ -97,7 +100,7 @@ export function CompassDial({ values, bearing, size, dimmed }: CompassDialProps)
       </Animated.View>
 
       {/* The phone's own direction: a fixed mark at the top. */}
-      <View pointerEvents="none" style={[styles.index, { top: 0, left: r - 7, borderTopColor: c.accent }]} />
+      <View pointerEvents="none" style={[styles.index, physicalLeft(r - 7), { top: 0, borderTopColor: c.accent }]} />
     </View>
   );
 }

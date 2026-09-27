@@ -74,7 +74,7 @@ export default function QiblaScreen() {
       </View>
 
       <View style={[styles.hint, { top: horizon - HINT_H, height: HINT_H }]} pointerEvents="none">
-        <TurnHint qibla={qibla} place={label} />
+        <TurnHint qibla={qibla} />
       </View>
 
       <View style={[styles.ground, { top: horizon, backgroundColor: c.bg }]}>
@@ -88,7 +88,7 @@ export default function QiblaScreen() {
         ) : (
           <View style={styles.place}>
             <Text size={12.5} color={c.ts}>
-              {source === 'fix' ? 'من موقعك الحالي' : label ? `من ${label}` : ''}
+              {source === 'fix' ? `من موقعك الحالي${label ? ` (${label})` : ''}` : label ? `من مدينة ${label}` : ''}
             </Text>
             <Text size={12.5} color={c.tm}>
               ·

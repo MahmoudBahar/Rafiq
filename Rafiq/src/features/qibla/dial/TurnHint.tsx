@@ -6,12 +6,10 @@ import type { Qibla } from '../useQibla';
 
 interface TurnHintProps {
   qibla: Qibla;
-  /** Where the bearing is taken from, for the line under the hint. */
-  place: string | null;
 }
 
 /** What to do next, in one line, and the bearing under it. */
-export function TurnHint({ qibla, place }: TurnHintProps) {
+export function TurnHint({ qibla }: TurnHintProps) {
   const { c } = useTheme();
   const { band, turnDeg, turnRight, confidence, raised, bearing } = qibla;
   const locked = band === 'locked' && confidence === 'good';
@@ -24,8 +22,7 @@ export function TurnHint({ qibla, place }: TurnHintProps) {
     if (band === 'locked') return 'أنت في اتجاه القبلة';
     return `أدر ${turnRight ? 'يمينًا' : 'يسارًا'} ${toArabicIndic(turnDeg)}°`;
   })();
-  const sub =
-    bearing === null ? null : `${toArabicIndic(Math.round(bearing))}° من الشمال${place ? ` · من ${place}` : ''}`;
+  const sub = bearing === null ? null : `${toArabicIndic(Math.round(bearing))}° من الشمال`;
   return (
     <View style={styles.wrap}>
       <Text size={16} weight="semi" color={locked ? c.accent : c.tp} align="center" numberOfLines={1} style={styles.wide}>

@@ -1,11 +1,16 @@
+// The angle helpers are worklets too: the UI thread runs the same tested
+// maths rather than a second copy of it.
+
 /** Any angle into [0, 360). */
 export function normalizeDeg(deg: number): number {
+  'worklet';
   const d = deg % 360;
   return d < 0 ? d + 360 : d;
 }
 
 /** Signed turn from `heading` to `bearing`, the short way: (-180, 180]. Positive = turn right. */
 export function shortestDelta(bearing: number, heading: number): number {
+  'worklet';
   const d = normalizeDeg(bearing - heading);
   return d > 180 ? d - 360 : d;
 }
