@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FIELD_MAX_UT,
-  FIELD_MIN_UT,
+  FIELD_DIP_TOLERANCE_DEG,
+  FIELD_MAGNITUDE_TOLERANCE,
   FIELD_PERSIST_MS,
   SETTLE_MS,
   confidence,
@@ -9,39 +9,51 @@ import {
   type ConfidenceInput,
 } from './confidence';
 
+// Cairo per the WMM: 44 µT, dipping 45°.
+const CAIRO = { magnitudeUt: 44, dipDeg: 45 };
+
 describe('createFieldWatch', () => {
-  it('accepts a charging phone on a desk (mid 60s µT) as normal', () => {
-    const w = createFieldWatch();
-    expect(w.push(66, 0)).toBe(false);
-    expect(w.push(66, 5000)).toBe(false);
+  it('accepts a phone reading close to the model', () => {
+    const w = createFieldWatch(CAIRO);
+    expect(w.push({ magnitudeUt: 47, dipDeg: 43 }, 0)).toBe(false);
+    expect(w.push({ magnitudeUt: 47, dipDeg: 43 }, 5000)).toBe(false);
   });
-  it('ignores a brief excursion out of the band', () => {
-    const w = createFieldWatch();
-    w.push(45, 0);
-    expect(w.push(120, 200)).toBe(false);
-    expect(w.push(45, 400)).toBe(false);
+  it('accepts the mild lift a cable gives (desk: 65 µT, dip 43°)', () => {
+    const w = createFieldWatch(CAIRO);
+    w.push({ magnitudeUt: 65, dipDeg: 43 }, 0);
+    expect(w.push({ magnitudeUt: 65, dipDeg: 43 }, 5000)).toBe(false);
   });
-  it('flags a field that stays out of the band', () => {
-    const w = createFieldWatch();
-    w.push(45, 0);
-    w.push(120, 200);
-    expect(w.push(120, 200 + FIELD_PERSIST_MS)).toBe(true);
-    expect(w.push(120, 5000)).toBe(true);
+  it('flags a field far too strong, once it persists', () => {
+    const w = createFieldWatch(CAIRO);
+    w.push({ magnitudeUt: 45, dipDeg: 45 }, 0);
+    expect(w.push({ magnitudeUt: 120, dipDeg: 45 }, 200)).toBe(false);
+    expect(w.push({ magnitudeUt: 120, dipDeg: 45 }, 200 + FIELD_PERSIST_MS)).toBe(true);
   });
-  it('flags a field that is far too weak as well', () => {
-    const w = createFieldWatch();
-    w.push(10, 0);
-    expect(w.push(10, FIELD_PERSIST_MS)).toBe(true);
+  it('flags a field far too weak', () => {
+    const w = createFieldWatch(CAIRO);
+    w.push({ magnitudeUt: 12, dipDeg: 45 }, 0);
+    expect(w.push({ magnitudeUt: 12, dipDeg: 45 }, FIELD_PERSIST_MS)).toBe(true);
   });
-  it('clears as soon as the field is back in the band', () => {
-    const w = createFieldWatch();
-    w.push(120, 0);
-    w.push(120, FIELD_PERSIST_MS);
-    expect(w.push(50, FIELD_PERSIST_MS + 100)).toBe(false);
+  it('flags a field pointing the wrong way down (desk by the laptop: 78 µT, dip 61°)', () => {
+    const w = createFieldWatch(CAIRO);
+    w.push({ magnitudeUt: 78, dipDeg: 61 }, 0);
+    expect(w.push({ magnitudeUt: 78, dipDeg: 61 }, FIELD_PERSIST_MS)).toBe(true);
   });
-  it('spans a band wide enough for the Earth and a phone’s error', () => {
-    expect(FIELD_MIN_UT).toBeLessThanOrEqual(22);
-    expect(FIELD_MAX_UT).toBeGreaterThanOrEqual(80);
+  it('ignores a brief excursion', () => {
+    const w = createFieldWatch(CAIRO);
+    w.push({ magnitudeUt: 45, dipDeg: 45 }, 0);
+    expect(w.push({ magnitudeUt: 120, dipDeg: 45 }, 200)).toBe(false);
+    expect(w.push({ magnitudeUt: 45, dipDeg: 45 }, 400)).toBe(false);
+  });
+  it('clears as soon as the field is back to normal', () => {
+    const w = createFieldWatch(CAIRO);
+    w.push({ magnitudeUt: 120, dipDeg: 45 }, 0);
+    w.push({ magnitudeUt: 120, dipDeg: 45 }, FIELD_PERSIST_MS);
+    expect(w.push({ magnitudeUt: 50, dipDeg: 45 }, FIELD_PERSIST_MS + 100)).toBe(false);
+  });
+  it('tolerances: half again on magnitude, 12° on dip', () => {
+    expect(FIELD_MAGNITUDE_TOLERANCE).toBeCloseTo(0.5, 6);
+    expect(FIELD_DIP_TOLERANCE_DEG).toBe(12);
   });
 });
 

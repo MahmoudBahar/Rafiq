@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { declinationFromHeading, declinationFromModel, magneticToTrue } from './declination';
+import { declinationFromHeading, declinationFromModel, expectedField, magneticToTrue } from './declination';
 
 describe('declinationFromHeading', () => {
   it('is the platform true-minus-magnetic difference', () => {
@@ -25,6 +25,16 @@ describe('declinationFromModel', () => {
   });
   it('still answers for a date past the model span', () => {
     expect(Number.isFinite(declinationFromModel({ latitude: 30, longitude: 31 }, new Date('2040-01-01')))).toBe(true);
+  });
+});
+
+describe('expectedField', () => {
+  it('gives Cairo about 44 µT dipping 45°', () => {
+    const f = expectedField({ latitude: 30.0444, longitude: 31.2357 }, new Date('2026-09-27'));
+    expect(f.magnitudeUt).toBeGreaterThan(42);
+    expect(f.magnitudeUt).toBeLessThan(46);
+    expect(f.dipDeg).toBeGreaterThan(43);
+    expect(f.dipDeg).toBeLessThan(47);
   });
 });
 

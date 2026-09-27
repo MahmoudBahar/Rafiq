@@ -20,15 +20,18 @@ import {
   NEAR_DEG,
   confidence as foldConfidence,
   createFieldWatch,
+  createHeadingFuser,
   createStillness,
   declinationFromHeading,
   declinationFromModel,
+  dipDeg,
+  expectedField,
   headingsFromAttitude,
+  headingsFromField,
   magneticToTrue,
   qiblaBearing,
   shortestDelta,
   toW3C,
-  unwrap,
   type Band,
   type Confidence,
   type Coords,
@@ -38,7 +41,8 @@ import {
 export type HeadingMode = 'flat' | 'camera';
 
 const MOTION_INTERVAL_MS = 33;
-const FIELD_INTERVAL_MS = 200;
+/** The magnetometer is the compass truth now, so it is read often. */
+const FIELD_INTERVAL_MS = 50;
 /** How often the confidence state is re-evaluated. */
 const CONFIDENCE_TICK_MS = 250;
 /** An interference reading holds this long so the card does not flicker with the field. */
@@ -51,7 +55,7 @@ const LOCK_FADE_MS = 250;
 /** The edge bloom on lock: a quick rise, a slow fade. */
 const EDGE_IN_MS = 140;
 const EDGE_OUT_MS = 900;
-/** After subscribing, the fused heading is left to settle this long before a lock can ring. */
+/** After subscribing, the sensors are left to settle this long before a lock can ring. */
 const ARM_MS = 1500;
 const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15 };
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
@@ -86,6 +90,12 @@ export interface Qibla {
  * The live Qibla: sensors in, one smoothed heading out on the UI thread, and
  * the derived band / confidence as React state. Subscribes only while
  * `active` (the tab focused, the app in front): sensors cost battery.
+ *
+ * North comes from the magnetometer, tilt-corrected by gravity, the way a
+ * compass app does it. The fused rotation sensor contributes only its motion
+ * between magnetometer readings and is pulled back onto the compass every
+ * sample: its absolute heading is never trusted (on a Samsung it sat 145°
+ * off for a minute on a still desk while reporting accuracy 3).
  */
 export function useQibla(coords: Coords | null, mode: HeadingMode, active: boolean): Qibla {
   const { reduced } = useMotion();
@@ -121,23 +131,31 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     fieldAnomaly: false,
     accuracy: null as number | null,
     declination: null as number | null,
-    jump: false,
     stableForMs: 0,
     interferenceUntil: 0,
-    /** The last heading handed to the UI thread, unwrapped; null before the first sample. */
-    lastTarget: null as number | null,
+    /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
+    mag: null as readonly number[] | null,
+    started: false,
   });
   const stillness = useMemo(() => createStillness(STILLNESS), []);
-  const fieldWatch = useMemo(() => createFieldWatch(), []);
+  const fuser = useMemo(() => createHeadingFuser(), []);
 
-  // Sensors → `target` (JS thread). The declination comes from the platform's own
-  // true/magnetic pair when it has one, else from the magnetic model.
   const appActive = useAppActive();
   const live = active && appActive;
   const latitude = coords?.latitude;
   const longitude = coords?.longitude;
+  const fieldWatch = useMemo(
+    () =>
+      latitude === undefined || longitude === undefined
+        ? null
+        : createFieldWatch(expectedField({ latitude, longitude }, new Date())),
+    [latitude, longitude],
+  );
+
+  // Sensors → `target` (JS thread). The declination comes from the platform's own
+  // true/magnetic pair when it has one, else from the magnetic model.
   useEffect(() => {
-    if (!live || latitude === undefined || longitude === undefined) return;
+    if (!live || latitude === undefined || longitude === undefined || !fieldWatch) return;
     const r = readings.current;
     let cancelled = false;
     const subs: { remove(): void }[] = [];
@@ -149,33 +167,45 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       r.sensorsAvailable = motion && magnet;
       if (!r.sensorsAvailable) return;
 
-      DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
-      subs.push(
-        DeviceMotion.addListener(({ rotation }) => {
-          if (!rotation) return;
-          const h = headingsFromAttitude(toW3C(rotation, PLATFORM));
-          const magnetic = mode === 'camera' ? h.cameraHeading : h.flatHeading;
-          const trueHeading = magneticToTrue(magnetic, r.declination ?? modelDeclination);
-          const still = stillness.push(trueHeading, Date.now());
-          r.stableForMs = still.stableForMs;
-          if (still.jump) r.interferenceUntil = Date.now() + INTERFERENCE_HOLD_MS;
-          pitch.set(h.pitch);
-          const first = r.lastTarget === null;
-          const next = first ? trueHeading : unwrap(r.lastTarget as number, trueHeading);
-          r.lastTarget = next;
-          target.set(next);
-          if (first) {
-            // First reading: start there rather than sweeping in from zero.
-            heading.set(next);
-            haveTarget.set(true);
-          }
-        }),
-      );
-
       Magnetometer.setUpdateInterval(FIELD_INTERVAL_MS);
       subs.push(
         Magnetometer.addListener(({ x, y, z }) => {
-          r.fieldAnomaly = fieldWatch.push(Math.hypot(x, y, z), Date.now());
+          r.mag = [x, y, z];
+        }),
+      );
+
+      DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
+      subs.push(
+        DeviceMotion.addListener(({ rotation, accelerationIncludingGravity: down }) => {
+          if (!rotation || !down || !r.mag) return;
+          const now = Date.now();
+          const declination = r.declination ?? modelDeclination;
+          // The compass: the field against gravity.
+          const field = headingsFromField(r.mag, [down.x, down.y, down.z]);
+          const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
+          const compass = magneticToTrue(magnetic, declination);
+          // The motion: the fused sensor, whose changes are trusted and whose heading is not.
+          const fused = headingsFromAttitude(toW3C(rotation, PLATFORM));
+          const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
+          const next = fuser.push(compass, motionHeading);
+
+          const still = stillness.push(compass, now);
+          r.stableForMs = still.stableForMs;
+          if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
+          const m = r.mag;
+          r.fieldAnomaly = fieldWatch.push(
+            { magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, [down.x, down.y, down.z]) },
+            now,
+          );
+
+          pitch.set(field.pitch);
+          target.set(next);
+          if (!r.started) {
+            // First reading: start there rather than sweeping in from zero.
+            r.started = true;
+            heading.set(next);
+            haveTarget.set(true);
+          }
         }),
       );
 
@@ -188,8 +218,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       else if (headingSub) subs.push(headingSub);
     })();
 
-    // The fused heading wanders for a moment after the sensors register; the lock cue
-    // is armed only once that has passed, so an opening never rings it.
+    // The sensors take a moment to settle after they register; the lock cue is
+    // armed only once that has passed, so an opening never rings it.
     const arm = setTimeout(() => primed.set(true), ARM_MS);
 
     const tick = setInterval(() => {
@@ -210,15 +240,17 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       clearInterval(tick);
       clearTimeout(arm);
       subs.forEach((s) => s.remove());
+      fuser.reset();
       r.fieldAnomaly = false;
       r.accuracy = null;
       r.stableForMs = 0;
-      r.lastTarget = null;
+      r.mag = null;
+      r.started = false;
       haveTarget.set(false);
       // The next first sample is an opening again, so it is silent again.
       primed.set(false);
     };
-  }, [live, latitude, longitude, mode, stillness, fieldWatch, pitch, target, heading, haveTarget, primed]);
+  }, [live, latitude, longitude, mode, stillness, fuser, fieldWatch, pitch, target, heading, haveTarget, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;

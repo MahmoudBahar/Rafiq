@@ -6,11 +6,13 @@ import type { Confidence } from '../engine';
 /** Semantic colours for the compass's trust, apart from the palette's accent. */
 export const TRUST = { good: '#5a9c7a', warn: '#c9a24a', bad: '#c0563f' } as const;
 
+// "Steady", not "accurate": the phone's own accuracy flag stayed at its
+// highest while its compass sat 40° off in a steel-framed room.
 const LABEL: Record<Confidence, { text: string; tone: keyof typeof TRUST }> = {
-  good: { text: 'دقة عالية', tone: 'good' },
+  good: { text: 'البوصلة مستقرة', tone: 'good' },
   settling: { text: 'جارٍ الضبط', tone: 'warn' },
   calibrate: { text: 'يحتاج معايرة', tone: 'warn' },
-  interference: { text: 'تشويش مغناطيسي', tone: 'bad' },
+  interference: { text: 'المجال المغناطيسي مضطرب', tone: 'bad' },
   unavailable: { text: 'بلا بوصلة', tone: 'bad' },
   'no-location': { text: 'بلا موقع', tone: 'bad' },
 };

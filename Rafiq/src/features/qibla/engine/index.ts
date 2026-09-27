@@ -6,17 +6,20 @@ export { headingsFromAttitude, toW3C, type AttitudePlatform, type Headings, type
 export { LOCK_ENTER_DEG, LOCK_LEAVE_DEG, NEAR_DEG, bandFor, type Band } from './band';
 export { KAABA, distanceToMeccaKm, qiblaBearing } from './bearing';
 export {
-  FIELD_MAX_UT,
-  FIELD_MIN_UT,
+  FIELD_DIP_TOLERANCE_DEG,
+  FIELD_MAGNITUDE_TOLERANCE,
   FIELD_PERSIST_MS,
   SETTLE_MS,
   confidence,
   createFieldWatch,
   type Confidence,
   type ConfidenceInput,
+  type FieldShape,
   type FieldWatch,
 } from './confidence';
-export { declinationFromHeading, declinationFromModel, magneticToTrue } from './declination';
+export { declinationFromHeading, declinationFromModel, expectedField, magneticToTrue } from './declination';
+export { dipDeg, headingsFromField, type Vec3 } from './field';
+export { FUSE_GAIN, RESET_STEP_DEG, createHeadingFuser, type HeadingFuser } from './fuse';
 export {
   createStillness,
   normalizeDeg,

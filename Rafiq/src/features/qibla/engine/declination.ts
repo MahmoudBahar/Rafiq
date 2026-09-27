@@ -17,6 +17,12 @@ export function declinationFromModel(coords: Coords, date: Date): number {
   return model(date, { allowOutOfBoundsModel: true }).point([coords.latitude, coords.longitude]).decl;
 }
 
+/** What the Earth's field should measure here: total strength (µT) and dip below the horizontal. */
+export function expectedField(coords: Coords, date: Date): { magnitudeUt: number; dipDeg: number } {
+  const p = model(date, { allowOutOfBoundsModel: true }).point([coords.latitude, coords.longitude]);
+  return { magnitudeUt: p.f / 1000, dipDeg: p.incl };
+}
+
 export function magneticToTrue(magHeading: number, declination: number): number {
   return normalizeDeg(magHeading + declination);
 }
