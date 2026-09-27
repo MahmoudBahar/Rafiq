@@ -3,9 +3,11 @@ import { DeviceMotion, Magnetometer } from 'expo-sensors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import {
+  Easing,
   useAnimatedReaction,
   useFrameCallback,
   useSharedValue,
+  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -46,6 +48,9 @@ const SMOOTH_PER_FRAME = 0.18;
 const REDUCED_PER_FRAME = 0.5;
 const FRAME_MS = 1000 / 60;
 const LOCK_FADE_MS = 250;
+/** The edge bloom on lock: a quick rise, a slow fade. */
+const EDGE_IN_MS = 140;
+const EDGE_OUT_MS = 900;
 /** After subscribing, the fused heading is left to settle this long before a lock can ring. */
 const ARM_MS = 1500;
 const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15 };
@@ -60,6 +65,8 @@ export interface QiblaValues {
   pitch: SharedValue<number>;
   /** 0..1, eased in and out of the locked band. */
   lockT: SharedValue<number>;
+  /** A one-shot bloom on entering the lock: up fast, then fading. */
+  edgeT: SharedValue<number>;
 }
 
 export interface Qibla {
@@ -89,6 +96,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const delta = useSharedValue(0);
   const pitch = useSharedValue(0);
   const lockT = useSharedValue(0);
+  const edgeT = useSharedValue(0);
   const bearingSv = useSharedValue(bearing ?? 0);
   const haveTarget = useSharedValue(false);
   /** The feed has settled since it started: only then does a lock get its cue. */
@@ -245,7 +253,15 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         bandSv.set(next);
         lockT.set(withTiming(next === 'locked' ? 1 : 0, { duration: LOCK_FADE_MS }));
         scheduleOnRN(setBand, next);
-        if (next === 'locked' && primed.get()) scheduleOnRN(lock);
+        if (next === 'locked' && primed.get()) {
+          scheduleOnRN(lock);
+          edgeT.set(
+            withSequence(
+              withTiming(1, { duration: EDGE_IN_MS }),
+              withTiming(0, { duration: EDGE_OUT_MS, easing: Easing.out(Easing.quad) }),
+            ),
+          );
+        }
       }
       const deg = next === 'locked' ? 0 : Math.round(a);
       const code = deg * 2 + (d >= 0 ? 1 : 0);
@@ -278,7 +294,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     turnRight: turn.right,
     confidence,
     raised,
-    values: { heading, delta, pitch, lockT },
+    values: { heading, delta, pitch, lockT, edgeT },
   };
 }
 

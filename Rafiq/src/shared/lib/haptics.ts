@@ -66,7 +66,11 @@ export function success() {
   androidOr(Haptics.AndroidHaptics.Confirm, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
 }
 
-/** The phone has come round onto the Qibla. Once on entering the band; silent while turning. */
+/**
+ * The phone has come round onto the Qibla: one firm knock on entering the
+ * band, silent while turning. The heavy system effect rather than the light
+ * `Confirm` tick, so arriving is felt through a hand holding the phone flat.
+ */
 export function lock() {
-  androidOr(Haptics.AndroidHaptics.Confirm, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+  androidOr(Haptics.AndroidHaptics.Long_Press, impact(Haptics.ImpactFeedbackStyle.Heavy));
 }

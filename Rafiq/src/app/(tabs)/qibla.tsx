@@ -7,6 +7,7 @@ import { useLocate } from '@/features/prayer/useLocate';
 import { StatusCard } from '@/features/qibla/calibration/StatusCard';
 import { CompassDial } from '@/features/qibla/dial/CompassDial';
 import { ConfidencePill } from '@/features/qibla/dial/ConfidencePill';
+import { LockGlow } from '@/features/qibla/dial/LockGlow';
 import { TurnHint } from '@/features/qibla/dial/TurnHint';
 import { useQibla } from '@/features/qibla/useQibla';
 import { useQiblaCoords } from '@/features/qibla/useQiblaCoords';
@@ -101,6 +102,7 @@ export default function QiblaScreen() {
           </View>
         )}
       </View>
+      <LockGlow t={qibla.values.edgeT} />
     </TabScene>
   );
 }
