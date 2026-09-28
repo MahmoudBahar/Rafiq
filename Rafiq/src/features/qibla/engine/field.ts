@@ -1,19 +1,19 @@
 import type { Headings } from './attitude';
-import { normalizeDeg } from './smooth';
+import { blendHeadings, flatBlendWeight, normalizeDeg } from './smooth';
 
 export type Vec3 = readonly number[];
 
 const RAD = 180 / Math.PI;
-/** Below this much horizontal reach the top of the phone has no heading of its own. */
-const FLAT_MIN_HORIZONTAL = 0.2;
 const EPS = 1e-9;
 
 /**
  * The compass the way a compass app does it: north from the magnetometer,
  * tilt-corrected by where gravity points. Both vectors are in the device
  * frame (X right, Y up the screen, Z out of the screen); `down` is where
- * gravity points, as expo's accelerationIncludingGravity reports it on
- * Android (z ≈ -9.8 face up, flat).
+ * gravity points (z ≈ -1 face up, flat). Any length will do: only its
+ * direction is used. The hook takes it from the fused sensor's pitch and
+ * roll (`upFromAttitude`), which carry none of the hand's own acceleration;
+ * the raw accelerometer would.
  *
  * Two known directions, down and north, fix the phone's whole orientation:
  * from them the earth-frame axes east / north / up are written in device
@@ -32,8 +32,9 @@ export function headingsFromField(mag: Vec3, down: Vec3): Headings {
   // Each earth axis, expressed in device coordinates, gives that axis's
   // component of every device axis: device +Y is (east.y, north.y, up.y).
   const cameraHeading = headingOf(-east[2], -north[2]);
+  // Raised past upright, the top edge hands its heading over to the camera's, blended: no step.
   const reach = Math.hypot(east[1], north[1]);
-  const flatHeading = reach < FLAT_MIN_HORIZONTAL ? cameraHeading : headingOf(east[1], north[1]);
+  const flatHeading = blendHeadings(headingOf(east[1], north[1]), cameraHeading, flatBlendWeight(reach));
   const pitch = Math.asin(Math.max(-1, Math.min(1, up[1]))) * RAD;
   return { flatHeading, cameraHeading, pitch };
 }

@@ -1,4 +1,4 @@
-import { normalizeDeg } from './smooth';
+import { blendHeadings, flatBlendWeight, normalizeDeg } from './smooth';
 
 /** DeviceMotion's `rotation`, radians. */
 export interface Rotation {
@@ -19,8 +19,17 @@ export interface Headings {
 }
 
 const RAD = 180 / Math.PI;
-/** Below this much horizontal reach the top of the phone has no heading of its own. */
-const FLAT_MIN_HORIZONTAL = 0.2;
+
+/**
+ * Earth-up in device coordinates, from the pitch and roll alone: the third
+ * row of R below. The fused sensor's yaw, the part that goes wrong, never
+ * enters it, and unlike the accelerometer it carries no trace of the hand's
+ * own acceleration, so it is the "down" the compass is tilt-corrected with.
+ */
+export function upFromAttitude({ beta, gamma }: Rotation): [number, number, number] {
+  const cb = Math.cos(beta);
+  return [-cb * Math.sin(gamma), Math.sin(beta), cb * Math.cos(gamma)];
+}
 
 /**
  * Brings a platform's rotation into the W3C deviceorientation convention the
@@ -59,8 +68,10 @@ export function headingsFromAttitude({ alpha, beta, gamma }: Rotation): Headings
   const zAxis = { x: ca * sg + sa * sb * cg, y: sa * sg - ca * sb * cg, z: cb * cg };
 
   const cameraHeading = headingOf(-zAxis.x, -zAxis.y);
+  // As the phone is raised past upright the top edge loses its reach along the
+  // ground; its heading hands over to the camera's, blended, so there is no step.
   const reach = Math.hypot(yAxis.x, yAxis.y);
-  const flatHeading = reach < FLAT_MIN_HORIZONTAL ? cameraHeading : headingOf(yAxis.x, yAxis.y);
+  const flatHeading = blendHeadings(headingOf(yAxis.x, yAxis.y), cameraHeading, flatBlendWeight(reach));
   const pitch = Math.asin(Math.max(-1, Math.min(1, yAxis.z))) * RAD;
   return { flatHeading, cameraHeading, pitch };
 }

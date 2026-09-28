@@ -32,6 +32,7 @@ import {
   qiblaBearing,
   shortestDelta,
   toW3C,
+  upFromAttitude,
   type Band,
   type Confidence,
   type Coords,
@@ -57,7 +58,8 @@ const EDGE_IN_MS = 140;
 const EDGE_OUT_MS = 900;
 /** After subscribing, the sensors are left to settle this long before a lock can ring. */
 const ARM_MS = 1500;
-const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15 };
+/** A leap must hold for three samples (~100 ms) to be a jump; one is a magnetometer spike. */
+const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 3 };
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
 export interface QiblaValues {
@@ -92,10 +94,13 @@ export interface Qibla {
  * `active` (the tab focused, the app in front): sensors cost battery.
  *
  * North comes from the magnetometer, tilt-corrected by gravity, the way a
- * compass app does it. The fused rotation sensor contributes only its motion
- * between magnetometer readings and is pulled back onto the compass every
- * sample: its absolute heading is never trusted (on a Samsung it sat 145°
- * off for a minute on a still desk while reporting accuracy 3).
+ * compass app does it. The fused rotation sensor contributes its pitch and
+ * roll (the tilt, gyro-stabilised and free of the hand's own acceleration)
+ * and its motion between magnetometer readings, and is pulled back onto the
+ * compass every sample: its absolute heading is never trusted (on a Samsung
+ * it sat 145° off for a minute on a still desk while reporting accuracy 3).
+ * The magnetometer runs at 20 Hz against the 30 Hz motion loop, so a compass
+ * sample can be up to 50 ms old; the fused motion covers the gap.
  */
 export function useQibla(coords: Coords | null, mode: HeadingMode, active: boolean): Qibla {
   const { reduced } = useMotion();
@@ -176,16 +181,20 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
       DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
       subs.push(
-        DeviceMotion.addListener(({ rotation, accelerationIncludingGravity: down }) => {
-          if (!rotation || !down || !r.mag) return;
+        DeviceMotion.addListener(({ rotation }) => {
+          if (!rotation || !r.mag) return;
           const now = Date.now();
           const declination = r.declination ?? modelDeclination;
-          // The compass: the field against gravity.
-          const field = headingsFromField(r.mag, [down.x, down.y, down.z]);
+          const attitude = toW3C(rotation, PLATFORM);
+          // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
+          // hand's own acceleration, untouched by its yaw); north from the magnetometer.
+          const up = upFromAttitude(attitude);
+          const down = [-up[0], -up[1], -up[2]];
+          const field = headingsFromField(r.mag, down);
           const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
           const compass = magneticToTrue(magnetic, declination);
           // The motion: the fused sensor, whose changes are trusted and whose heading is not.
-          const fused = headingsFromAttitude(toW3C(rotation, PLATFORM));
+          const fused = headingsFromAttitude(attitude);
           const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
           const next = fuser.push(compass, motionHeading);
 
@@ -193,10 +202,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           r.stableForMs = still.stableForMs;
           if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
           const m = r.mag;
-          r.fieldAnomaly = fieldWatch.push(
-            { magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, [down.x, down.y, down.z]) },
-            now,
-          );
+          r.fieldAnomaly = fieldWatch.push({ magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, down) }, now);
 
           pitch.set(field.pitch);
           target.set(next);

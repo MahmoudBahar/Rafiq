@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { createStillness, normalizeDeg, shortestDelta, unwrap } from './smooth';
+import { blendHeadings, createStillness, normalizeDeg, shortestDelta, unwrap } from './smooth';
+
+describe('blendHeadings', () => {
+  it('is the first heading at weight 1 and the second at weight 0', () => {
+    expect(blendHeadings(130, 200, 1)).toBeCloseTo(130, 6);
+    expect(blendHeadings(130, 200, 0)).toBeCloseTo(200, 6);
+  });
+  it('goes the short way round between them', () => {
+    expect(blendHeadings(350, 10, 0.5)).toBeCloseTo(0, 6);
+    expect(blendHeadings(10, 350, 0.25)).toBeCloseTo(355, 6);
+  });
+});
 
 describe('normalizeDeg', () => {
   it('maps any angle into [0, 360)', () => {
@@ -34,7 +45,7 @@ describe('unwrap', () => {
 });
 
 describe('createStillness', () => {
-  const opts = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15 };
+  const opts = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 2 };
 
   it('is not stable until the window has filled', () => {
     const s = createStillness(opts);
@@ -56,11 +67,24 @@ describe('createStillness', () => {
     expect(r.stable).toBe(false);
   });
 
-  it('flags a jump when a still heading suddenly leaps', () => {
+  it('flags a jump once a still heading has leapt for `jumpSamples` samples', () => {
     const s = createStillness(opts);
     for (let t = 0; t <= 1100; t += 100) s.push(100, t);
-    const r = s.push(125, 1200);
-    expect(r.jump).toBe(true);
+    expect(s.push(125, 1200).jump).toBe(false);
+    expect(s.push(126, 1233).jump).toBe(true);
+  });
+
+  it('ignores a single spike and stays still', () => {
+    const s = createStillness(opts);
+    for (let t = 0; t <= 1100; t += 100) s.push(100, t);
+    const spike = s.push(140, 1200);
+    expect(spike.jump).toBe(false);
+    expect(spike.stable).toBe(true);
+    const back = s.push(100.5, 1233);
+    expect(back.jump).toBe(false);
+    expect(back.stable).toBe(true);
+    // Its stillness clock kept running: the spike did not reset it.
+    expect(back.stableForMs).toBeGreaterThan(100);
   });
 
   it('does not flag a jump while turning', () => {

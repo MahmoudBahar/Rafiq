@@ -46,6 +46,35 @@ describe('headingsFromField', () => {
     expect(h.cameraHeading).toBeCloseTo(0, 3);
     expect(h.pitch).toBeCloseTo(45, 3);
   });
+  it('blends from the top edge to the camera as the phone is raised past ~78°, with no step', () => {
+    // The phone faces north, rolled 30° about its own top-to-bottom axis so the
+    // top-edge and camera headings differ, then raised from 60° to 88°. Earth
+    // vectors are brought into the device frame with R = Rz(0)·Rx(β)·Ry(γ).
+    const toDevice = (v: readonly number[], beta: number, gamma: number) => {
+      const cb = Math.cos(beta), sb = Math.sin(beta), cg = Math.cos(gamma), sg = Math.sin(gamma);
+      // Columns of R (device axes in earth frame); device = Rᵀ · earth.
+      const x = [cg, 0, -sg]; // approximated rows for alpha = 0
+      const y = [sb * sg, cb, sb * cg];
+      const z = [cb * sg, -sb, cb * cg];
+      const dotv = (a: number[]) => a[0] * v[0] + a[1] * v[1] + a[2] * v[2];
+      return [dotv(x), dotv(y), dotv(z)];
+    };
+    const readings: number[] = [];
+    for (let deg = 60; deg <= 88; deg += 2) {
+      const beta = (deg * Math.PI) / 180;
+      const gamma = (30 * Math.PI) / 180;
+      const mag = toDevice([0, H, -V], beta, gamma);
+      const down = toDevice([0, 0, -1], beta, gamma);
+      readings.push(headingsFromField(mag, down).flatHeading);
+    }
+    for (let i = 1; i < readings.length; i++) {
+      const step = Math.abs(((readings[i] - readings[i - 1] + 540) % 360) - 180);
+      expect(step).toBeLessThan(6);
+    }
+    // And the two ends really are different headings, so the blend was exercised.
+    const spread = Math.abs(((readings[readings.length - 1] - readings[0] + 540) % 360) - 180);
+    expect(spread).toBeGreaterThan(10);
+  });
   it('is unaffected by the field strength', () => {
     const a = headingsFromField([-H, 0, -V], FLAT_DOWN).flatHeading;
     const b = headingsFromField([-2 * H, 0, -2 * V], FLAT_DOWN).flatHeading;

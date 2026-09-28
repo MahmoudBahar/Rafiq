@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { headingsFromAttitude, toW3C } from './attitude';
+import { headingsFromAttitude, toW3C, upFromAttitude } from './attitude';
 
 const D = Math.PI / 180;
 // Angles here follow the W3C deviceorientation convention (radians): alpha
@@ -63,6 +63,39 @@ describe('Android device samples', () => {
     const h = headingsFromAttitude(android(-114.7, -1.3, 14.2));
     expect(h.flatHeading).toBeCloseTo(114.7, 0);
     expect(h.pitch).toBeCloseTo(-1.3, 0);
+  });
+});
+
+// Earth-up in device coordinates, from pitch and roll only: the fused sensor's
+// yaw, the part that goes wrong, cannot touch it.
+describe('upFromAttitude', () => {
+  it('flat: up is out of the screen', () => {
+    const u = upFromAttitude(w3c(0, 0, 0));
+    expect(u[0]).toBeCloseTo(0, 6);
+    expect(u[1]).toBeCloseTo(0, 6);
+    expect(u[2]).toBeCloseTo(1, 6);
+  });
+  it('upright: up is along the top edge', () => {
+    const u = upFromAttitude(w3c(0, 90, 0));
+    expect(u[1]).toBeCloseTo(1, 6);
+    expect(u[2]).toBeCloseTo(0, 6);
+  });
+  it('right side down: up leans toward the left edge', () => {
+    const u = upFromAttitude(w3c(0, 0, 20));
+    expect(u[0]).toBeCloseTo(-Math.sin((20 * Math.PI) / 180), 6);
+    expect(u[2]).toBeCloseTo(Math.cos((20 * Math.PI) / 180), 6);
+  });
+  it('does not depend on alpha', () => {
+    const a = upFromAttitude(w3c(0, 30, 10));
+    const b = upFromAttitude(w3c(-136, 30, 10));
+    expect(a[0]).toBeCloseTo(b[0], 9);
+    expect(a[1]).toBeCloseTo(b[1], 9);
+    expect(a[2]).toBeCloseTo(b[2], 9);
+  });
+  it('is a unit vector whose y component is the pitch', () => {
+    const u = upFromAttitude(w3c(-136, 45, 0));
+    expect(Math.hypot(u[0], u[1], u[2])).toBeCloseTo(1, 9);
+    expect(Math.asin(u[1]) * (180 / Math.PI)).toBeCloseTo(45, 6);
   });
 });
 

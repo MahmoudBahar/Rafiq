@@ -1,6 +1,6 @@
 # The Qibla compass: how the current code works
 
-Branch `feature/qibla-mag-truth`, 2026-09-28. Every code block below is the file as it is on the branch (generated, not retyped).
+Branch `feature/qibla-mag-truth`, 2026-09-28 (after review items 1, 5 and 6). Every code block below is the file as it is on the branch (generated, not retyped).
 
 ## 1. The idea in one sentence
 
@@ -8,13 +8,15 @@ Branch `feature/qibla-mag-truth`, 2026-09-28. Every code block below is the file
 
 The previous version let the phone's fused sensor decide north. On a Samsung S24 Ultra it sat 145° wrong for over a minute on a still desk while reporting accuracy 3, and snapped to the right value only when another app (Samsung's compass) re-registered the sensors. The log of that episode is in the session notes; this document describes the code that replaced it.
 
+Be precise about what that change bought: the magnetometer path escapes the *fusion's refusal to accept a correction*, not bad calibration. Both paths read Android's calibrated `TYPE_MAGNETIC_FIELD`, so a magnetised case or a steel window frame fools both alike; the field watch (§4.7) is the only defence there.
+
 ## 2. The sensors and the APIs
 
 | API we call | Library | What the phone puts behind it | What we get | Rate | What we trust it for |
 |---|---|---|---|---|---|
 | `Magnetometer.addListener` | expo-sensors | Android `TYPE_MAGNETIC_FIELD` (calibrated); iOS CoreMotion calibrated field | the magnetic field as `{x, y, z}` in µT, device frame | 20 Hz | **where north is** (its direction) and the field's size |
-| `DeviceMotion.addListener` → `accelerationIncludingGravity` | expo-sensors | accelerometer (Android, m/s²); CoreMotion gravity + user acceleration (iOS, g) | which way is **down**, `{x, y, z}`, device frame (z ≈ −9.8 flat, face up) | 30 Hz | tilt-correcting the compass; pitch; the field's dip |
-| `DeviceMotion.addListener` → `rotation` | expo-sensors | Android `TYPE_ROTATION_VECTOR`; iOS CoreMotion attitude in the magnetic-north frame | three angles `{alpha, beta, gamma}` (radians): the phone's full orientation as the **phone's fusion** sees it | 30 Hz | **only how much it turned since the last sample** — never its absolute heading |
+| `DeviceMotion.addListener` → `rotation` | expo-sensors | Android `TYPE_ROTATION_VECTOR`; iOS CoreMotion attitude in the magnetic-north frame | three angles `{alpha, beta, gamma}` (radians): the phone's full orientation as the **phone's fusion** sees it | 30 Hz | two things only: its **pitch and roll** (`beta`, `gamma` → which way is **down**, gyro-stabilised and free of the hand's own acceleration) for tilt-correcting the compass, pitch and the field's dip; and **how much it turned since the last sample**. Never its absolute heading (`alpha`) |
+| `DeviceMotion.addListener` → `accelerationIncludingGravity` | expo-sensors | accelerometer (Android, m/s²); CoreMotion gravity + user acceleration (iOS, g) | which way is down, plus whatever the hand is doing | 30 Hz | not used for the compass any more: the hand's acceleration pollutes it. (Only the direction of any such vector is ever used, so the m/s² vs g units never matter.) |
 | `Location.watchHeadingAsync` | expo-location | Android: accelerometer + magnetometer, flat only; iOS: CoreLocation heading | `magHeading`, `trueHeading` (−1 when unknown), `accuracy` 0–3 | on ≥2° change (Android) | declination (`true − mag`), and the accuracy flag as a *hint* |
 | `geomagnetism` `model(date).point([lat, lon])` | npm, offline (WMM2025) | none: a formula | `decl` (declination), `f` (field strength, nT), `incl` (dip) for the coordinates | once per location | declination fallback; the expected field to judge the measured one against |
 | `adhan` `Qibla(coords)` | npm, offline | none: a formula | the great-circle bearing to the Kaaba, degrees from true north | once per location | the target the mat points at |
@@ -25,14 +27,17 @@ Device frame everywhere: X to the right of the screen, Y up the screen (toward t
 
 ```
                  ┌────────────────────────────── per DeviceMotion sample (30 Hz) ──────────────────────────────┐
- Magnetometer ───┤ r.mag (latest field)                                                                        │
+ Magnetometer ───┤ r.mag (latest field, ≤ 50 ms old)                                                          │
                  │        │                                                                                    │
- DeviceMotion ───┤ down ──┼──▶ headingsFromField(mag, down) ──▶ flat / camera heading (magnetic) ──┐          │
-   (gravity)     │        │                                     pitch                               │          │
+ DeviceMotion ───┤ rotation ──▶ toW3C ──┬▶ upFromAttitude (pitch, roll) ──▶ down                              │
+   (fused)       │                      │       │                                                             │
+                 │        ┌─────────────┼───────┘                                                             │
+                 │        ├──▶ headingsFromField(mag, down) ──▶ flat / camera heading (magnetic) ──┐          │
+                 │        │                                     pitch                               │          │
                  │        └──▶ dipDeg(mag, down), |mag| ──▶ fieldWatch vs WMM ──▶ fieldAnomaly       │          │
-                 │                                                                                  ▼          │
- DeviceMotion ───┤ rotation ──▶ toW3C ──▶ headingsFromAttitude ──▶ fused heading ──▶ fuser.push(compass, fused)│
-   (fused)       │                                                  (only its change is used)        │          │
+                 │                      │                                                          ▼          │
+                 │                      └▶ headingsFromAttitude ──▶ fused heading ──▶ fuser.push(compass, fused)│
+                 │                                                  (only its change is used)        │          │
                  │                                                                                   ▼          │
                  │                                             magneticToTrue(…, declination) ──▶ target (SV)  │
                  └───────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -116,27 +121,29 @@ export function magneticToTrue(magHeading: number, declination: number): number 
 
 ### 4.3 `field.ts` — the compass itself
 
-Two known directions in the device frame, *down* (gravity) and *north* (the field with its vertical part removed), fix the phone's whole orientation. From them the earth axes east/north/up are written in device coordinates, and any device axis can be asked where it points: the top edge (`flatHeading`, the dial) or the back camera (`cameraHeading`, the camera page). `dipDeg` is the field's angle below the horizontal, independent of how the phone is held.
+Two known directions in the device frame, *down* and *north* (the field with its vertical part removed), fix the phone's whole orientation. From them the earth axes east/north/up are written in device coordinates, and any device axis can be asked where it points: the top edge (`flatHeading`, the dial) or the back camera (`cameraHeading`, the camera page). Raised past about 78° the top edge has little reach along the ground, so its heading is blended into the camera's over a band (`flatBlendWeight`) rather than switched — raising the phone produces no step. `dipDeg` is the field's angle below the horizontal, independent of how the phone is held.
+
+*Down* comes from the fused sensor's pitch and roll (`upFromAttitude`, §4.4), not from the accelerometer: the accelerometer measures gravity *plus* the hand's own acceleration, so in a moving hand it would tilt-correct the compass with a wrong "up" and the heading would wobble with every movement. The fused pitch/roll are gyro-stabilised and were never the part that failed (only its yaw was).
 
 **`src/features/qibla/engine/field.ts`**
 
 ```ts
 import type { Headings } from './attitude';
-import { normalizeDeg } from './smooth';
+import { blendHeadings, flatBlendWeight, normalizeDeg } from './smooth';
 
 export type Vec3 = readonly number[];
 
 const RAD = 180 / Math.PI;
-/** Below this much horizontal reach the top of the phone has no heading of its own. */
-const FLAT_MIN_HORIZONTAL = 0.2;
 const EPS = 1e-9;
 
 /**
  * The compass the way a compass app does it: north from the magnetometer,
  * tilt-corrected by where gravity points. Both vectors are in the device
  * frame (X right, Y up the screen, Z out of the screen); `down` is where
- * gravity points, as expo's accelerationIncludingGravity reports it on
- * Android (z ≈ -9.8 face up, flat).
+ * gravity points (z ≈ -1 face up, flat). Any length will do: only its
+ * direction is used. The hook takes it from the fused sensor's pitch and
+ * roll (`upFromAttitude`), which carry none of the hand's own acceleration;
+ * the raw accelerometer would.
  *
  * Two known directions, down and north, fix the phone's whole orientation:
  * from them the earth-frame axes east / north / up are written in device
@@ -155,8 +162,9 @@ export function headingsFromField(mag: Vec3, down: Vec3): Headings {
   // Each earth axis, expressed in device coordinates, gives that axis's
   // component of every device axis: device +Y is (east.y, north.y, up.y).
   const cameraHeading = headingOf(-east[2], -north[2]);
+  // Raised past upright, the top edge hands its heading over to the camera's, blended: no step.
   const reach = Math.hypot(east[1], north[1]);
-  const flatHeading = reach < FLAT_MIN_HORIZONTAL ? cameraHeading : headingOf(east[1], north[1]);
+  const flatHeading = blendHeadings(headingOf(east[1], north[1]), cameraHeading, flatBlendWeight(reach));
   const pitch = Math.asin(Math.max(-1, Math.min(1, up[1]))) * RAD;
   return { flatHeading, cameraHeading, pitch };
 }
@@ -194,7 +202,7 @@ Still used, but only to turn the fused sensor's three angles into a heading whos
 **`src/features/qibla/engine/attitude.ts`**
 
 ```ts
-import { normalizeDeg } from './smooth';
+import { blendHeadings, flatBlendWeight, normalizeDeg } from './smooth';
 
 /** DeviceMotion's `rotation`, radians. */
 export interface Rotation {
@@ -215,8 +223,17 @@ export interface Headings {
 }
 
 const RAD = 180 / Math.PI;
-/** Below this much horizontal reach the top of the phone has no heading of its own. */
-const FLAT_MIN_HORIZONTAL = 0.2;
+
+/**
+ * Earth-up in device coordinates, from the pitch and roll alone: the third
+ * row of R below. The fused sensor's yaw, the part that goes wrong, never
+ * enters it, and unlike the accelerometer it carries no trace of the hand's
+ * own acceleration, so it is the "down" the compass is tilt-corrected with.
+ */
+export function upFromAttitude({ beta, gamma }: Rotation): [number, number, number] {
+  const cb = Math.cos(beta);
+  return [-cb * Math.sin(gamma), Math.sin(beta), cb * Math.cos(gamma)];
+}
 
 /**
  * Brings a platform's rotation into the W3C deviceorientation convention the
@@ -255,8 +272,10 @@ export function headingsFromAttitude({ alpha, beta, gamma }: Rotation): Headings
   const zAxis = { x: ca * sg + sa * sb * cg, y: sa * sg - ca * sb * cg, z: cb * cg };
 
   const cameraHeading = headingOf(-zAxis.x, -zAxis.y);
+  // As the phone is raised past upright the top edge loses its reach along the
+  // ground; its heading hands over to the camera's, blended, so there is no step.
   const reach = Math.hypot(yAxis.x, yAxis.y);
-  const flatHeading = reach < FLAT_MIN_HORIZONTAL ? cameraHeading : headingOf(yAxis.x, yAxis.y);
+  const flatHeading = blendHeadings(headingOf(yAxis.x, yAxis.y), cameraHeading, flatBlendWeight(reach));
   const pitch = Math.asin(Math.max(-1, Math.min(1, yAxis.z))) * RAD;
   return { flatHeading, cameraHeading, pitch };
 }
@@ -322,7 +341,7 @@ export function createHeadingFuser(): HeadingFuser {
 
 ### 4.6 `smooth.ts` — angle helpers and the stillness watch
 
-`normalizeDeg` / `shortestDelta` / `unwrap` are also worklets so the UI thread runs the same tested maths. `createStillness` says whether the heading has held still for a second and catches a sudden leap from a still heading (something magnetic came close).
+`normalizeDeg` / `shortestDelta` / `unwrap` are also worklets so the UI thread runs the same tested maths; `blendHeadings` / `flatBlendWeight` serve the top-edge → camera hand-over. `createStillness` says whether the heading has held still for a second and catches a sudden leap from a still heading (something magnetic came close); the leap must hold for `jumpSamples` (three, ~100 ms) so a single magnetometer spike near a charger is dropped rather than reported. Note that "still within 4° for a second" is rarely met in a hand — the `settling` state (used only when the platform gives no accuracy flag) is effectively a desk-only state.
 
 **`src/features/qibla/engine/smooth.ts`**
 
@@ -344,6 +363,22 @@ export function shortestDelta(bearing: number, heading: number): number {
   return d > 180 ? d - 360 : d;
 }
 
+/** Between two headings the short way round: `a` at weight 1, `b` at weight 0. */
+export function blendHeadings(a: number, b: number, weight: number): number {
+  return normalizeDeg(b + weight * shortestDelta(a, b));
+}
+
+/** Below this much horizontal reach the top of the phone is handed over to the camera's heading… */
+export const FLAT_BLEND_LOW = 0.15;
+/** …and above this much it stands on its own; between them the two are blended, so raising the phone has no step. */
+export const FLAT_BLEND_HIGH = 0.25;
+
+/** How much of the top-edge heading to keep, 0..1, for a given horizontal reach of the top edge. */
+export function flatBlendWeight(reach: number): number {
+  const w = (reach - FLAT_BLEND_LOW) / (FLAT_BLEND_HIGH - FLAT_BLEND_LOW);
+  return w < 0 ? 0 : w > 1 ? 1 : w;
+}
+
 /**
  * `next` shifted by whole turns so it lies within a half turn of `prev`. A
  * value smoothed toward the unwrapped target never spins the long way round
@@ -360,6 +395,8 @@ export interface StillnessOptions {
   stableRangeDeg: number;
   /** A step this large from a still heading is a jump (something magnetic came close). */
   jumpDeg: number;
+  /** The leap must hold for this many samples in a row: one sample is a spike, not a jump. Default 1. */
+  jumpSamples?: number;
 }
 
 export interface StillnessReading {
@@ -375,23 +412,35 @@ export interface Stillness {
 }
 
 /** Tracks whether the heading is holding still, and catches sudden leaps while it is. */
-export function createStillness({ windowMs, stableRangeDeg, jumpDeg }: StillnessOptions): Stillness {
+export function createStillness({ windowMs, stableRangeDeg, jumpDeg, jumpSamples = 1 }: StillnessOptions): Stillness {
   let samples: { t: number; h: number }[] = [];
   let stable = false;
   let stableSince = 0;
+  // Samples that have leapt away from a still heading, held back until they
+  // either persist (a jump) or return (a spike, dropped).
+  let leaping = 0;
+  let lastReading: StillnessReading = { stable: false, jump: false, stableForMs: 0 };
 
   return {
     push(headingDeg, tMs) {
       const last = samples[samples.length - 1];
       const h = last ? unwrap(last.h, headingDeg) : headingDeg;
-      const jump = stable && last !== undefined && Math.abs(h - last.h) >= jumpDeg;
+      const leapt = stable && last !== undefined && Math.abs(h - last.h) >= jumpDeg;
+      if (leapt && ++leaping < jumpSamples) {
+        // Not yet a jump; the window stands as it was.
+        return { ...lastReading, stableForMs: stable ? tMs - stableSince : 0 };
+      }
+      const jump = leapt;
+      leaping = 0;
       if (jump) {
         samples = [];
         stable = false;
       }
       samples.push({ t: tMs, h });
+      // Keep one sample at or before the cutoff, so the window always spans the
+      // full `windowMs` once it has filled, whatever the sample cadence.
       const cutoff = tMs - windowMs;
-      while (samples.length > 1 && samples[0].t < cutoff) samples.shift();
+      while (samples.length > 2 && samples[1].t <= cutoff) samples.shift();
 
       let min = Infinity;
       let max = -Infinity;
@@ -403,7 +452,8 @@ export function createStillness({ windowMs, stableRangeDeg, jumpDeg }: Stillness
       const wasStable = stable;
       stable = filled && max - min <= stableRangeDeg;
       if (stable && !wasStable) stableSince = tMs;
-      return { stable, jump, stableForMs: stable ? tMs - stableSince : 0 };
+      lastReading = { stable, jump, stableForMs: stable ? tMs - stableSince : 0 };
+      return lastReading;
     },
   };
 }
@@ -519,7 +569,14 @@ UI code imports only from here; `adhan` and `geomagnetism` never appear outside 
  * Qibla engine: pure functions, no React, no native modules. UI code imports
  * from here and never from `adhan` or `geomagnetism` directly.
  */
-export { headingsFromAttitude, toW3C, type AttitudePlatform, type Headings, type Rotation } from './attitude';
+export {
+  headingsFromAttitude,
+  toW3C,
+  upFromAttitude,
+  type AttitudePlatform,
+  type Headings,
+  type Rotation,
+} from './attitude';
 export { LOCK_ENTER_DEG, LOCK_LEAVE_DEG, NEAR_DEG, bandFor, type Band } from './band';
 export { KAABA, distanceToMeccaKm, qiblaBearing } from './bearing';
 export {
@@ -538,7 +595,11 @@ export { declinationFromHeading, declinationFromModel, expectedField, magneticTo
 export { dipDeg, headingsFromField, type Vec3 } from './field';
 export { FUSE_GAIN, RESET_STEP_DEG, createHeadingFuser, type HeadingFuser } from './fuse';
 export {
+  FLAT_BLEND_HIGH,
+  FLAT_BLEND_LOW,
+  blendHeadings,
   createStillness,
+  flatBlendWeight,
   normalizeDeg,
   shortestDelta,
   unwrap,
@@ -555,7 +616,7 @@ This is where the APIs are subscribed and the engine is wired together. Read it 
 
 1. **Inputs**: `coords` (from `useQiblaCoords`: the GPS fix, else the chosen city), `mode` (`'flat'` for the dial, `'camera'` for the camera page), `active` (tab focused). Sensors run only while the tab is focused and the app is in front.
 2. **Shared values** (Reanimated, UI thread): `heading`, `target`, `delta`, `pitch`, `lockT`, `edgeT`. Plain refs hold the JS-side bookkeeping, because a shared value read on the JS thread right after a JS-thread write can still return the old value (this bit us: the heading swept in from 0 through the lock band).
-3. **Subscriptions** (inside the effect): `Magnetometer` stores the latest field; `DeviceMotion` does the per-sample work — compass heading from the field + gravity, fused heading from `rotation`, `fuser.push`, stillness, field watch, pitch, `target`; `Location.watchHeadingAsync` supplies declination and the accuracy flag.
+3. **Subscriptions** (inside the effect): `Magnetometer` (20 Hz) stores the latest field; `DeviceMotion` (30 Hz) does the per-sample work — down from the fused pitch/roll, compass heading from the field + down, fused heading from `rotation`, `fuser.push`, stillness, field watch, pitch, `target`; `Location.watchHeadingAsync` supplies declination and the accuracy flag. A compass sample can therefore be up to 50 ms older than the motion sample it is combined with; the fused motion covers that gap.
 4. **`ARM_MS`**: the lock cue is armed 1.5 s after subscribing, so a page that opens already on the Qibla is silent (the wheel's "silent on open" rule).
 5. **Frame callback** (UI thread): `heading` chases `target` with a per-frame pull (0.18 at 60 fps), `delta = shortestDelta(bearing, heading)`.
 6. **Band reaction** (UI thread): far/near/locked with hysteresis; on entering lock while armed: the haptic `lock()`, the lamp/halo (`lockT`) and the edge bloom (`edgeT`); the hint's degree number is sent to React only when it changes.
@@ -599,6 +660,7 @@ import {
   qiblaBearing,
   shortestDelta,
   toW3C,
+  upFromAttitude,
   type Band,
   type Confidence,
   type Coords,
@@ -624,7 +686,8 @@ const EDGE_IN_MS = 140;
 const EDGE_OUT_MS = 900;
 /** After subscribing, the sensors are left to settle this long before a lock can ring. */
 const ARM_MS = 1500;
-const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15 };
+/** A leap must hold for three samples (~100 ms) to be a jump; one is a magnetometer spike. */
+const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 3 };
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
 export interface QiblaValues {
@@ -659,10 +722,13 @@ export interface Qibla {
  * `active` (the tab focused, the app in front): sensors cost battery.
  *
  * North comes from the magnetometer, tilt-corrected by gravity, the way a
- * compass app does it. The fused rotation sensor contributes only its motion
- * between magnetometer readings and is pulled back onto the compass every
- * sample: its absolute heading is never trusted (on a Samsung it sat 145°
- * off for a minute on a still desk while reporting accuracy 3).
+ * compass app does it. The fused rotation sensor contributes its pitch and
+ * roll (the tilt, gyro-stabilised and free of the hand's own acceleration)
+ * and its motion between magnetometer readings, and is pulled back onto the
+ * compass every sample: its absolute heading is never trusted (on a Samsung
+ * it sat 145° off for a minute on a still desk while reporting accuracy 3).
+ * The magnetometer runs at 20 Hz against the 30 Hz motion loop, so a compass
+ * sample can be up to 50 ms old; the fused motion covers the gap.
  */
 export function useQibla(coords: Coords | null, mode: HeadingMode, active: boolean): Qibla {
   const { reduced } = useMotion();
@@ -743,16 +809,20 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
       DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
       subs.push(
-        DeviceMotion.addListener(({ rotation, accelerationIncludingGravity: down }) => {
-          if (!rotation || !down || !r.mag) return;
+        DeviceMotion.addListener(({ rotation }) => {
+          if (!rotation || !r.mag) return;
           const now = Date.now();
           const declination = r.declination ?? modelDeclination;
-          // The compass: the field against gravity.
-          const field = headingsFromField(r.mag, [down.x, down.y, down.z]);
+          const attitude = toW3C(rotation, PLATFORM);
+          // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
+          // hand's own acceleration, untouched by its yaw); north from the magnetometer.
+          const up = upFromAttitude(attitude);
+          const down = [-up[0], -up[1], -up[2]];
+          const field = headingsFromField(r.mag, down);
           const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
           const compass = magneticToTrue(magnetic, declination);
           // The motion: the fused sensor, whose changes are trusted and whose heading is not.
-          const fused = headingsFromAttitude(toW3C(rotation, PLATFORM));
+          const fused = headingsFromAttitude(attitude);
           const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
           const next = fuser.push(compass, motionHeading);
 
@@ -760,10 +830,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           r.stableForMs = still.stableForMs;
           if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
           const m = r.mag;
-          r.fieldAnomaly = fieldWatch.push(
-            { magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, [down.x, down.y, down.z]) },
-            now,
-          );
+          r.fieldAnomaly = fieldWatch.push({ magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, down) }, now);
 
           pitch.set(field.pitch);
           target.set(next);
