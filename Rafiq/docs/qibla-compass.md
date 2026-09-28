@@ -1,6 +1,6 @@
 # The Qibla compass: how the current code works
 
-Branch `feature/qibla-mag-truth`, 2026-09-28 (all six review items applied). Every code block below is the file as it is on the branch (generated, not retyped).
+Branch `feature/qibla-mag-truth`, 2026-09-28 (all six review items applied; sign check demoted to a diagnostic). Every code block below is the file as it is on the branch (generated, not retyped).
 
 ## 1. The idea in one sentence
 
@@ -539,12 +539,14 @@ export function createFieldWatch(expected: FieldShape): FieldWatch {
 
 ### 4.7b `signcheck.ts` — is gravity the right way up?
 
-A platform convention that flips the gravity direction leaves north where it is but mirrors east: the compass looks alive and turns the wrong way. The dip gives it away — it changes sign — and the WMM knows the sign for the coordinates (down in the north, up in the south). If the measured dip reads mirrored for a second, the gravity direction is negated for the rest of the session. This is the runtime answer to the iOS sign question; it also catches an odd Android OEM. It abstains within 15° of the magnetic equator, where the dip has no clear sign.
+A platform convention that flips the gravity direction leaves north where it is but mirrors east: the compass looks alive and turns the wrong way. The dip gives it away — it changes sign — and the WMM knows the sign for the coordinates (down in the north, up in the south). While the measured dip reads mirrored for over a second, the dev readout shows `DIP MIRRORED` and a warning is logged.
+
+It is a **diagnostic, not a correction**, and that was learned the hard way: the first version negated the gravity direction automatically, and a desk corner with a reversed magnetic source made the dip read −45° for a second, after which the compass was mirrored (136° shown as 224°) for the rest of the session. A magnet with the wrong polarity and a flipped convention look identical to this check. The conventions are therefore pinned per platform by tests and confirmed on a new device with the readout. It abstains within 15° of the magnetic equator, where the dip has no clear sign.
 
 **`src/features/qibla/engine/signcheck.ts`**
 
 ```ts
-/** The dip must read the wrong way this long before the gravity direction is declared flipped. */
+/** The dip must read the wrong way this long before it is reported. */
 export const SIGN_CHECK_MS = 1000;
 /** Below this expected dip (near the magnetic equator) the sign says nothing. */
 export const SIGN_MIN_DIP_DEG = 15;
@@ -552,7 +554,7 @@ export const SIGN_MIN_DIP_DEG = 15;
 const MIRROR_TOLERANCE_DEG = 15;
 
 export interface SignCheck {
-  /** Feed the measured dip; true once, and from then on, the gravity direction must be negated. */
+  /** Feed the measured dip; true while it has been reading mirrored for `SIGN_CHECK_MS`. */
   push(measuredDipDeg: number, tMs: number): boolean;
 }
 
@@ -560,25 +562,28 @@ export interface SignCheck {
  * A platform convention that flips the gravity direction leaves north where
  * it is but mirrors east, so the compass looks alive and turns the wrong
  * way. The dip gives it away: it changes sign, and the magnetic model knows
- * the sign for these coordinates (down in the north, up in the south). Once
- * the dip has read mirrored for a second the flip is applied for good; the
- * corrected reading then looks right, which is the point.
+ * the sign for these coordinates (down in the north, up in the south).
+ *
+ * This is a diagnostic, not a correction. A magnet with the wrong polarity
+ * held near the phone mirrors the field just the same, and did: a desk
+ * corner made the dip read −45° for a second, and an automatic flip then
+ * mirrored the compass for the rest of the session. The conventions are
+ * pinned per platform by the tests and checked by the dev readout instead;
+ * this only says, for as long as it lasts, that the dip is reading mirrored.
  */
 export function createSignCheck(expectedDipDeg: number): SignCheck {
-  let flipped = false;
   let wrongSince: number | null = null;
   const decisive = Math.abs(expectedDipDeg) >= SIGN_MIN_DIP_DEG;
   return {
     push(measuredDipDeg, tMs) {
-      if (flipped || !decisive) return flipped;
+      if (!decisive) return false;
       const mirrored = Math.abs(measuredDipDeg + expectedDipDeg) <= MIRROR_TOLERANCE_DEG;
       if (!mirrored) {
         wrongSince = null;
         return false;
       }
       if (wrongSince === null) wrongSince = tMs;
-      if (tMs - wrongSince >= SIGN_CHECK_MS) flipped = true;
-      return flipped;
+      return tMs - wrongSince >= SIGN_CHECK_MS;
     },
   };
 }
@@ -668,12 +673,12 @@ This is where the APIs are subscribed and the engine is wired together. Read it 
 1. **Inputs**: `coords` (from `useQiblaCoords`: the GPS fix, else the chosen city), `mode` (`'flat'` for the dial, `'camera'` for the camera page), `active` (tab focused). Sensors run only while the tab is focused and the app is in front.
 2. **Shared values** (Reanimated, UI thread): `heading`, `target`, `delta`, `pitch`, `lockT`, `edgeT`. Plain refs hold the JS-side bookkeeping, because a shared value read on the JS thread right after a JS-thread write can still return the old value (this bit us: the heading swept in from 0 through the lock band).
 3. **Refs, not effect dependencies**: `mode` and the coordinates' model (declination, the field watch, the sign check) live in refs that the per-sample code reads. The sensor subscription depends on `live` alone, so a change of coordinates or mode never tears the sensors down, resets the fuser or re-arms the cue.
-4. **Subscriptions** (inside the effect): `Magnetometer` (20 Hz) stores the latest field; `DeviceMotion` (30 Hz) does the per-sample work — down from the fused pitch/roll (negated if the sign check said so), dip, compass heading from the field + down, fused heading from `rotation`, the gyroscope's step cap, `fuser.push`, stillness, field watch, pitch, `target`; `Location.watchHeadingAsync` supplies declination and the accuracy flag. A compass sample can be up to 50 ms older than the motion sample it is combined with; the fused motion covers that gap.
+4. **Subscriptions** (inside the effect): `Magnetometer` (20 Hz) stores the latest field; `DeviceMotion` (30 Hz) does the per-sample work — down from the fused pitch/roll, dip (and, in development, the mirrored-dip diagnostic), compass heading from the field + down, fused heading from `rotation`, the gyroscope's step cap, `fuser.push`, stillness, field watch, pitch, `target`; `Location.watchHeadingAsync` supplies declination and the accuracy flag. A compass sample can be up to 50 ms older than the motion sample it is combined with; the fused motion covers that gap.
 5. **`ARM_MS`**: the lock cue is armed 1.5 s after subscribing, so a page that opens already on the Qibla is silent (the wheel's "silent on open" rule).
 6. **Frame callback** (UI thread): `heading` chases `target` with a per-frame pull (0.18 at 60 fps), `delta = shortestDelta(bearing, heading)`.
 7. **Band reaction** (UI thread): far/near/locked with hysteresis; on entering lock while armed: the haptic `lock()`, the lamp/halo (`lockT`) and the edge bloom (`edgeT`); the hint's degree number is sent to React only when it changes.
 8. **Posture reaction**: `raised` (dial: pitch > 60°, camera: pitch < 30°), with hysteresis.
-9. **Confidence tick** (4 Hz): folds the readings into the pill state, and in development builds publishes the raw numbers for the `DevReadout` on the page (compass, fused, platform heading + accuracy, |B|, dip, pitch, flipped) — one glance tells whether the conventions hold on a new device.
+9. **Confidence tick** (4 Hz): folds the readings into the pill state, and in development builds publishes the raw numbers for the `DevReadout` on the page (compass, fused, platform heading + accuracy, |B|, dip, pitch, mirrored-dip flag) — one glance tells whether the conventions hold on a new device.
 
 **`src/features/qibla/useQibla.ts`**
 
@@ -774,7 +779,8 @@ export interface QiblaDebug {
   fieldUt: number;
   dipDeg: number;
   pitch: number;
-  flipped: boolean;
+  /** The dip is reading mirrored against the model: a convention to pin, or a reversed magnet nearby. */
+  mirrored: boolean;
 }
 
 export interface Qibla {
@@ -877,9 +883,9 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
     mag: null as readonly number[] | null,
     started: false,
-    /** Gravity direction negated: the platform's convention came out mirrored (see createSignCheck). */
-    flipped: false,
     // For the dev readout only.
+    /** The dip is reading mirrored (see createSignCheck). */
+    mirrored: false,
     compass: 0,
     fused: 0,
     locMag: null as number | null,
@@ -927,15 +933,15 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
           // hand's own acceleration, untouched by its yaw); north from the magnetometer.
           const up = upFromAttitude(attitude);
-          let down = r.flipped ? up : [-up[0], -up[1], -up[2]];
+          const down = [-up[0], -up[1], -up[2]];
           const m = r.mag;
-          let dip = dipDeg(m, down);
-          if (!r.flipped && model.signCheck.push(dip, now)) {
-            // The dip has read mirrored for a second: this platform's gravity points the other way.
-            r.flipped = true;
-            down = up;
-            dip = dipDeg(m, down);
-            if (__DEV__) console.warn('[qibla] gravity direction flipped: the dip read mirrored for a second');
+          const dip = dipDeg(m, down);
+          // Diagnostic only (see createSignCheck): a mirrored dip is either a platform
+          // convention we have not pinned, or a reversed magnet nearby. It changes nothing.
+          if (__DEV__) {
+            const mirrored = model.signCheck.push(dip, now);
+            if (mirrored && !r.mirrored) console.warn('[qibla] the dip has read mirrored for a second');
+            r.mirrored = mirrored;
           }
           const field = headingsFromField(m, down);
           const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
@@ -1011,7 +1017,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           fieldUt: r.fieldUt,
           dipDeg: r.dip,
           pitch: r.pitch,
-          flipped: r.flipped,
+          mirrored: r.mirrored,
         });
       }
     }, CONFIDENCE_TICK_MS);
@@ -1772,7 +1778,7 @@ function DevReadout({ d }: { d: QiblaDebug }) {
   const f = (n: number) => n.toFixed(1);
   return (
     <RNText style={[styles.dev, { color: c.tm }]} selectable>
-      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  pitch ${f(d.pitch)}°${d.flipped ? '  FLIPPED' : ''}`}
+      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  pitch ${f(d.pitch)}°${d.mirrored ? '  DIP MIRRORED' : ''}`}
     </RNText>
   );
 }
@@ -1816,7 +1822,7 @@ export function lock() {
 ## 7. What we know, what we don't
 
 - **Verified on the S24 Ultra**: the Android angle conventions (three postures), the field values quoted above, the 145° fused-sensor episode, the lock cue firing exactly once when turning into the lock and never on open.
-- **Not yet verified on iPhone**: the sign conventions of the fused pitch/roll and the magnetometer axes as expo exposes them. The maths is platform-neutral, the sign check (§4.7b) corrects a flipped gravity direction at runtime, and the dev readout shows the rest in ten seconds — but the first TestFlight build still needs the 30-second posture check. iOS's discrete yaw corrections are expected to be absorbed by the gyroscope step cap (§4.5); unverified until then.
+- **Not yet verified on iPhone**: the sign conventions of the fused pitch/roll and the magnetometer axes as expo exposes them. The maths is platform-neutral, the sign check (§4.7b) reports a mirrored dip in development, and the dev readout shows the rest in ten seconds — but the first TestFlight build still needs the 30-second posture check. iOS's discrete yaw corrections are expected to be absorbed by the gyroscope step cap (§4.5); unverified until then.
 - **Cannot be fixed in software**: a room whose steel bends the field. At a sunlit window spot every method — ours, the platform's, Samsung's — agreed on a heading 40° from the Sun's. The field watch catches the gross cases (size or dip far off); a distortion that merely rotates the field is invisible to any phone. The sun/shadow method is the only reference that works there.
 
 ## 8. Tests

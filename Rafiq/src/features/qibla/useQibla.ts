@@ -94,7 +94,8 @@ export interface QiblaDebug {
   fieldUt: number;
   dipDeg: number;
   pitch: number;
-  flipped: boolean;
+  /** The dip is reading mirrored against the model: a convention to pin, or a reversed magnet nearby. */
+  mirrored: boolean;
 }
 
 export interface Qibla {
@@ -197,9 +198,9 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
     mag: null as readonly number[] | null,
     started: false,
-    /** Gravity direction negated: the platform's convention came out mirrored (see createSignCheck). */
-    flipped: false,
     // For the dev readout only.
+    /** The dip is reading mirrored (see createSignCheck). */
+    mirrored: false,
     compass: 0,
     fused: 0,
     locMag: null as number | null,
@@ -247,15 +248,15 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
           // hand's own acceleration, untouched by its yaw); north from the magnetometer.
           const up = upFromAttitude(attitude);
-          let down = r.flipped ? up : [-up[0], -up[1], -up[2]];
+          const down = [-up[0], -up[1], -up[2]];
           const m = r.mag;
-          let dip = dipDeg(m, down);
-          if (!r.flipped && model.signCheck.push(dip, now)) {
-            // The dip has read mirrored for a second: this platform's gravity points the other way.
-            r.flipped = true;
-            down = up;
-            dip = dipDeg(m, down);
-            if (__DEV__) console.warn('[qibla] gravity direction flipped: the dip read mirrored for a second');
+          const dip = dipDeg(m, down);
+          // Diagnostic only (see createSignCheck): a mirrored dip is either a platform
+          // convention we have not pinned, or a reversed magnet nearby. It changes nothing.
+          if (__DEV__) {
+            const mirrored = model.signCheck.push(dip, now);
+            if (mirrored && !r.mirrored) console.warn('[qibla] the dip has read mirrored for a second');
+            r.mirrored = mirrored;
           }
           const field = headingsFromField(m, down);
           const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
@@ -331,7 +332,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           fieldUt: r.fieldUt,
           dipDeg: r.dip,
           pitch: r.pitch,
-          flipped: r.flipped,
+          mirrored: r.mirrored,
         });
       }
     }, CONFIDENCE_TICK_MS);
