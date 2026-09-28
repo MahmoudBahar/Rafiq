@@ -34,6 +34,16 @@ describe('createHeadingFuser', () => {
     expect(h).toBeCloseTo(130, 1);
   });
 
+  it('takes a per-sample step limit, for what the gyroscope says the hand could have turned', () => {
+    const f = createHeadingFuser();
+    f.push(130, 275);
+    // A 20° fused step while the gyroscope allows only 10°: a platform correction, not a turn.
+    expect(f.push(130, 295, 10)).toBeCloseTo(130, 1);
+    // The same step when the gyroscope allows 30°: a real turn.
+    const h = f.push(130, 315, 30);
+    expect(h).toBeGreaterThan(145);
+  });
+
   it('runs unwrapped across the seam so a turn through north stays continuous', () => {
     const f = createHeadingFuser();
     f.push(350, 10);

@@ -1,6 +1,6 @@
 # The Qibla compass: how the current code works
 
-Branch `feature/qibla-mag-truth`, 2026-09-28 (after review items 1, 5 and 6). Every code block below is the file as it is on the branch (generated, not retyped).
+Branch `feature/qibla-mag-truth`, 2026-09-28 (all six review items applied). Every code block below is the file as it is on the branch (generated, not retyped).
 
 ## 1. The idea in one sentence
 
@@ -287,7 +287,7 @@ function headingOf(east: number, north: number): number {
 
 ### 4.5 `fuse.ts` — compass truth, fused motion
 
-Each sample: move by how much the fused heading changed (its motion is excellent even when its absolute value is wrong), then pull 5 % of the way toward the compass heading. A gap closes in about a second at 30 Hz, so the fused sensor's drift never accumulates. A step over 45° in one sample cannot be a hand turning; it is the phone resetting its fusion, and is ignored.
+Each sample: move by how much the fused heading changed (its motion is excellent even when its absolute value is wrong), then pull 5 % of the way toward the compass heading. A gap closes in about a second at 30 Hz, so the fused sensor's drift never accumulates. The step a sample may contribute is capped by what the **gyroscope** (`DeviceMotion.rotationRate`) says the phone turned in that interval, with slack and a 6° margin, and by 45° absolutely: anything larger is the platform correcting its own yaw (iOS does this in discrete steps; Android resets its fusion) rather than the hand turning, and is dropped.
 
 **`src/features/qibla/engine/fuse.ts`**
 
@@ -303,8 +303,10 @@ export interface HeadingFuser {
   /**
    * Feed the compass truth and the fused sensor's current heading; returns
    * the heading to show, unwrapped (it runs past 360 rather than wrapping).
+   * `maxStepDeg` caps the fused step this sample may contribute: what the
+   * gyroscope says the hand could have turned, else the reset cap.
    */
-  push(magHeading: number, fusedHeading: number): number;
+  push(magHeading: number, fusedHeading: number, maxStepDeg?: number): number;
   reset(): void;
 }
 
@@ -313,13 +315,14 @@ export interface HeadingFuser {
  * phone is turning. The output moves by the fused sensor's motion, sample to
  * sample, and is pulled back onto the compass a little every sample, so the
  * fused sensor's drift never accumulates and its absolute heading never
- * matters. It starts on the compass.
+ * matters. A step larger than the hand could have made (a fusion reset, or
+ * a platform's discrete yaw correction) is dropped. It starts on the compass.
  */
 export function createHeadingFuser(): HeadingFuser {
   let heading: number | null = null;
   let lastFused = 0;
   return {
-    push(magHeading, fusedHeading) {
+    push(magHeading, fusedHeading, maxStepDeg = RESET_STEP_DEG) {
       if (heading === null) {
         heading = magHeading;
         lastFused = fusedHeading;
@@ -327,7 +330,7 @@ export function createHeadingFuser(): HeadingFuser {
       }
       let step = shortestDelta(fusedHeading, lastFused);
       lastFused = fusedHeading;
-      if (Math.abs(step) > RESET_STEP_DEG) step = 0;
+      if (Math.abs(step) > Math.min(maxStepDeg, RESET_STEP_DEG)) step = 0;
       heading += step;
       heading += FUSE_GAIN * shortestDelta(magHeading, heading);
       return heading;
@@ -534,6 +537,53 @@ export function createFieldWatch(expected: FieldShape): FieldWatch {
 }
 ```
 
+### 4.7b `signcheck.ts` — is gravity the right way up?
+
+A platform convention that flips the gravity direction leaves north where it is but mirrors east: the compass looks alive and turns the wrong way. The dip gives it away — it changes sign — and the WMM knows the sign for the coordinates (down in the north, up in the south). If the measured dip reads mirrored for a second, the gravity direction is negated for the rest of the session. This is the runtime answer to the iOS sign question; it also catches an odd Android OEM. It abstains within 15° of the magnetic equator, where the dip has no clear sign.
+
+**`src/features/qibla/engine/signcheck.ts`**
+
+```ts
+/** The dip must read the wrong way this long before the gravity direction is declared flipped. */
+export const SIGN_CHECK_MS = 1000;
+/** Below this expected dip (near the magnetic equator) the sign says nothing. */
+export const SIGN_MIN_DIP_DEG = 15;
+/** How close to the mirrored value the measured dip must sit to count as "the wrong way". */
+const MIRROR_TOLERANCE_DEG = 15;
+
+export interface SignCheck {
+  /** Feed the measured dip; true once, and from then on, the gravity direction must be negated. */
+  push(measuredDipDeg: number, tMs: number): boolean;
+}
+
+/**
+ * A platform convention that flips the gravity direction leaves north where
+ * it is but mirrors east, so the compass looks alive and turns the wrong
+ * way. The dip gives it away: it changes sign, and the magnetic model knows
+ * the sign for these coordinates (down in the north, up in the south). Once
+ * the dip has read mirrored for a second the flip is applied for good; the
+ * corrected reading then looks right, which is the point.
+ */
+export function createSignCheck(expectedDipDeg: number): SignCheck {
+  let flipped = false;
+  let wrongSince: number | null = null;
+  const decisive = Math.abs(expectedDipDeg) >= SIGN_MIN_DIP_DEG;
+  return {
+    push(measuredDipDeg, tMs) {
+      if (flipped || !decisive) return flipped;
+      const mirrored = Math.abs(measuredDipDeg + expectedDipDeg) <= MIRROR_TOLERANCE_DEG;
+      if (!mirrored) {
+        wrongSince = null;
+        return false;
+      }
+      if (wrongSince === null) wrongSince = tMs;
+      if (tMs - wrongSince >= SIGN_CHECK_MS) flipped = true;
+      return flipped;
+    },
+  };
+}
+```
+
 ### 4.8 `band.ts` — far / near / locked
 
 Locked inside 3°, held out to 4° so the edge does not flicker, "near" inside 10°.
@@ -594,6 +644,7 @@ export {
 export { declinationFromHeading, declinationFromModel, expectedField, magneticToTrue } from './declination';
 export { dipDeg, headingsFromField, type Vec3 } from './field';
 export { FUSE_GAIN, RESET_STEP_DEG, createHeadingFuser, type HeadingFuser } from './fuse';
+export { SIGN_CHECK_MS, SIGN_MIN_DIP_DEG, createSignCheck, type SignCheck } from './signcheck';
 export {
   FLAT_BLEND_HIGH,
   FLAT_BLEND_LOW,
@@ -616,12 +667,13 @@ This is where the APIs are subscribed and the engine is wired together. Read it 
 
 1. **Inputs**: `coords` (from `useQiblaCoords`: the GPS fix, else the chosen city), `mode` (`'flat'` for the dial, `'camera'` for the camera page), `active` (tab focused). Sensors run only while the tab is focused and the app is in front.
 2. **Shared values** (Reanimated, UI thread): `heading`, `target`, `delta`, `pitch`, `lockT`, `edgeT`. Plain refs hold the JS-side bookkeeping, because a shared value read on the JS thread right after a JS-thread write can still return the old value (this bit us: the heading swept in from 0 through the lock band).
-3. **Subscriptions** (inside the effect): `Magnetometer` (20 Hz) stores the latest field; `DeviceMotion` (30 Hz) does the per-sample work — down from the fused pitch/roll, compass heading from the field + down, fused heading from `rotation`, `fuser.push`, stillness, field watch, pitch, `target`; `Location.watchHeadingAsync` supplies declination and the accuracy flag. A compass sample can therefore be up to 50 ms older than the motion sample it is combined with; the fused motion covers that gap.
-4. **`ARM_MS`**: the lock cue is armed 1.5 s after subscribing, so a page that opens already on the Qibla is silent (the wheel's "silent on open" rule).
-5. **Frame callback** (UI thread): `heading` chases `target` with a per-frame pull (0.18 at 60 fps), `delta = shortestDelta(bearing, heading)`.
-6. **Band reaction** (UI thread): far/near/locked with hysteresis; on entering lock while armed: the haptic `lock()`, the lamp/halo (`lockT`) and the edge bloom (`edgeT`); the hint's degree number is sent to React only when it changes.
-7. **Posture reaction**: `raised` (dial: pitch > 60°, camera: pitch < 30°), with hysteresis.
-8. **Confidence tick** (4 Hz): folds the readings into the pill state.
+3. **Refs, not effect dependencies**: `mode` and the coordinates' model (declination, the field watch, the sign check) live in refs that the per-sample code reads. The sensor subscription depends on `live` alone, so a change of coordinates or mode never tears the sensors down, resets the fuser or re-arms the cue.
+4. **Subscriptions** (inside the effect): `Magnetometer` (20 Hz) stores the latest field; `DeviceMotion` (30 Hz) does the per-sample work — down from the fused pitch/roll (negated if the sign check said so), dip, compass heading from the field + down, fused heading from `rotation`, the gyroscope's step cap, `fuser.push`, stillness, field watch, pitch, `target`; `Location.watchHeadingAsync` supplies declination and the accuracy flag. A compass sample can be up to 50 ms older than the motion sample it is combined with; the fused motion covers that gap.
+5. **`ARM_MS`**: the lock cue is armed 1.5 s after subscribing, so a page that opens already on the Qibla is silent (the wheel's "silent on open" rule).
+6. **Frame callback** (UI thread): `heading` chases `target` with a per-frame pull (0.18 at 60 fps), `delta = shortestDelta(bearing, heading)`.
+7. **Band reaction** (UI thread): far/near/locked with hysteresis; on entering lock while armed: the haptic `lock()`, the lamp/halo (`lockT`) and the edge bloom (`edgeT`); the hint's degree number is sent to React only when it changes.
+8. **Posture reaction**: `raised` (dial: pitch > 60°, camera: pitch < 30°), with hysteresis.
+9. **Confidence tick** (4 Hz): folds the readings into the pill state, and in development builds publishes the raw numbers for the `DevReadout` on the page (compass, fused, platform heading + accuracy, |B|, dip, pitch, flipped) — one glance tells whether the conventions hold on a new device.
 
 **`src/features/qibla/useQibla.ts`**
 
@@ -646,9 +698,11 @@ import {
   LOCK_ENTER_DEG,
   LOCK_LEAVE_DEG,
   NEAR_DEG,
+  RESET_STEP_DEG,
   confidence as foldConfidence,
   createFieldWatch,
   createHeadingFuser,
+  createSignCheck,
   createStillness,
   declinationFromHeading,
   declinationFromModel,
@@ -664,15 +718,17 @@ import {
   type Band,
   type Confidence,
   type Coords,
+  type FieldWatch,
+  type SignCheck,
 } from './engine';
 
 /** Which way the phone is "pointing" for this screen: its top (the dial, held flat) or its back camera. */
 export type HeadingMode = 'flat' | 'camera';
 
 const MOTION_INTERVAL_MS = 33;
-/** The magnetometer is the compass truth now, so it is read often. */
+/** The magnetometer is the compass truth, so it is read often. */
 const FIELD_INTERVAL_MS = 50;
-/** How often the confidence state is re-evaluated. */
+/** How often the confidence state (and the dev readout) is re-evaluated. */
 const CONFIDENCE_TICK_MS = 250;
 /** An interference reading holds this long so the card does not flicker with the field. */
 const INTERFERENCE_HOLD_MS = 2000;
@@ -688,6 +744,13 @@ const EDGE_OUT_MS = 900;
 const ARM_MS = 1500;
 /** A leap must hold for three samples (~100 ms) to be a jump; one is a magnetometer spike. */
 const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 3 };
+/**
+ * The fused step a sample may contribute: what the gyroscope says the phone
+ * turned in that interval, with slack, plus a margin for sensor grain. A
+ * larger step is a platform correction of its own yaw, not a turn of the hand.
+ */
+const GATE_MARGIN_DEG = 6;
+const GATE_SLACK = 1.5;
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
 export interface QiblaValues {
@@ -703,6 +766,17 @@ export interface QiblaValues {
   edgeT: SharedValue<number>;
 }
 
+/** Raw numbers for a development readout; null in release builds. */
+export interface QiblaDebug {
+  compass: number;
+  fused: number;
+  platform: string;
+  fieldUt: number;
+  dipDeg: number;
+  pitch: number;
+  flipped: boolean;
+}
+
 export interface Qibla {
   /** True bearing to the Kaaba, or null without coordinates. */
   bearing: number | null;
@@ -714,6 +788,14 @@ export interface Qibla {
   /** The phone is raised past the angle this mode makes sense at. */
   raised: boolean;
   values: QiblaValues;
+  debug: QiblaDebug | null;
+}
+
+/** What the coordinates fix for the session: recomputed only when they change. */
+interface Model {
+  declination: number;
+  fieldWatch: FieldWatch;
+  signCheck: SignCheck;
 }
 
 /**
@@ -754,6 +836,31 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // What the sensors say; without coordinates there is nothing to sense for.
   const [sensed, setConfidence] = useState<Confidence>('settling');
   const confidence: Confidence = coords ? sensed : 'no-location';
+  const [debug, setDebug] = useState<QiblaDebug | null>(null);
+
+  // The subscription depends on `live` alone. Whatever else a sample needs
+  // (mode, the coordinates' model) is read through refs, so a change never
+  // tears the sensors down, resets the fuser or re-arms the cue.
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  const modelRef = useRef<Model | null>(null);
+  const latitude = coords?.latitude;
+  const longitude = coords?.longitude;
+  useEffect(() => {
+    if (latitude === undefined || longitude === undefined) {
+      modelRef.current = null;
+      return;
+    }
+    const here = { latitude, longitude };
+    const field = expectedField(here, new Date());
+    modelRef.current = {
+      declination: declinationFromModel(here, new Date()),
+      fieldWatch: createFieldWatch(field),
+      signCheck: createSignCheck(field.dipDeg),
+    };
+  }, [latitude, longitude]);
 
   // The readings the confidence tick folds; the listeners just drop values here.
   // Plain refs for the JS side: a shared value read on the JS thread right after
@@ -763,36 +870,36 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     sensorsAvailable: true,
     fieldAnomaly: false,
     accuracy: null as number | null,
+    /** The platform's own declination when it has one (its true − magnetic). */
     declination: null as number | null,
     stableForMs: 0,
     interferenceUntil: 0,
     /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
     mag: null as readonly number[] | null,
     started: false,
+    /** Gravity direction negated: the platform's convention came out mirrored (see createSignCheck). */
+    flipped: false,
+    // For the dev readout only.
+    compass: 0,
+    fused: 0,
+    locMag: null as number | null,
+    locTrue: null as number | null,
+    fieldUt: 0,
+    dip: 0,
+    pitch: 0,
   });
   const stillness = useMemo(() => createStillness(STILLNESS), []);
   const fuser = useMemo(() => createHeadingFuser(), []);
 
   const appActive = useAppActive();
   const live = active && appActive;
-  const latitude = coords?.latitude;
-  const longitude = coords?.longitude;
-  const fieldWatch = useMemo(
-    () =>
-      latitude === undefined || longitude === undefined
-        ? null
-        : createFieldWatch(expectedField({ latitude, longitude }, new Date())),
-    [latitude, longitude],
-  );
 
-  // Sensors → `target` (JS thread). The declination comes from the platform's own
-  // true/magnetic pair when it has one, else from the magnetic model.
+  // Sensors → `target` (JS thread).
   useEffect(() => {
-    if (!live || latitude === undefined || longitude === undefined || !fieldWatch) return;
+    if (!live) return;
     const r = readings.current;
     let cancelled = false;
     const subs: { remove(): void }[] = [];
-    const modelDeclination = declinationFromModel({ latitude, longitude }, new Date());
 
     (async () => {
       const [motion, magnet] = await Promise.all([DeviceMotion.isAvailableAsync(), Magnetometer.isAvailableAsync()]);
@@ -809,28 +916,53 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
       DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
       subs.push(
-        DeviceMotion.addListener(({ rotation }) => {
-          if (!rotation || !r.mag) return;
+        DeviceMotion.addListener(({ rotation, rotationRate, interval }) => {
+          const model = modelRef.current;
+          if (!rotation || !r.mag || !model) return;
           const now = Date.now();
-          const declination = r.declination ?? modelDeclination;
+          const mode = modeRef.current;
+          const declination = r.declination ?? model.declination;
           const attitude = toW3C(rotation, PLATFORM);
+
           // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
           // hand's own acceleration, untouched by its yaw); north from the magnetometer.
           const up = upFromAttitude(attitude);
-          const down = [-up[0], -up[1], -up[2]];
-          const field = headingsFromField(r.mag, down);
+          let down = r.flipped ? up : [-up[0], -up[1], -up[2]];
+          const m = r.mag;
+          let dip = dipDeg(m, down);
+          if (!r.flipped && model.signCheck.push(dip, now)) {
+            // The dip has read mirrored for a second: this platform's gravity points the other way.
+            r.flipped = true;
+            down = up;
+            dip = dipDeg(m, down);
+            if (__DEV__) console.warn('[qibla] gravity direction flipped: the dip read mirrored for a second');
+          }
+          const field = headingsFromField(m, down);
           const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
           const compass = magneticToTrue(magnetic, declination);
+
           // The motion: the fused sensor, whose changes are trusted and whose heading is not.
+          // The gyroscope bounds how far a real turn could have gone this sample.
           const fused = headingsFromAttitude(attitude);
           const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
-          const next = fuser.push(compass, motionHeading);
+          const dt = (interval > 0 ? interval : MOTION_INTERVAL_MS) / 1000;
+          const rate = rotationRate ? Math.hypot(rotationRate.alpha, rotationRate.beta, rotationRate.gamma) : null;
+          const maxStep = rate === null ? RESET_STEP_DEG : GATE_MARGIN_DEG + GATE_SLACK * rate * dt;
+          const next = fuser.push(compass, motionHeading, maxStep);
 
           const still = stillness.push(compass, now);
           r.stableForMs = still.stableForMs;
           if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
-          const m = r.mag;
-          r.fieldAnomaly = fieldWatch.push({ magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, down) }, now);
+          const fieldUt = Math.hypot(m[0], m[1], m[2]);
+          r.fieldAnomaly = model.fieldWatch.push({ magnitudeUt: fieldUt, dipDeg: dip }, now);
+
+          if (__DEV__) {
+            r.compass = compass;
+            r.fused = motionHeading;
+            r.fieldUt = fieldUt;
+            r.dip = dip;
+            r.pitch = field.pitch;
+          }
 
           pitch.set(field.pitch);
           target.set(next);
@@ -847,6 +979,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         r.accuracy = sample.accuracy;
         const d = declinationFromHeading(sample.trueHeading, sample.magHeading);
         if (d !== null) r.declination = d;
+        if (__DEV__) {
+          r.locMag = sample.magHeading;
+          r.locTrue = sample.trueHeading;
+        }
       }).catch(() => null);
       if (cancelled) headingSub?.remove();
       else if (headingSub) subs.push(headingSub);
@@ -859,7 +995,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     const tick = setInterval(() => {
       const now = Date.now();
       const next = foldConfidence({
-        hasCoords: true,
+        hasCoords: modelRef.current !== null,
         sensorsAvailable: r.sensorsAvailable,
         fieldAnomaly: r.fieldAnomaly,
         jump: now < r.interferenceUntil,
@@ -867,6 +1003,17 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         stableForMs: r.stableForMs,
       });
       setConfidence((prev) => (prev === next ? prev : next));
+      if (__DEV__ && r.started) {
+        setDebug({
+          compass: r.compass,
+          fused: r.fused,
+          platform: `${r.locMag === null ? '—' : Math.round(r.locMag)}/${r.locTrue === null ? '—' : Math.round(r.locTrue)} acc ${r.accuracy ?? '—'}`,
+          fieldUt: r.fieldUt,
+          dipDeg: r.dip,
+          pitch: r.pitch,
+          flipped: r.flipped,
+        });
+      }
     }, CONFIDENCE_TICK_MS);
 
     return () => {
@@ -884,7 +1031,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       // The next first sample is an opening again, so it is silent again.
       primed.set(false);
     };
-  }, [live, latitude, longitude, mode, stillness, fuser, fieldWatch, pitch, target, heading, haveTarget, primed]);
+  }, [live, stillness, fuser, pitch, target, heading, haveTarget, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;
@@ -961,6 +1108,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     confidence,
     raised,
     values: { heading, delta, pitch, lockT, edgeT },
+    debug,
   };
 }
 
@@ -1511,7 +1659,7 @@ const styles = StyleSheet.create({
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text as RNText, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocate } from '@/features/prayer/useLocate';
 import { StatusCard } from '@/features/qibla/calibration/StatusCard';
@@ -1519,7 +1667,7 @@ import { CompassDial } from '@/features/qibla/dial/CompassDial';
 import { ConfidencePill } from '@/features/qibla/dial/ConfidencePill';
 import { LockGlow } from '@/features/qibla/dial/LockGlow';
 import { TurnHint } from '@/features/qibla/dial/TurnHint';
-import { useQibla } from '@/features/qibla/useQibla';
+import { useQibla, type QiblaDebug } from '@/features/qibla/useQibla';
 import { useQiblaCoords } from '@/features/qibla/useQiblaCoords';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
@@ -1611,14 +1759,27 @@ export default function QiblaScreen() {
             </PressScale>
           </View>
         )}
+        {qibla.debug ? <DevReadout d={qibla.debug} /> : null}
       </View>
       <LockGlow t={qibla.values.edgeT} />
     </TabScene>
   );
 }
 
+/** Development builds only: the raw numbers, to tell in ten seconds whether the conventions hold on a device. */
+function DevReadout({ d }: { d: QiblaDebug }) {
+  const { c } = useTheme();
+  const f = (n: number) => n.toFixed(1);
+  return (
+    <RNText style={[styles.dev, { color: c.tm }]} selectable>
+      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  pitch ${f(d.pitch)}°${d.flipped ? '  FLIPPED' : ''}`}
+    </RNText>
+  );
+}
+
 const styles = StyleSheet.create({
   sky: { position: 'absolute', left: 0, right: 0, top: 0 },
+  dev: { marginTop: 14, fontSize: 11, lineHeight: 16, fontFamily: 'monospace', writingDirection: 'ltr', textAlign: 'left' },
   header: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: 6 },
   wide: { alignSelf: 'stretch' },
   dial: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
@@ -1655,9 +1816,9 @@ export function lock() {
 ## 7. What we know, what we don't
 
 - **Verified on the S24 Ultra**: the Android angle conventions (three postures), the field values quoted above, the 145° fused-sensor episode, the lock cue firing exactly once when turning into the lock and never on open.
-- **Not yet verified on iPhone**: the sign of the gravity vector and the magnetometer axes as expo exposes them. The maths is platform-neutral, but the first TestFlight build needs the same 30-second posture check.
+- **Not yet verified on iPhone**: the sign conventions of the fused pitch/roll and the magnetometer axes as expo exposes them. The maths is platform-neutral, the sign check (§4.7b) corrects a flipped gravity direction at runtime, and the dev readout shows the rest in ten seconds — but the first TestFlight build still needs the 30-second posture check. iOS's discrete yaw corrections are expected to be absorbed by the gyroscope step cap (§4.5); unverified until then.
 - **Cannot be fixed in software**: a room whose steel bends the field. At a sunlit window spot every method — ours, the platform's, Samsung's — agreed on a heading 40° from the Sun's. The field watch catches the gross cases (size or dip far off); a distortion that merely rotates the field is invisible to any phone. The sun/shadow method is the only reference that works there.
 
 ## 8. Tests
 
-`npm test` runs vitest over `src/**/engine/**`: bearing check values (Cairo, London, New York, Jakarta), attitude fixtures (synthetic and recorded), field headings (flat, upright, half-raised, a recorded desk sample), dip, the fuser (start on compass, follow motion, converge on drift, ignore a reset, run unwrapped across north), the field watch (cable allowed, laptop corner flagged, persistence), confidence states, the lock band, declination and the expected field.
+`npm test` runs vitest over `src/**/engine/**`: bearing check values (Cairo, London, New York, Jakarta), attitude fixtures (synthetic and recorded) and `upFromAttitude`, field headings (flat, upright, half-raised, the blend when raised, a recorded desk sample), dip, the fuser (start on compass, follow motion, converge on drift, ignore a reset, honour the gyroscope's step cap, run unwrapped across north), the stillness watch (spike vs jump), the field watch (cable allowed, laptop corner flagged, persistence), the sign check (both hemispheres, abstains at the equator), confidence states, the lock band, declination and the expected field.

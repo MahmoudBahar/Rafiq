@@ -18,9 +18,11 @@ import {
   LOCK_ENTER_DEG,
   LOCK_LEAVE_DEG,
   NEAR_DEG,
+  RESET_STEP_DEG,
   confidence as foldConfidence,
   createFieldWatch,
   createHeadingFuser,
+  createSignCheck,
   createStillness,
   declinationFromHeading,
   declinationFromModel,
@@ -36,15 +38,17 @@ import {
   type Band,
   type Confidence,
   type Coords,
+  type FieldWatch,
+  type SignCheck,
 } from './engine';
 
 /** Which way the phone is "pointing" for this screen: its top (the dial, held flat) or its back camera. */
 export type HeadingMode = 'flat' | 'camera';
 
 const MOTION_INTERVAL_MS = 33;
-/** The magnetometer is the compass truth now, so it is read often. */
+/** The magnetometer is the compass truth, so it is read often. */
 const FIELD_INTERVAL_MS = 50;
-/** How often the confidence state is re-evaluated. */
+/** How often the confidence state (and the dev readout) is re-evaluated. */
 const CONFIDENCE_TICK_MS = 250;
 /** An interference reading holds this long so the card does not flicker with the field. */
 const INTERFERENCE_HOLD_MS = 2000;
@@ -60,6 +64,13 @@ const EDGE_OUT_MS = 900;
 const ARM_MS = 1500;
 /** A leap must hold for three samples (~100 ms) to be a jump; one is a magnetometer spike. */
 const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 3 };
+/**
+ * The fused step a sample may contribute: what the gyroscope says the phone
+ * turned in that interval, with slack, plus a margin for sensor grain. A
+ * larger step is a platform correction of its own yaw, not a turn of the hand.
+ */
+const GATE_MARGIN_DEG = 6;
+const GATE_SLACK = 1.5;
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
 export interface QiblaValues {
@@ -75,6 +86,17 @@ export interface QiblaValues {
   edgeT: SharedValue<number>;
 }
 
+/** Raw numbers for a development readout; null in release builds. */
+export interface QiblaDebug {
+  compass: number;
+  fused: number;
+  platform: string;
+  fieldUt: number;
+  dipDeg: number;
+  pitch: number;
+  flipped: boolean;
+}
+
 export interface Qibla {
   /** True bearing to the Kaaba, or null without coordinates. */
   bearing: number | null;
@@ -86,6 +108,14 @@ export interface Qibla {
   /** The phone is raised past the angle this mode makes sense at. */
   raised: boolean;
   values: QiblaValues;
+  debug: QiblaDebug | null;
+}
+
+/** What the coordinates fix for the session: recomputed only when they change. */
+interface Model {
+  declination: number;
+  fieldWatch: FieldWatch;
+  signCheck: SignCheck;
 }
 
 /**
@@ -126,6 +156,31 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // What the sensors say; without coordinates there is nothing to sense for.
   const [sensed, setConfidence] = useState<Confidence>('settling');
   const confidence: Confidence = coords ? sensed : 'no-location';
+  const [debug, setDebug] = useState<QiblaDebug | null>(null);
+
+  // The subscription depends on `live` alone. Whatever else a sample needs
+  // (mode, the coordinates' model) is read through refs, so a change never
+  // tears the sensors down, resets the fuser or re-arms the cue.
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  const modelRef = useRef<Model | null>(null);
+  const latitude = coords?.latitude;
+  const longitude = coords?.longitude;
+  useEffect(() => {
+    if (latitude === undefined || longitude === undefined) {
+      modelRef.current = null;
+      return;
+    }
+    const here = { latitude, longitude };
+    const field = expectedField(here, new Date());
+    modelRef.current = {
+      declination: declinationFromModel(here, new Date()),
+      fieldWatch: createFieldWatch(field),
+      signCheck: createSignCheck(field.dipDeg),
+    };
+  }, [latitude, longitude]);
 
   // The readings the confidence tick folds; the listeners just drop values here.
   // Plain refs for the JS side: a shared value read on the JS thread right after
@@ -135,36 +190,36 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     sensorsAvailable: true,
     fieldAnomaly: false,
     accuracy: null as number | null,
+    /** The platform's own declination when it has one (its true − magnetic). */
     declination: null as number | null,
     stableForMs: 0,
     interferenceUntil: 0,
     /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
     mag: null as readonly number[] | null,
     started: false,
+    /** Gravity direction negated: the platform's convention came out mirrored (see createSignCheck). */
+    flipped: false,
+    // For the dev readout only.
+    compass: 0,
+    fused: 0,
+    locMag: null as number | null,
+    locTrue: null as number | null,
+    fieldUt: 0,
+    dip: 0,
+    pitch: 0,
   });
   const stillness = useMemo(() => createStillness(STILLNESS), []);
   const fuser = useMemo(() => createHeadingFuser(), []);
 
   const appActive = useAppActive();
   const live = active && appActive;
-  const latitude = coords?.latitude;
-  const longitude = coords?.longitude;
-  const fieldWatch = useMemo(
-    () =>
-      latitude === undefined || longitude === undefined
-        ? null
-        : createFieldWatch(expectedField({ latitude, longitude }, new Date())),
-    [latitude, longitude],
-  );
 
-  // Sensors → `target` (JS thread). The declination comes from the platform's own
-  // true/magnetic pair when it has one, else from the magnetic model.
+  // Sensors → `target` (JS thread).
   useEffect(() => {
-    if (!live || latitude === undefined || longitude === undefined || !fieldWatch) return;
+    if (!live) return;
     const r = readings.current;
     let cancelled = false;
     const subs: { remove(): void }[] = [];
-    const modelDeclination = declinationFromModel({ latitude, longitude }, new Date());
 
     (async () => {
       const [motion, magnet] = await Promise.all([DeviceMotion.isAvailableAsync(), Magnetometer.isAvailableAsync()]);
@@ -181,28 +236,53 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
       DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
       subs.push(
-        DeviceMotion.addListener(({ rotation }) => {
-          if (!rotation || !r.mag) return;
+        DeviceMotion.addListener(({ rotation, rotationRate, interval }) => {
+          const model = modelRef.current;
+          if (!rotation || !r.mag || !model) return;
           const now = Date.now();
-          const declination = r.declination ?? modelDeclination;
+          const mode = modeRef.current;
+          const declination = r.declination ?? model.declination;
           const attitude = toW3C(rotation, PLATFORM);
+
           // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
           // hand's own acceleration, untouched by its yaw); north from the magnetometer.
           const up = upFromAttitude(attitude);
-          const down = [-up[0], -up[1], -up[2]];
-          const field = headingsFromField(r.mag, down);
+          let down = r.flipped ? up : [-up[0], -up[1], -up[2]];
+          const m = r.mag;
+          let dip = dipDeg(m, down);
+          if (!r.flipped && model.signCheck.push(dip, now)) {
+            // The dip has read mirrored for a second: this platform's gravity points the other way.
+            r.flipped = true;
+            down = up;
+            dip = dipDeg(m, down);
+            if (__DEV__) console.warn('[qibla] gravity direction flipped: the dip read mirrored for a second');
+          }
+          const field = headingsFromField(m, down);
           const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
           const compass = magneticToTrue(magnetic, declination);
+
           // The motion: the fused sensor, whose changes are trusted and whose heading is not.
+          // The gyroscope bounds how far a real turn could have gone this sample.
           const fused = headingsFromAttitude(attitude);
           const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
-          const next = fuser.push(compass, motionHeading);
+          const dt = (interval > 0 ? interval : MOTION_INTERVAL_MS) / 1000;
+          const rate = rotationRate ? Math.hypot(rotationRate.alpha, rotationRate.beta, rotationRate.gamma) : null;
+          const maxStep = rate === null ? RESET_STEP_DEG : GATE_MARGIN_DEG + GATE_SLACK * rate * dt;
+          const next = fuser.push(compass, motionHeading, maxStep);
 
           const still = stillness.push(compass, now);
           r.stableForMs = still.stableForMs;
           if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
-          const m = r.mag;
-          r.fieldAnomaly = fieldWatch.push({ magnitudeUt: Math.hypot(m[0], m[1], m[2]), dipDeg: dipDeg(m, down) }, now);
+          const fieldUt = Math.hypot(m[0], m[1], m[2]);
+          r.fieldAnomaly = model.fieldWatch.push({ magnitudeUt: fieldUt, dipDeg: dip }, now);
+
+          if (__DEV__) {
+            r.compass = compass;
+            r.fused = motionHeading;
+            r.fieldUt = fieldUt;
+            r.dip = dip;
+            r.pitch = field.pitch;
+          }
 
           pitch.set(field.pitch);
           target.set(next);
@@ -219,6 +299,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         r.accuracy = sample.accuracy;
         const d = declinationFromHeading(sample.trueHeading, sample.magHeading);
         if (d !== null) r.declination = d;
+        if (__DEV__) {
+          r.locMag = sample.magHeading;
+          r.locTrue = sample.trueHeading;
+        }
       }).catch(() => null);
       if (cancelled) headingSub?.remove();
       else if (headingSub) subs.push(headingSub);
@@ -231,7 +315,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     const tick = setInterval(() => {
       const now = Date.now();
       const next = foldConfidence({
-        hasCoords: true,
+        hasCoords: modelRef.current !== null,
         sensorsAvailable: r.sensorsAvailable,
         fieldAnomaly: r.fieldAnomaly,
         jump: now < r.interferenceUntil,
@@ -239,6 +323,17 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         stableForMs: r.stableForMs,
       });
       setConfidence((prev) => (prev === next ? prev : next));
+      if (__DEV__ && r.started) {
+        setDebug({
+          compass: r.compass,
+          fused: r.fused,
+          platform: `${r.locMag === null ? '—' : Math.round(r.locMag)}/${r.locTrue === null ? '—' : Math.round(r.locTrue)} acc ${r.accuracy ?? '—'}`,
+          fieldUt: r.fieldUt,
+          dipDeg: r.dip,
+          pitch: r.pitch,
+          flipped: r.flipped,
+        });
+      }
     }, CONFIDENCE_TICK_MS);
 
     return () => {
@@ -256,7 +351,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       // The next first sample is an opening again, so it is silent again.
       primed.set(false);
     };
-  }, [live, latitude, longitude, mode, stillness, fuser, fieldWatch, pitch, target, heading, haveTarget, primed]);
+  }, [live, stillness, fuser, pitch, target, heading, haveTarget, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;
@@ -333,6 +428,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     confidence,
     raised,
     values: { heading, delta, pitch, lockT, edgeT },
+    debug,
   };
 }
 

@@ -9,8 +9,10 @@ export interface HeadingFuser {
   /**
    * Feed the compass truth and the fused sensor's current heading; returns
    * the heading to show, unwrapped (it runs past 360 rather than wrapping).
+   * `maxStepDeg` caps the fused step this sample may contribute: what the
+   * gyroscope says the hand could have turned, else the reset cap.
    */
-  push(magHeading: number, fusedHeading: number): number;
+  push(magHeading: number, fusedHeading: number, maxStepDeg?: number): number;
   reset(): void;
 }
 
@@ -19,13 +21,14 @@ export interface HeadingFuser {
  * phone is turning. The output moves by the fused sensor's motion, sample to
  * sample, and is pulled back onto the compass a little every sample, so the
  * fused sensor's drift never accumulates and its absolute heading never
- * matters. It starts on the compass.
+ * matters. A step larger than the hand could have made (a fusion reset, or
+ * a platform's discrete yaw correction) is dropped. It starts on the compass.
  */
 export function createHeadingFuser(): HeadingFuser {
   let heading: number | null = null;
   let lastFused = 0;
   return {
-    push(magHeading, fusedHeading) {
+    push(magHeading, fusedHeading, maxStepDeg = RESET_STEP_DEG) {
       if (heading === null) {
         heading = magHeading;
         lastFused = fusedHeading;
@@ -33,7 +36,7 @@ export function createHeadingFuser(): HeadingFuser {
       }
       let step = shortestDelta(fusedHeading, lastFused);
       lastFused = fusedHeading;
-      if (Math.abs(step) > RESET_STEP_DEG) step = 0;
+      if (Math.abs(step) > Math.min(maxStepDeg, RESET_STEP_DEG)) step = 0;
       heading += step;
       heading += FUSE_GAIN * shortestDelta(magHeading, heading);
       return heading;

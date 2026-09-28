@@ -1,7 +1,7 @@
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text as RNText, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocate } from '@/features/prayer/useLocate';
 import { StatusCard } from '@/features/qibla/calibration/StatusCard';
@@ -9,7 +9,7 @@ import { CompassDial } from '@/features/qibla/dial/CompassDial';
 import { ConfidencePill } from '@/features/qibla/dial/ConfidencePill';
 import { LockGlow } from '@/features/qibla/dial/LockGlow';
 import { TurnHint } from '@/features/qibla/dial/TurnHint';
-import { useQibla } from '@/features/qibla/useQibla';
+import { useQibla, type QiblaDebug } from '@/features/qibla/useQibla';
 import { useQiblaCoords } from '@/features/qibla/useQiblaCoords';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
@@ -101,14 +101,27 @@ export default function QiblaScreen() {
             </PressScale>
           </View>
         )}
+        {qibla.debug ? <DevReadout d={qibla.debug} /> : null}
       </View>
       <LockGlow t={qibla.values.edgeT} />
     </TabScene>
   );
 }
 
+/** Development builds only: the raw numbers, to tell in ten seconds whether the conventions hold on a device. */
+function DevReadout({ d }: { d: QiblaDebug }) {
+  const { c } = useTheme();
+  const f = (n: number) => n.toFixed(1);
+  return (
+    <RNText style={[styles.dev, { color: c.tm }]} selectable>
+      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  pitch ${f(d.pitch)}°${d.flipped ? '  FLIPPED' : ''}`}
+    </RNText>
+  );
+}
+
 const styles = StyleSheet.create({
   sky: { position: 'absolute', left: 0, right: 0, top: 0 },
+  dev: { marginTop: 14, fontSize: 11, lineHeight: 16, fontFamily: 'monospace', writingDirection: 'ltr', textAlign: 'left' },
   header: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: 6 },
   wide: { alignSelf: 'stretch' },
   dial: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },

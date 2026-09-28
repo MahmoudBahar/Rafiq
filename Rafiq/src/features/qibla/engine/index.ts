@@ -27,6 +27,7 @@ export {
 export { declinationFromHeading, declinationFromModel, expectedField, magneticToTrue } from './declination';
 export { dipDeg, headingsFromField, type Vec3 } from './field';
 export { FUSE_GAIN, RESET_STEP_DEG, createHeadingFuser, type HeadingFuser } from './fuse';
+export { SIGN_CHECK_MS, SIGN_MIN_DIP_DEG, createSignCheck, type SignCheck } from './signcheck';
 export {
   FLAT_BLEND_HIGH,
   FLAT_BLEND_LOW,
