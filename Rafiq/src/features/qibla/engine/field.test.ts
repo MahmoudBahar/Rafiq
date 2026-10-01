@@ -1,101 +1,154 @@
 import { describe, expect, it } from 'vitest';
-import { dipDeg, headingsFromField } from './field';
+import { AXIS_CAMERA, AXIS_TOP, axisHeading, earthFrame, fieldShape, headingsFromFrame } from './field';
+import { shortestDelta } from './smooth';
+import { CAIRO, deviceVectors, expectedCameraHeading, type Posture } from './testing/synthetic';
 
-// Device frame: X right, Y up the screen (the top), Z out of the screen.
-// `down` is where gravity points, as expo's accelerationIncludingGravity
-// reports it on Android (z ≈ -9.8 with the phone flat, face up). In Cairo the
-// field points north and 45° down: flat and facing north it reads (0, +H, -V).
-const H = 31;
-const V = 31;
-const FLAT_DOWN = [0, 0, -9.8] as const;
+const HEADINGS = [0, 90, 136.14, 180, 270, 359.5];
 
-describe('headingsFromField', () => {
-  it('flat, top pointing north', () => {
-    const h = headingsFromField([0, H, -V], FLAT_DOWN);
-    expect(h.flatHeading).toBeCloseTo(0, 4);
-    expect(h.pitch).toBeCloseTo(0, 4);
+const frameFor = (p: Posture) => {
+  const { mag, down } = deviceVectors(p);
+  const f = earthFrame(mag, down);
+  if (!f) throw new Error('degenerate frame');
+  return f;
+};
+
+describe('earthFrame + headingsFromFrame on synthetic postures', () => {
+  const postures: { name: string; p: Omit<Posture, 'headingDeg'>; camera: boolean }[] = [
+    { name: 'flat', p: {}, camera: false },
+    { name: 'raised 45°', p: { pitchDeg: 45 }, camera: true },
+    { name: 'top lowered 30°', p: { pitchDeg: -30 }, camera: true },
+    { name: 'landscape, right edge down', p: { rollDeg: 90 }, camera: true },
+    { name: 'landscape, left edge down', p: { rollDeg: -90 }, camera: true },
+    { name: 'face down', p: { rollDeg: 180 }, camera: false },
+    { name: 'raised 45° and rolled 20°', p: { pitchDeg: 45, rollDeg: 20 }, camera: true },
+    { name: 'raised 60° and rolled -35°', p: { pitchDeg: 60, rollDeg: -35 }, camera: true },
+  ];
+
+  for (const { name, p, camera } of postures) {
+    it(`${name}: the top edge's heading is the heading`, () => {
+      for (const headingDeg of HEADINGS) {
+        const h = headingsFromFrame(frameFor({ headingDeg, ...p }));
+        expect(Math.abs(shortestDelta(headingDeg, h.flatHeading))).toBeLessThan(1e-6);
+        expect(h.pitch).toBeCloseTo(p.pitchDeg ?? 0, 6);
+      }
+    });
+    if (camera) {
+      it(`${name}: the camera's heading is where the back points`, () => {
+        for (const headingDeg of HEADINGS) {
+          const posture = { headingDeg, ...p };
+          const h = headingsFromFrame(frameFor(posture));
+          expect(Math.abs(shortestDelta(expectedCameraHeading(posture), h.cameraHeading))).toBeLessThan(1e-6);
+        }
+      });
+    }
+  }
+
+  it('upright: both headings are the heading and the pitch is 90', () => {
+    for (const headingDeg of HEADINGS) {
+      const h = headingsFromFrame(frameFor({ headingDeg, pitchDeg: 90 }));
+      expect(Math.abs(shortestDelta(headingDeg, h.flatHeading))).toBeLessThan(1e-6);
+      expect(Math.abs(shortestDelta(headingDeg, h.cameraHeading))).toBeLessThan(1e-6);
+      expect(h.pitch).toBeCloseTo(90, 6);
+    }
   });
-  it('flat, top pointing east: north is off the left edge', () => {
-    // Turned clockwise to face east, magnetic north is to the phone's left (-X).
-    expect(headingsFromField([-H, 0, -V], FLAT_DOWN).flatHeading).toBeCloseTo(90, 4);
-  });
-  it('flat, top pointing south', () => {
-    expect(headingsFromField([0, -H, -V], FLAT_DOWN).flatHeading).toBeCloseTo(180, 4);
-  });
-  it('flat, facing south-east (136°)', () => {
-    const a = (136 * Math.PI) / 180;
-    // North in device coords when the top points at bearing a: (-sin a, cos a) · H
-    expect(headingsFromField([-H * Math.sin(a), H * Math.cos(a), -V], FLAT_DOWN).flatHeading).toBeCloseTo(136, 3);
-  });
-  it('upright, back camera facing north', () => {
-    // Top points up: down is -Y. North is straight through the back (-Z), the
-    // field's vertical part now runs along -Y.
-    const h = headingsFromField([0, -V, -H], [0, -9.8, 0]);
-    expect(h.cameraHeading).toBeCloseTo(0, 4);
-    expect(h.pitch).toBeCloseTo(90, 4);
-  });
-  it('upright, back camera facing east', () => {
-    // Facing east, north is to the left (-X).
-    expect(headingsFromField([-H, -V, 0], [0, -9.8, 0]).cameraHeading).toBeCloseTo(90, 4);
-  });
-  it('half raised, both headings agree', () => {
-    // Top raised 45° while facing north: rotate the flat-north field about X by 45°.
-    const c = Math.cos(Math.PI / 4);
-    const h = headingsFromField([0, H * c - V * c, -(H * c + V * c)], [0, -9.8 * c, -9.8 * c]);
-    expect(h.flatHeading).toBeCloseTo(0, 3);
-    expect(h.cameraHeading).toBeCloseTo(0, 3);
-    expect(h.pitch).toBeCloseTo(45, 3);
-  });
-  it('blends from the top edge to the camera as the phone is raised past ~78°, with no step', () => {
-    // The phone faces north, rolled 30° about its own top-to-bottom axis so the
-    // top-edge and camera headings differ, then raised from 60° to 88°. Earth
-    // vectors are brought into the device frame with R = Rz(0)·Rx(β)·Ry(γ).
-    const toDevice = (v: readonly number[], beta: number, gamma: number) => {
-      const cb = Math.cos(beta), sb = Math.sin(beta), cg = Math.cos(gamma), sg = Math.sin(gamma);
-      // Columns of R (device axes in earth frame); device = Rᵀ · earth.
-      const x = [cg, 0, -sg]; // approximated rows for alpha = 0
-      const y = [sb * sg, cb, sb * cg];
-      const z = [cb * sg, -sb, cb * cg];
-      const dotv = (a: number[]) => a[0] * v[0] + a[1] * v[1] + a[2] * v[2];
-      return [dotv(x), dotv(y), dotv(z)];
-    };
+
+  it('hands the top edge over to the camera as the phone is raised to upright, with no step', () => {
+    // Rolled 30° so the two headings differ; raised from 60° through upright to 96°.
+    // (Tipped further back the top edge points behind the user, and the blend
+    // rightly walks toward that: a posture neither page uses.)
     const readings: number[] = [];
-    for (let deg = 60; deg <= 88; deg += 2) {
-      const beta = (deg * Math.PI) / 180;
-      const gamma = (30 * Math.PI) / 180;
-      const mag = toDevice([0, H, -V], beta, gamma);
-      const down = toDevice([0, 0, -1], beta, gamma);
-      readings.push(headingsFromField(mag, down).flatHeading);
+    for (let pitchDeg = 60; pitchDeg <= 96; pitchDeg += 0.5) {
+      readings.push(headingsFromFrame(frameFor({ headingDeg: 0, pitchDeg, rollDeg: 30 })).flatHeading);
     }
     for (let i = 1; i < readings.length; i++) {
-      const step = Math.abs(((readings[i] - readings[i - 1] + 540) % 360) - 180);
-      expect(step).toBeLessThan(6);
+      expect(Math.abs(shortestDelta(readings[i], readings[i - 1]))).toBeLessThan(4);
     }
-    // And the two ends really are different headings, so the blend was exercised.
-    const spread = Math.abs(((readings[readings.length - 1] - readings[0] + 540) % 360) - 180);
-    expect(spread).toBeGreaterThan(10);
+    // The ends really differ, so the blend was exercised.
+    expect(Math.abs(shortestDelta(readings[readings.length - 1], readings[0]))).toBeGreaterThan(10);
   });
-  it('is unaffected by the field strength', () => {
-    const a = headingsFromField([-H, 0, -V], FLAT_DOWN).flatHeading;
-    const b = headingsFromField([-2 * H, 0, -2 * V], FLAT_DOWN).flatHeading;
-    expect(a).toBeCloseTo(b, 6);
+
+  it('does not depend on the field strength', () => {
+    const { mag, down } = deviceVectors({ headingDeg: 136.14, pitchDeg: 20 });
+    const a = headingsFromFrame(earthFrame(mag, down)!);
+    const b = headingsFromFrame(earthFrame([mag[0] * 3, mag[1] * 3, mag[2] * 3], down)!);
+    expect(a.flatHeading).toBeCloseTo(b.flatHeading, 9);
   });
-  it('recorded sample: flat on the desk reading 46–50° magnetic (shadow spot)', () => {
-    // From the 2026-09-27 session: calibrated field (-20.6, 18.4, -30.0), phone flat;
-    // the platform compass read 48° and the tilt-corrected field 46–50° over the window.
-    const h = headingsFromField([-20.6, 18.4, -30.0], [0.1, 0.2, -9.8]).flatHeading;
+
+  it('does not depend on the unit gravity comes in', () => {
+    const { mag, down } = deviceVectors({ headingDeg: 200, pitchDeg: 35, rollDeg: -10 });
+    const inG: [number, number, number] = [down[0] / 9.81, down[1] / 9.81, down[2] / 9.81];
+    expect(headingsFromFrame(earthFrame(mag, inG)!).flatHeading).toBeCloseTo(headingsFromFrame(earthFrame(mag, down)!).flatHeading, 9);
+  });
+
+  it('east is to the right of a phone whose top points north', () => {
+    const f = frameFor({ headingDeg: 0 });
+    expect(f.east[0]).toBeCloseTo(1, 9);
+    expect(f.north[1]).toBeCloseTo(1, 9);
+    expect(f.up[2]).toBeCloseTo(1, 9);
+  });
+
+  it('axisHeading reads any device axis', () => {
+    const f = frameFor({ headingDeg: 30 });
+    expect(axisHeading(f, AXIS_TOP)).toBeCloseTo(30, 6);
+    expect(axisHeading(f, [1, 0, 0])).toBeCloseTo(120, 6);
+    expect(axisHeading(f, [0, -1, 0])).toBeCloseTo(210, 6);
+    // Flat, the camera points straight down: no heading to speak of, but no crash.
+    expect(Number.isFinite(axisHeading(f, AXIS_CAMERA))).toBe(true);
+  });
+});
+
+describe('earthFrame, hand-written device readings', () => {
+  // Cairo: the field points north and 45° down, so flat and facing north it reads (0, +H, −V).
+  const H = 31;
+  const V = 31;
+  const FLAT_DOWN = [0, 0, -9.8] as const;
+
+  it('flat, top pointing north / east / south', () => {
+    expect(headingsFromFrame(earthFrame([0, H, -V], FLAT_DOWN)!).flatHeading).toBeCloseTo(0, 6);
+    // Turned clockwise to face east, magnetic north is to the phone's left (−X).
+    expect(headingsFromFrame(earthFrame([-H, 0, -V], FLAT_DOWN)!).flatHeading).toBeCloseTo(90, 6);
+    expect(headingsFromFrame(earthFrame([0, -H, -V], FLAT_DOWN)!).flatHeading).toBeCloseTo(180, 6);
+  });
+  it('upright, back camera facing north: down is −Y, north is straight through the back', () => {
+    const h = headingsFromFrame(earthFrame([0, -V, -H], [0, -9.8, 0])!);
+    expect(h.cameraHeading).toBeCloseTo(0, 6);
+    expect(h.pitch).toBeCloseTo(90, 6);
+  });
+  it('recorded sample: flat on the desk reading 46–50° magnetic (shadow spot, S24 Ultra, 2026-09-27)', () => {
+    // Calibrated field (−20.6, 18.4, −30.0), phone flat; the platform compass read 48°.
+    const h = headingsFromFrame(earthFrame([-20.6, 18.4, -30.0], [0.1, 0.2, -9.8])!).flatHeading;
     expect(h).toBeGreaterThan(46);
     expect(h).toBeLessThan(51);
   });
 });
 
-describe('dipDeg', () => {
-  it('is the angle of the field below the horizontal', () => {
-    expect(dipDeg([0, H, -V], FLAT_DOWN)).toBeCloseTo(45, 4);
-    expect(dipDeg([0, H, 0], FLAT_DOWN)).toBeCloseTo(0, 4);
-    expect(dipDeg([0, 0, -V], FLAT_DOWN)).toBeCloseTo(90, 4);
+describe('earthFrame, degenerate inputs', () => {
+  it('is null for a vertical field (the magnetic pole)', () => {
+    expect(earthFrame([0, 0, -44], [0, 0, -9.8])).toBeNull();
   });
-  it('does not depend on how the phone is held', () => {
-    expect(dipDeg([0, -V, -H], [0, -9.8, 0])).toBeCloseTo(45, 4);
+  it('is null for an empty field or an empty gravity', () => {
+    expect(earthFrame([0.1, 0.2, -0.3], [0, 0, -9.8])).toBeNull();
+    expect(earthFrame([0, 31, -31], [0, 0, -0.01])).toBeNull();
+  });
+  it('is fine at a steep but real dip (70°)', () => {
+    const { mag, down } = deviceVectors({ headingDeg: 45 }, { F: 50, I: 70 });
+    expect(headingsFromFrame(earthFrame(mag, down)!).flatHeading).toBeCloseTo(45, 6);
+  });
+});
+
+describe('fieldShape', () => {
+  it('reads the model field back at every posture', () => {
+    for (const p of [{}, { pitchDeg: 90 }, { rollDeg: 180 }, { pitchDeg: -40, rollDeg: 70 }]) {
+      const { mag, down } = deviceVectors({ headingDeg: 77, ...p });
+      const s = fieldShape(mag, down)!;
+      expect(s.magnitudeUt).toBeCloseTo(CAIRO.F, 6);
+      expect(s.dipDeg).toBeCloseTo(CAIRO.I, 6);
+    }
+  });
+  it('is signed: a field pointing up reads a negative dip', () => {
+    expect(fieldShape([0, 31, 31], [0, 0, -9.8])!.dipDeg).toBeCloseTo(-45, 6);
+  });
+  it('is null for an empty input', () => {
+    expect(fieldShape([0, 0, 0], [0, 0, -9.8])).toBeNull();
   });
 });

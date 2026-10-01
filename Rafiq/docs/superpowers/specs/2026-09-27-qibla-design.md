@@ -25,11 +25,13 @@ Make the "القبلة" tab real: guide the user clearly to the Qibla with motio
 
 ## Direction and confidence
 
-- Attitude from `expo-sensors` DeviceMotion (magnetic-north referenced on both platforms) → rotation matrix → `flatHeading` (+Y), `cameraHeading` (−Z), `pitch`. Android's `expo-location` heading is flat-only (no coordinate remap) and throttled, so it is not the direction source.
-- `expo-location` `watchHeadingAsync` provides the accuracy flag (0–3) and declination (`trueHeading − magHeading` when `trueHeading ≥ 0`); `geomagnetism` WMM2025 is the offline fallback.
-- Magnetometer field strength outside 25–65 µT, or a > 15° jump while still → `interference`.
-- Confidence order: no-location → unavailable → interference → calibrate (accuracy ≤ 1) → good.
-- Smoothing: shortest-path unwrap + low-pass on the UI thread; stillness = range of the last ~1 s < 4°.
+- North: the calibrated magnetometer tilt-corrected by the platform's fused gravity (`DeviceMotion` `accelerationIncludingGravity − acceleration`, exact on both platforms) → earth frame in device coordinates → `flatHeading` (+Y), `cameraHeading` (−Z, blended in as the top edge loses horizontal reach), `pitch`. No Euler angles anywhere in the heading path. Without a gyroscope the bare accelerometer, low-passed, stands in for gravity.
+- The gyroscope turns the field estimate between magnetometer readings (vector complementary filter, τ = 0.5 s), so the dial follows the hand and settles on the magnetometer. Per-platform gyroscope axes and accelerometer signs live in `engine/conventions.ts`.
+- `interference` = the field's size or dip far from the WMM for 2 s (hysteresis) **or** the field swinging while the gyroscope sees no turn. `calibrate` = the platform's accuracy ≤ 1 (`watchHeadingAsync`). Stillness from the gyroscope (< 3°/s for 1 s); `good` after 2 s still when the platform gives no accuracy.
+- Declination from the WMM (`geomagnetism`), always; the platform's true − magnetic is shown beside it in the dev readout. The platform's fused attitude and its own compass are readout cross-checks, never the compass.
+- Confidence order: no-location → unavailable → interference → settling (no usable frame) → calibrate → good.
+- Android 12+ needs `HIGH_SAMPLING_RATE_SENSORS` (declared) or expo runs every sensor at 5 Hz.
+- Smoothing: shortest-path unwrap + low-pass on the UI thread.
 
 ## Structure
 

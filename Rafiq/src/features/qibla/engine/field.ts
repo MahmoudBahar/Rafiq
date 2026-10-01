@@ -1,65 +1,90 @@
-import type { Headings } from './attitude';
 import { blendHeadings, flatBlendWeight, normalizeDeg } from './smooth';
-
-export type Vec3 = readonly number[];
+import { cross, dot, norm, scale, sub, unit, type Vec3 } from './vec';
 
 const RAD = 180 / Math.PI;
-const EPS = 1e-9;
+
+/** The device's top edge: what the dial follows when the phone lies flat. */
+export const AXIS_TOP: Vec3 = [0, 1, 0];
+/** The back camera: what the camera page follows when the phone is held up. */
+export const AXIS_CAMERA: Vec3 = [0, 0, -1];
+
+/** No place on Earth has a field this weak (the minimum is ~22 µT): below it the sensor is dead or silent. */
+export const MIN_FIELD_UT = 5;
+/** Gravity never reads this small, in g (≈1) or m/s² (≈9.8): below it the gravity input is empty. */
+export const MIN_DOWN = 0.1;
+/**
+ * The horizontal part of the field as a fraction of the whole; below this
+ * (dip steeper than ~87°, the magnetic poles) a compass has nothing to point with.
+ */
+export const MIN_HORIZONTAL = 0.05;
+
+/** The Earth's axes written in device coordinates, each of unit length. */
+export interface EarthFrame {
+  north: Vec3;
+  east: Vec3;
+  up: Vec3;
+}
+
+export interface Headings {
+  /** Where the top of the phone points, magnetic, degrees clockwise from north. */
+  flatHeading: number;
+  /** Where the back camera points, magnetic. */
+  cameraHeading: number;
+  /** How far the top of the phone is raised above the horizontal: 0 flat, 90 upright. */
+  pitch: number;
+}
+
+export interface FieldShape {
+  magnitudeUt: number;
+  /** The field's angle below the horizontal, degrees: ~45° in Cairo whatever the phone's posture. */
+  dipDeg: number;
+}
 
 /**
  * The compass the way a compass app does it: north from the magnetometer,
  * tilt-corrected by where gravity points. Both vectors are in the device
- * frame (X right, Y up the screen, Z out of the screen); `down` is where
- * gravity points (z ≈ -1 face up, flat). Any length will do: only its
- * direction is used. The hook takes it from the fused sensor's pitch and
- * roll (`upFromAttitude`), which carry none of the hand's own acceleration;
- * the raw accelerometer would.
+ * frame; `down` is where gravity pulls (z < 0 face up, flat). Only directions
+ * matter, so either input may be in any unit.
  *
  * Two known directions, down and north, fix the phone's whole orientation:
- * from them the earth-frame axes east / north / up are written in device
- * coordinates, and any device axis can be asked where it points: the top
- * (the dial, held flat) or the back camera (held up). The fused rotation
- * sensor is not consulted for north at all: on a Samsung it sat 145° off for
- * a minute on a still desk while its accuracy read 3.
+ * up = −down; north = the field with its vertical part removed; east = north × up
+ * (right-handed: a phone whose top points north has east along its +X). Null
+ * when either vector is empty or the field is vertical.
  */
-export function headingsFromField(mag: Vec3, down: Vec3): Headings {
-  const up = unit([-down[0], -down[1], -down[2]]);
-  // Horizontal part of the field: what is left after removing its vertical component.
-  const vertical = dot(mag, up);
-  const north = unit([mag[0] - vertical * up[0], mag[1] - vertical * up[1], mag[2] - vertical * up[2]]);
-  const east = cross(north, up);
+export function earthFrame(mag: Vec3, down: Vec3): EarthFrame | null {
+  if (norm(mag) < MIN_FIELD_UT || norm(down) < MIN_DOWN) return null;
+  const up = unit(scale(down, -1));
+  if (!up) return null;
+  const horizontal = sub(mag, scale(up, dot(mag, up)));
+  if (norm(horizontal) < MIN_HORIZONTAL * norm(mag)) return null;
+  const north = unit(horizontal);
+  if (!north) return null;
+  return { north, east: cross(north, up), up };
+}
 
-  // Each earth axis, expressed in device coordinates, gives that axis's
-  // component of every device axis: device +Y is (east.y, north.y, up.y).
-  const cameraHeading = headingOf(-east[2], -north[2]);
-  // Raised past upright, the top edge hands its heading over to the camera's, blended: no step.
-  const reach = Math.hypot(east[1], north[1]);
-  const flatHeading = blendHeadings(headingOf(east[1], north[1]), cameraHeading, flatBlendWeight(reach));
-  const pitch = Math.asin(Math.max(-1, Math.min(1, up[1]))) * RAD;
+/** Where a device axis points, magnetic, degrees clockwise from north. */
+export function axisHeading(frame: EarthFrame, axis: Vec3): number {
+  return normalizeDeg(Math.atan2(dot(frame.east, axis), dot(frame.north, axis)) * RAD);
+}
+
+/**
+ * The two headings and the pitch. Raised past upright the top edge loses its
+ * reach along the ground, and its heading hands over to the camera's, blended,
+ * so there is no step.
+ */
+export function headingsFromFrame(frame: EarthFrame): Headings {
+  const cameraHeading = axisHeading(frame, AXIS_CAMERA);
+  const reach = Math.hypot(dot(frame.east, AXIS_TOP), dot(frame.north, AXIS_TOP));
+  const flatHeading = blendHeadings(axisHeading(frame, AXIS_TOP), cameraHeading, flatBlendWeight(reach));
+  const pitch = Math.asin(Math.max(-1, Math.min(1, dot(frame.up, AXIS_TOP)))) * RAD;
   return { flatHeading, cameraHeading, pitch };
 }
 
-/** The field's angle below the horizontal, degrees: ~45° in Cairo whatever the phone's posture. */
-export function dipDeg(mag: Vec3, down: Vec3): number {
-  const m = Math.hypot(mag[0], mag[1], mag[2]);
-  const d = Math.hypot(down[0], down[1], down[2]);
-  if (m < EPS || d < EPS) return 0;
-  return Math.asin(Math.max(-1, Math.min(1, dot(mag, down) / (m * d)))) * RAD;
-}
-
-function headingOf(east: number, north: number): number {
-  return normalizeDeg(Math.atan2(east, north) * RAD);
-}
-
-function dot(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-function cross(a: Vec3, b: Vec3): [number, number, number] {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
-function unit(v: Vec3): [number, number, number] {
-  const n = Math.hypot(v[0], v[1], v[2]);
-  return n < EPS ? [0, 0, 0] : [v[0] / n, v[1] / n, v[2] / n];
+/** The field's size and dip, as measured; null when either vector is empty. */
+export function fieldShape(mag: Vec3, down: Vec3): FieldShape | null {
+  const m = norm(mag);
+  const d = norm(down);
+  if (m < MIN_FIELD_UT || d < MIN_DOWN) return null;
+  const dipDeg = Math.asin(Math.max(-1, Math.min(1, dot(mag, down) / (m * d)))) * RAD;
+  return { magnitudeUt: m, dipDeg };
 }

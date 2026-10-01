@@ -108,13 +108,26 @@ export default function QiblaScreen() {
   );
 }
 
-/** Development builds only: the raw numbers, to tell in ten seconds whether the conventions hold on a device. */
+/**
+ * Development builds only: the raw numbers, to tell in ten seconds whether the
+ * conventions hold on a device. Line 1: our heading against the platform's two
+ * (its fused attitude, its own compass with accuracy). Line 2: the field against
+ * the model, the posture, the turn rate. Line 3: the health flags and the rates.
+ */
 function DevReadout({ d }: { d: QiblaDebug }) {
   const { c } = useTheme();
-  const f = (n: number) => n.toFixed(1);
+  const f = (n: number | null, digits = 1) => (n === null ? '—' : n.toFixed(digits));
+  const flags = [
+    d.still ? 'still' : 'moving',
+    d.fieldUsable ? 'usable' : 'NO FRAME',
+    d.fieldAnomaly ? 'FIELD OFF' : 'field ok',
+    d.disagreement ? 'GYRO≠MAG' : 'gyro=mag',
+  ].join(' · ');
   return (
     <RNText style={[styles.dev, { color: c.tm }]} selectable>
-      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  pitch ${f(d.pitch)}°${d.mirrored ? '  DIP MIRRORED' : ''}`}
+      {`ours ${f(d.ourMag)}m ${f(d.ourTrue)}t  os ${f(d.osAttitude)}  plat ${f(d.platformMag, 0)}/${f(d.platformTrue, 0)} acc ${d.accuracy ?? '—'}  decl ${f(d.declination)}/${f(d.platformDeclination)}\n` +
+        `|B| ${f(d.fieldUt)}/${f(d.expectedUt)} µT  dip ${f(d.dipDeg)}/${f(d.expectedDip)}°  pitch ${f(d.pitch)}°  ω ${f(d.gyroDegS)}°/s\n` +
+        `${flags}  ${d.tier} ${Math.round(d.magHz)}/${Math.round(d.motionHz)} Hz`}
     </RNText>
   );
 }

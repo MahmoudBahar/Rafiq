@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { DeviceMotion, Magnetometer } from 'expo-sensors';
+import { Accelerometer, DeviceMotion, Magnetometer } from 'expo-sensors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import {
@@ -15,43 +15,64 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { lock } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import {
+  ACCEL_LOWPASS_TAU_S,
   LOCK_ENTER_DEG,
   LOCK_LEAVE_DEG,
   NEAR_DEG,
-  RESET_STEP_DEG,
+  attitudeHeading,
   confidence as foldConfidence,
+  createDisagreementWatch,
+  createFieldFilter,
   createFieldWatch,
-  createHeadingFuser,
-  createSignCheck,
-  createStillness,
+  createGyroStillness,
+  createHeadingStillness,
+  createLowPass,
   declinationFromHeading,
   declinationFromModel,
-  dipDeg,
+  downFromAccelerometer,
+  earthFrame,
   expectedField,
-  headingsFromAttitude,
-  headingsFromField,
-  magneticToTrue,
+  fieldShape,
+  gravityFromMotion,
+  gyroVector,
+  headingsFromFrame,
+  norm,
+  normalizeDeg,
   qiblaBearing,
   shortestDelta,
-  toW3C,
-  upFromAttitude,
+  unwrap,
   type Band,
   type Confidence,
   type Coords,
+  type FieldShape,
   type FieldWatch,
-  type SignCheck,
+  type Vec3,
 } from './engine';
 
 /** Which way the phone is "pointing" for this screen: its top (the dial, held flat) or its back camera. */
 export type HeadingMode = 'flat' | 'camera';
 
-const MOTION_INTERVAL_MS = 33;
+/** What the phone offers: fused gravity + gyroscope, the bare accelerometer, or no magnetometer at all. */
+export type SensorTier = 'fused' | 'accel' | 'none';
+
+/**
+ * Android hands DeviceMotion out once per display frame when the interval has
+ * passed (strictly), so 16 ms is every frame at 60 Hz; iOS honours the value.
+ */
+const MOTION_INTERVAL_MS = Platform.OS === 'android' ? 16 : 20;
 /** The magnetometer is the compass truth, so it is read often. */
-const FIELD_INTERVAL_MS = 50;
+const FIELD_INTERVAL_MS = 20;
 /** How often the confidence state (and the dev readout) is re-evaluated. */
 const CONFIDENCE_TICK_MS = 250;
 /** An interference reading holds this long so the card does not flicker with the field. */
 const INTERFERENCE_HOLD_MS = 2000;
+/** The magnetometer has gone quiet: there is no field to trust. */
+const FIELD_SILENT_MS = 1000;
+/** Without a gyroscope the magnetometer stands alone, so it is let through a little quicker. */
+const ACCEL_FILTER_TAU_S = 0.25;
+/** Stillness from the heading alone, for a phone without a gyroscope. */
+const HEADING_STILL_WINDOW_S = 1;
+const HEADING_STILL_RANGE_DEG = 4;
 /** Per-frame pull toward the sensor heading at 60 fps: fast enough to feel live, slow enough to hide sensor grain. */
 const SMOOTH_PER_FRAME = 0.18;
 const REDUCED_PER_FRAME = 0.5;
@@ -62,15 +83,6 @@ const EDGE_IN_MS = 140;
 const EDGE_OUT_MS = 900;
 /** After subscribing, the sensors are left to settle this long before a lock can ring. */
 const ARM_MS = 1500;
-/** A leap must hold for three samples (~100 ms) to be a jump; one is a magnetometer spike. */
-const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 3 };
-/**
- * The fused step a sample may contribute: what the gyroscope says the phone
- * turned in that interval, with slack, plus a margin for sensor grain. A
- * larger step is a platform correction of its own yaw, not a turn of the hand.
- */
-const GATE_MARGIN_DEG = 6;
-const GATE_SLACK = 1.5;
 const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
 export interface QiblaValues {
@@ -88,14 +100,32 @@ export interface QiblaValues {
 
 /** Raw numbers for a development readout; null in release builds. */
 export interface QiblaDebug {
-  compass: number;
-  fused: number;
-  platform: string;
+  tier: SensorTier;
+  /** Our heading for the current mode, magnetic and true. */
+  ourMag: number;
+  ourTrue: number;
+  /** The platform's fused attitude read as a top-edge heading (flat only); null without it. */
+  osAttitude: number | null;
+  /** The platform's own compass: magnetic, true (−1 when it has none) and accuracy 0–3. */
+  platformMag: number | null;
+  platformTrue: number | null;
+  accuracy: number | null;
+  /** The WMM declination in use, and the platform's (true − magnetic) beside it. */
+  declination: number;
+  platformDeclination: number | null;
   fieldUt: number;
+  expectedUt: number;
   dipDeg: number;
+  expectedDip: number;
   pitch: number;
-  /** The dip is reading mirrored against the model: a convention to pin, or a reversed magnet nearby. */
-  mirrored: boolean;
+  gyroDegS: number;
+  /** Samples per second actually arriving, measured over the last tick. */
+  magHz: number;
+  motionHz: number;
+  still: boolean;
+  fieldAnomaly: boolean;
+  disagreement: boolean;
+  fieldUsable: boolean;
 }
 
 export interface Qibla {
@@ -115,8 +145,8 @@ export interface Qibla {
 /** What the coordinates fix for the session: recomputed only when they change. */
 interface Model {
   declination: number;
+  expected: FieldShape;
   fieldWatch: FieldWatch;
-  signCheck: SignCheck;
 }
 
 /**
@@ -124,14 +154,12 @@ interface Model {
  * the derived band / confidence as React state. Subscribes only while
  * `active` (the tab focused, the app in front): sensors cost battery.
  *
- * North comes from the magnetometer, tilt-corrected by gravity, the way a
- * compass app does it. The fused rotation sensor contributes its pitch and
- * roll (the tilt, gyro-stabilised and free of the hand's own acceleration)
- * and its motion between magnetometer readings, and is pulled back onto the
- * compass every sample: its absolute heading is never trusted (on a Samsung
- * it sat 145° off for a minute on a still desk while reporting accuracy 3).
- * The magnetometer runs at 20 Hz against the 30 Hz motion loop, so a compass
- * sample can be up to 50 ms old; the fused motion covers the gap.
+ * North comes from the magnetometer, tilt-corrected by the platform's fused
+ * gravity, the way a compass app does it. The gyroscope turns the field
+ * estimate between magnetometer readings (see `createFieldFilter`), so the
+ * dial follows the hand at once and settles on the magnetometer's truth. The
+ * platform's fused attitude and its own compass are only cross-checks for the
+ * development readout: on a Samsung the fused sensor sat 145° off for a minute.
  */
 export function useQibla(coords: Coords | null, mode: HeadingMode, active: boolean): Qibla {
   const { reduced } = useMotion();
@@ -161,7 +189,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
   // The subscription depends on `live` alone. Whatever else a sample needs
   // (mode, the coordinates' model) is read through refs, so a change never
-  // tears the sensors down, resets the fuser or re-arms the cue.
+  // tears the sensors down or re-arms the cue.
   const modeRef = useRef(mode);
   useEffect(() => {
     modeRef.current = mode;
@@ -175,12 +203,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       return;
     }
     const here = { latitude, longitude };
-    const field = expectedField(here, new Date());
-    modelRef.current = {
-      declination: declinationFromModel(here, new Date()),
-      fieldWatch: createFieldWatch(field),
-      signCheck: createSignCheck(field.dipDeg),
-    };
+    const expected = expectedField(here, new Date());
+    modelRef.current = { declination: declinationFromModel(here, new Date()), expected, fieldWatch: createFieldWatch(expected) };
   }, [latitude, longitude]);
 
   // The readings the confidence tick folds; the listeners just drop values here.
@@ -188,29 +212,36 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // it was set there can still answer with the old value, so the JS side keeps
   // its own copy of what it last wrote.
   const readings = useRef({
+    tier: 'none' as SensorTier,
     sensorsAvailable: true,
+    /** Latest gravity, pointing down, device frame; null before the motion sensor speaks. */
+    down: null as Vec3 | null,
+    fieldUsable: false,
     fieldAnomaly: false,
-    accuracy: null as number | null,
-    /** The platform's own declination when it has one (its true − magnetic). */
-    declination: null as number | null,
-    stableForMs: 0,
+    disagreement: false,
     interferenceUntil: 0,
-    /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
-    mag: null as readonly number[] | null,
+    still: false,
+    stillForS: 0,
+    accuracy: null as number | null,
+    lastMagWall: 0,
+    magCount: 0,
+    motionCount: 0,
     started: false,
+    /** The last unwrapped true heading handed to the UI thread. */
+    target: 0,
     // For the dev readout only.
-    /** The dip is reading mirrored (see createSignCheck). */
-    mirrored: false,
-    compass: 0,
-    fused: 0,
-    locMag: null as number | null,
-    locTrue: null as number | null,
+    ourMag: 0,
+    ourTrue: 0,
+    osAttitude: null as number | null,
+    platformMag: null as number | null,
+    platformTrue: null as number | null,
     fieldUt: 0,
     dip: 0,
     pitch: 0,
+    gyroDegS: 0,
+    magHz: 0,
+    motionHz: 0,
   });
-  const stillness = useMemo(() => createStillness(STILLNESS), []);
-  const fuser = useMemo(() => createHeadingFuser(), []);
 
   const appActive = useAppActive();
   const live = active && appActive;
@@ -223,86 +254,135 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     const subs: { remove(): void }[] = [];
 
     (async () => {
-      const [motion, magnet] = await Promise.all([DeviceMotion.isAvailableAsync(), Magnetometer.isAvailableAsync()]);
+      const [motion, magnet, accel] = await Promise.all([
+        DeviceMotion.isAvailableAsync(),
+        Magnetometer.isAvailableAsync(),
+        Accelerometer.isAvailableAsync(),
+      ]);
       if (cancelled) return;
-      r.sensorsAvailable = motion && magnet;
-      if (!r.sensorsAvailable) return;
+      const tier: SensorTier = magnet && motion ? 'fused' : magnet && accel ? 'accel' : 'none';
+      r.tier = tier;
+      r.sensorsAvailable = tier !== 'none';
+      if (tier === 'none') return;
+
+      const filter = createFieldFilter(tier === 'fused' ? {} : { tauS: ACCEL_FILTER_TAU_S });
+      const gyroStill = createGyroStillness();
+      const headingStill = createHeadingStillness(HEADING_STILL_WINDOW_S, HEADING_STILL_RANGE_DEG);
+      const disagree = createDisagreementWatch();
+      const lowPass = createLowPass(ACCEL_LOWPASS_TAU_S);
+
+      const flagInterference = (on: boolean) => {
+        if (on) r.interferenceUntil = Date.now() + INTERFERENCE_HOLD_MS;
+      };
+
+      /** The filtered field and gravity → the heading for the mode → the UI thread. Returns the magnetic heading. */
+      const publish = (): number | null => {
+        const m = filter.value();
+        const d = r.down;
+        const model = modelRef.current;
+        if (!m || !d || !model) return null;
+        const frame = earthFrame(m, d);
+        if (!frame) {
+          r.fieldUsable = false;
+          return null;
+        }
+        r.fieldUsable = true;
+        const h = headingsFromFrame(frame);
+        const magnetic = modeRef.current === 'camera' ? h.cameraHeading : h.flatHeading;
+        const trueHeading = normalizeDeg(magnetic + model.declination);
+        const next = r.started ? unwrap(r.target, trueHeading) : trueHeading;
+        r.target = next;
+        if (__DEV__) {
+          r.ourMag = magnetic;
+          r.ourTrue = trueHeading;
+          r.pitch = h.pitch;
+        }
+        pitch.set(h.pitch);
+        target.set(next);
+        if (!r.started) {
+          // First reading: start there rather than sweeping in from zero.
+          r.started = true;
+          heading.set(next);
+          haveTarget.set(true);
+        }
+        return magnetic;
+      };
 
       Magnetometer.setUpdateInterval(FIELD_INTERVAL_MS);
       subs.push(
-        Magnetometer.addListener(({ x, y, z }) => {
-          r.mag = [x, y, z];
-        }),
-      );
-
-      DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
-      subs.push(
-        DeviceMotion.addListener(({ rotation, rotationRate, interval }) => {
+        Magnetometer.addListener(({ x, y, z, timestamp }) => {
+          const m: Vec3 = [x, y, z];
+          r.magCount++;
+          r.lastMagWall = Date.now();
+          const d = r.down;
+          if (!d) return;
+          filter.correct(m, timestamp);
+          const shape = fieldShape(m, d);
           const model = modelRef.current;
-          if (!rotation || !r.mag || !model) return;
-          const now = Date.now();
-          const mode = modeRef.current;
-          const declination = r.declination ?? model.declination;
-          const attitude = toW3C(rotation, PLATFORM);
-
-          // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
-          // hand's own acceleration, untouched by its yaw); north from the magnetometer.
-          const up = upFromAttitude(attitude);
-          const down = [-up[0], -up[1], -up[2]];
-          const m = r.mag;
-          const dip = dipDeg(m, down);
-          // Diagnostic only (see createSignCheck): a mirrored dip is either a platform
-          // convention we have not pinned, or a reversed magnet nearby. It changes nothing.
-          if (__DEV__) {
-            const mirrored = model.signCheck.push(dip, now);
-            if (mirrored && !r.mirrored) console.warn('[qibla] the dip has read mirrored for a second');
-            r.mirrored = mirrored;
+          if (shape) {
+            r.fieldUt = shape.magnitudeUt;
+            r.dip = shape.dipDeg;
+            if (model) {
+              r.fieldAnomaly = model.fieldWatch.push(shape, timestamp);
+              flagInterference(r.fieldAnomaly);
+            }
           }
-          const field = headingsFromField(m, down);
-          const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
-          const compass = magneticToTrue(magnetic, declination);
-
-          // The motion: the fused sensor, whose changes are trusted and whose heading is not.
-          // The gyroscope bounds how far a real turn could have gone this sample.
-          const fused = headingsFromAttitude(attitude);
-          const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
-          const dt = (interval > 0 ? interval : MOTION_INTERVAL_MS) / 1000;
-          const rate = rotationRate ? Math.hypot(rotationRate.alpha, rotationRate.beta, rotationRate.gamma) : null;
-          const maxStep = rate === null ? RESET_STEP_DEG : GATE_MARGIN_DEG + GATE_SLACK * rate * dt;
-          const next = fuser.push(compass, motionHeading, maxStep);
-
-          const still = stillness.push(compass, now);
-          r.stableForMs = still.stableForMs;
-          if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
-          const fieldUt = Math.hypot(m[0], m[1], m[2]);
-          r.fieldAnomaly = model.fieldWatch.push({ magnitudeUt: fieldUt, dipDeg: dip }, now);
-
-          if (__DEV__) {
-            r.compass = compass;
-            r.fused = motionHeading;
-            r.fieldUt = fieldUt;
-            r.dip = dip;
-            r.pitch = field.pitch;
-          }
-
-          pitch.set(field.pitch);
-          target.set(next);
-          if (!r.started) {
-            // First reading: start there rather than sweeping in from zero.
-            r.started = true;
-            heading.set(next);
-            haveTarget.set(true);
+          if (tier === 'fused') {
+            r.disagreement = disagree.pushMeasured(m, d, timestamp);
+            flagInterference(r.disagreement);
+          } else {
+            const magnetic = publish();
+            if (magnetic !== null) {
+              const s = headingStill.push(magnetic, timestamp);
+              r.still = s.still;
+              r.stillForS = s.stillForS;
+            }
           }
         }),
       );
 
+      if (tier === 'fused') {
+        DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
+        subs.push(
+          DeviceMotion.addListener(({ acceleration, accelerationIncludingGravity, rotationRate, rotation }) => {
+            r.motionCount++;
+            if (acceleration && accelerationIncludingGravity) {
+              r.down = gravityFromMotion(
+                [accelerationIncludingGravity.x, accelerationIncludingGravity.y, accelerationIncludingGravity.z],
+                [acceleration.x, acceleration.y, acceleration.z],
+              );
+            }
+            if (rotationRate) {
+              const omega = gyroVector(rotationRate, PLATFORM);
+              const t = rotationRate.timestamp;
+              const rate = norm(omega);
+              r.gyroDegS = rate;
+              const s = gyroStill.push(rate, t);
+              r.still = s.still;
+              r.stillForS = s.stillForS;
+              filter.rotate(omega, t);
+              disagree.pushGyro(omega, t);
+            }
+            if (__DEV__ && rotation) r.osAttitude = attitudeHeading(rotation.alpha, PLATFORM);
+            publish();
+          }),
+        );
+      } else {
+        Accelerometer.setUpdateInterval(FIELD_INTERVAL_MS);
+        subs.push(
+          Accelerometer.addListener(({ x, y, z, timestamp }) => {
+            r.motionCount++;
+            r.down = lowPass.push(downFromAccelerometer([x, y, z], PLATFORM), timestamp);
+          }),
+        );
+      }
+
+      // The platform's own compass: its accuracy flag, and its headings for the readout.
       const headingSub = await Location.watchHeadingAsync((sample) => {
         r.accuracy = sample.accuracy;
-        const d = declinationFromHeading(sample.trueHeading, sample.magHeading);
-        if (d !== null) r.declination = d;
         if (__DEV__) {
-          r.locMag = sample.magHeading;
-          r.locTrue = sample.trueHeading;
+          r.platformMag = sample.magHeading;
+          r.platformTrue = sample.trueHeading;
         }
       }).catch(() => null);
       if (cancelled) headingSub?.remove();
@@ -315,24 +395,45 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
     const tick = setInterval(() => {
       const now = Date.now();
+      if (r.lastMagWall > 0 && now - r.lastMagWall > FIELD_SILENT_MS) r.fieldUsable = false;
+      const model = modelRef.current;
       const next = foldConfidence({
-        hasCoords: modelRef.current !== null,
+        hasCoords: model !== null,
         sensorsAvailable: r.sensorsAvailable,
-        fieldAnomaly: r.fieldAnomaly,
-        jump: now < r.interferenceUntil,
+        interference: r.fieldAnomaly || r.disagreement || now < r.interferenceUntil,
+        fieldUsable: r.fieldUsable,
         accuracy: r.accuracy,
-        stableForMs: r.stableForMs,
+        stillForS: r.stillForS,
       });
       setConfidence((prev) => (prev === next ? prev : next));
-      if (__DEV__ && r.started) {
+      r.magHz = r.magCount * (1000 / CONFIDENCE_TICK_MS);
+      r.motionHz = r.motionCount * (1000 / CONFIDENCE_TICK_MS);
+      r.magCount = 0;
+      r.motionCount = 0;
+      if (__DEV__ && r.started && model) {
         setDebug({
-          compass: r.compass,
-          fused: r.fused,
-          platform: `${r.locMag === null ? '—' : Math.round(r.locMag)}/${r.locTrue === null ? '—' : Math.round(r.locTrue)} acc ${r.accuracy ?? '—'}`,
+          tier: r.tier,
+          ourMag: r.ourMag,
+          ourTrue: r.ourTrue,
+          osAttitude: r.osAttitude,
+          platformMag: r.platformMag,
+          platformTrue: r.platformTrue,
+          accuracy: r.accuracy,
+          declination: model.declination,
+          platformDeclination:
+            r.platformMag !== null && r.platformTrue !== null ? declinationFromHeading(r.platformTrue, r.platformMag) : null,
           fieldUt: r.fieldUt,
+          expectedUt: model.expected.magnitudeUt,
           dipDeg: r.dip,
+          expectedDip: model.expected.dipDeg,
           pitch: r.pitch,
-          mirrored: r.mirrored,
+          gyroDegS: r.gyroDegS,
+          magHz: r.magHz,
+          motionHz: r.motionHz,
+          still: r.still,
+          fieldAnomaly: r.fieldAnomaly,
+          disagreement: r.disagreement,
+          fieldUsable: r.fieldUsable,
         });
       }
     }, CONFIDENCE_TICK_MS);
@@ -342,17 +443,23 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       clearInterval(tick);
       clearTimeout(arm);
       subs.forEach((s) => s.remove());
-      fuser.reset();
+      r.down = null;
+      r.fieldUsable = false;
       r.fieldAnomaly = false;
+      r.disagreement = false;
+      r.interferenceUntil = 0;
+      r.still = false;
+      r.stillForS = 0;
       r.accuracy = null;
-      r.stableForMs = 0;
-      r.mag = null;
+      r.lastMagWall = 0;
+      r.magCount = 0;
+      r.motionCount = 0;
       r.started = false;
       haveTarget.set(false);
       // The next first sample is an opening again, so it is silent again.
       primed.set(false);
     };
-  }, [live, stillness, fuser, pitch, target, heading, haveTarget, primed]);
+  }, [live, pitch, target, heading, haveTarget, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;
