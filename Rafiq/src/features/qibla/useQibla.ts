@@ -19,6 +19,7 @@ import {
   LOCK_LEAVE_DEG,
   NEAR_DEG,
   RESET_STEP_DEG,
+  SETTLE_MS,
   confidence as foldConfidence,
   createFieldWatch,
   createHeadingFuser,
@@ -194,6 +195,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     /** The platform's own declination when it has one (its true − magnetic). */
     declination: null as number | null,
     stableForMs: 0,
+    /** Trust earned by holding still: kept once earned, so moving the phone does not fall back to "settling". */
+    settled: false,
     interferenceUntil: 0,
     /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
     mag: null as readonly number[] | null,
@@ -273,6 +276,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
           const still = stillness.push(compass, now);
           r.stableForMs = still.stableForMs;
+          if (still.stableForMs >= SETTLE_MS) r.settled = true;
           if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
           const fieldUt = Math.hypot(m[0], m[1], m[2]);
           r.fieldAnomaly = model.fieldWatch.push({ magnitudeUt: fieldUt, dipDeg: dip }, now);
@@ -321,7 +325,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         fieldAnomaly: r.fieldAnomaly,
         jump: now < r.interferenceUntil,
         accuracy: r.accuracy,
-        stableForMs: r.stableForMs,
+        // "Settling" is for a feed that has not earned trust yet, not for a phone in motion.
+        stableForMs: r.settled ? SETTLE_MS : r.stableForMs,
       });
       setConfidence((prev) => (prev === next ? prev : next));
       if (__DEV__ && r.started) {
@@ -346,6 +351,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       r.fieldAnomaly = false;
       r.accuracy = null;
       r.stableForMs = 0;
+      r.settled = false;
       r.mag = null;
       r.started = false;
       haveTarget.set(false);
