@@ -19,6 +19,7 @@ export {
   SETTLE_MS,
   confidence,
   createFieldWatch,
+  fieldHealth,
   type Confidence,
   type ConfidenceInput,
   type FieldShape,

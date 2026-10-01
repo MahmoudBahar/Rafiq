@@ -6,11 +6,33 @@ import {
   SETTLE_MS,
   confidence,
   createFieldWatch,
+  fieldHealth,
   type ConfidenceInput,
 } from './confidence';
 
 // Cairo per the WMM: 44 µT, dipping 45°.
 const CAIRO = { magnitudeUt: 44, dipDeg: 45 };
+
+describe('fieldHealth', () => {
+  it('is 1 for a field close to the model', () => {
+    expect(fieldHealth({ magnitudeUt: 45, dipDeg: 44 }, CAIRO)).toBe(1);
+    expect(fieldHealth({ magnitudeUt: 48, dipDeg: 48 }, CAIRO)).toBe(1);
+  });
+  it('is 0 at the anomaly thresholds and beyond', () => {
+    expect(fieldHealth({ magnitudeUt: 66, dipDeg: 45 }, CAIRO)).toBe(0);
+    expect(fieldHealth({ magnitudeUt: 44, dipDeg: 57 }, CAIRO)).toBe(0);
+    expect(fieldHealth({ magnitudeUt: 120, dipDeg: 80 }, CAIRO)).toBe(0);
+  });
+  it('is low on the rebar floor (44 µT but dipping 35°): the gyro should carry the heading there', () => {
+    const h = fieldHealth({ magnitudeUt: 43.8, dipDeg: 34.9 }, CAIRO);
+    expect(h).toBeGreaterThan(0);
+    expect(h).toBeLessThan(0.35);
+  });
+  it('is the weaker of the size and dip verdicts', () => {
+    expect(fieldHealth({ magnitudeUt: 44, dipDeg: 50 }, CAIRO)).toBeLessThan(fieldHealth({ magnitudeUt: 44, dipDeg: 47 }, CAIRO));
+    expect(fieldHealth({ magnitudeUt: 60, dipDeg: 45 }, CAIRO)).toBeLessThan(fieldHealth({ magnitudeUt: 50, dipDeg: 45 }, CAIRO));
+  });
+});
 
 describe('createFieldWatch', () => {
   it('accepts a phone reading close to the model', () => {

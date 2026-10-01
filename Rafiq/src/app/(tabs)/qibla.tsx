@@ -114,7 +114,7 @@ function DevReadout({ d }: { d: QiblaDebug }) {
   const f = (n: number) => n.toFixed(1);
   return (
     <RNText style={[styles.dev, { color: c.tm }]} selectable>
-      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  pitch ${f(d.pitch)}°${d.mirrored ? '  DIP MIRRORED' : ''}`}
+      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  health ${d.health.toFixed(2)}  pitch ${f(d.pitch)}°${d.mirrored ? '  DIP MIRRORED' : ''}`}
     </RNText>
   );
 }

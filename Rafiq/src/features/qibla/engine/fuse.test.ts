@@ -44,6 +44,21 @@ describe('createHeadingFuser', () => {
     expect(h).toBeGreaterThan(145);
   });
 
+  it('pulls less toward the compass when the field looks unhealthy, so the motion carries the heading', () => {
+    const healthy = createHeadingFuser();
+    const bent = createHeadingFuser();
+    healthy.push(130, 275);
+    bent.push(130, 275);
+    // The compass swings 50° (a bent floor) while the fused sensor holds still.
+    let a = 130, b = 130;
+    for (let i = 0; i < 30; i++) {
+      a = healthy.push(180, 275, undefined, 1);
+      b = bent.push(180, 275, undefined, 0.1);
+    }
+    expect(a).toBeGreaterThan(165);
+    expect(b).toBeLessThan(140);
+  });
+
   it('runs unwrapped across the seam so a turn through north stays continuous', () => {
     const f = createHeadingFuser();
     f.push(350, 10);

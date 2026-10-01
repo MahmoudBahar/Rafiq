@@ -29,6 +29,7 @@ import {
   declinationFromModel,
   dipDeg,
   expectedField,
+  fieldHealth,
   headingsFromAttitude,
   headingsFromField,
   magneticToTrue,
@@ -39,6 +40,7 @@ import {
   type Band,
   type Confidence,
   type Coords,
+  type FieldShape,
   type FieldWatch,
   type SignCheck,
 } from './engine';
@@ -95,6 +97,8 @@ export interface QiblaDebug {
   fieldUt: number;
   dipDeg: number;
   pitch: number;
+  /** 0..1, how far the compass is believed this sample (field size and dip vs the model). */
+  health: number;
   /** The dip is reading mirrored against the model: a convention to pin, or a reversed magnet nearby. */
   mirrored: boolean;
 }
@@ -116,6 +120,7 @@ export interface Qibla {
 /** What the coordinates fix for the session: recomputed only when they change. */
 interface Model {
   declination: number;
+  expected: FieldShape;
   fieldWatch: FieldWatch;
   signCheck: SignCheck;
 }
@@ -179,6 +184,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     const field = expectedField(here, new Date());
     modelRef.current = {
       declination: declinationFromModel(here, new Date()),
+      expected: field,
       fieldWatch: createFieldWatch(field),
       signCheck: createSignCheck(field.dipDeg),
     };
@@ -211,6 +217,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     fieldUt: 0,
     dip: 0,
     pitch: 0,
+    health: 1,
   });
   const stillness = useMemo(() => createStillness(STILLNESS), []);
   const fuser = useMemo(() => createHeadingFuser(), []);
@@ -272,14 +279,18 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           const dt = (interval > 0 ? interval : MOTION_INTERVAL_MS) / 1000;
           const rate = rotationRate ? Math.hypot(rotationRate.alpha, rotationRate.beta, rotationRate.gamma) : null;
           const maxStep = rate === null ? RESET_STEP_DEG : GATE_MARGIN_DEG + GATE_SLACK * rate * dt;
-          const next = fuser.push(compass, motionHeading, maxStep);
+          // How far to believe the compass this sample: fully on a healthy field, hardly at
+          // all on a bent one (a rebar floor), where the fused motion carries the heading.
+          const fieldUt = Math.hypot(m[0], m[1], m[2]);
+          const shape = { magnitudeUt: fieldUt, dipDeg: dip };
+          const health = fieldHealth(shape, model.expected);
+          const next = fuser.push(compass, motionHeading, maxStep, health);
 
           const still = stillness.push(compass, now);
           r.stableForMs = still.stableForMs;
           if (still.stableForMs >= SETTLE_MS) r.settled = true;
           if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
-          const fieldUt = Math.hypot(m[0], m[1], m[2]);
-          r.fieldAnomaly = model.fieldWatch.push({ magnitudeUt: fieldUt, dipDeg: dip }, now);
+          r.fieldAnomaly = model.fieldWatch.push(shape, now);
 
           if (__DEV__) {
             r.compass = compass;
@@ -287,6 +298,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
             r.fieldUt = fieldUt;
             r.dip = dip;
             r.pitch = field.pitch;
+            r.health = health;
           }
 
           pitch.set(field.pitch);
@@ -337,6 +349,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           fieldUt: r.fieldUt,
           dipDeg: r.dip,
           pitch: r.pitch,
+          health: r.health,
           mirrored: r.mirrored,
         });
       }

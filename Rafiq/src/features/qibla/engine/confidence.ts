@@ -42,6 +42,27 @@ export interface FieldShape {
   dipDeg: number;
 }
 
+/** Within these the field is taken as Earth's alone; at the anomaly thresholds it counts for nothing. */
+export const FIELD_HEALTHY_SIZE = 0.1;
+export const FIELD_HEALTHY_DIP_DEG = 3;
+
+/**
+ * How much the compass should be believed right now, 0..1: 1 when the field
+ * matches the model, falling to 0 at the anomaly thresholds, the weaker of
+ * size and dip. A concrete floor's rebar bent the field to a 35° dip with a
+ * normal size: the compass read 50° off while the gyro-held fusion was right.
+ * With a low score the fuser lets the fused motion carry the heading, as a
+ * fused sensor would, instead of following the bent field.
+ */
+export function fieldHealth(measured: FieldShape, expected: FieldShape): number {
+  const sizeOff = Math.abs(measured.magnitudeUt - expected.magnitudeUt) / expected.magnitudeUt;
+  const dipOff = Math.abs(measured.dipDeg - expected.dipDeg);
+  const size = 1 - (sizeOff - FIELD_HEALTHY_SIZE) / (FIELD_MAGNITUDE_TOLERANCE - FIELD_HEALTHY_SIZE);
+  const dip = 1 - (dipOff - FIELD_HEALTHY_DIP_DEG) / (FIELD_DIP_TOLERANCE_DEG - FIELD_HEALTHY_DIP_DEG);
+  const clamp = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  return Math.min(clamp(size), clamp(dip));
+}
+
 export interface FieldWatch {
   /** Feed the measured field; true once it has looked wrong for `FIELD_PERSIST_MS`. */
   push(measured: FieldShape, tMs: number): boolean;

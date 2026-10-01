@@ -10,9 +10,11 @@ export interface HeadingFuser {
    * Feed the compass truth and the fused sensor's current heading; returns
    * the heading to show, unwrapped (it runs past 360 rather than wrapping).
    * `maxStepDeg` caps the fused step this sample may contribute: what the
-   * gyroscope says the hand could have turned, else the reset cap.
+   * gyroscope says the hand could have turned, else the reset cap. `trust`
+   * (0..1, the field's health) scales the pull toward the compass: on a
+   * bent field the motion carries the heading instead.
    */
-  push(magHeading: number, fusedHeading: number, maxStepDeg?: number): number;
+  push(magHeading: number, fusedHeading: number, maxStepDeg?: number, trust?: number): number;
   reset(): void;
 }
 
@@ -28,7 +30,7 @@ export function createHeadingFuser(): HeadingFuser {
   let heading: number | null = null;
   let lastFused = 0;
   return {
-    push(magHeading, fusedHeading, maxStepDeg = RESET_STEP_DEG) {
+    push(magHeading, fusedHeading, maxStepDeg = RESET_STEP_DEG, trust = 1) {
       if (heading === null) {
         heading = magHeading;
         lastFused = fusedHeading;
@@ -38,7 +40,7 @@ export function createHeadingFuser(): HeadingFuser {
       lastFused = fusedHeading;
       if (Math.abs(step) > Math.min(maxStepDeg, RESET_STEP_DEG)) step = 0;
       heading += step;
-      heading += FUSE_GAIN * shortestDelta(magHeading, heading);
+      heading += FUSE_GAIN * trust * shortestDelta(magHeading, heading);
       return heading;
     },
     reset() {
