@@ -122,7 +122,7 @@ function DevReadout({ d }: { d: QiblaDebug }) {
       {`${d.pipeline}  hdg ${f(d.heading)}  θ ${f(d.thetaDeg)}  σ ${f(d.sigmaDeg)}  ν ${f(d.innovationDeg)}  √R ${f(d.measSigmaDeg)}\n` +
         `|B| ${f(d.fieldUt)}/${f(d.modelFieldUt)} µT  dip ${f(d.dipDeg)}/${f(d.modelDipDeg)}°  bent ${f(d.impliedDeg)}°  acc ${d.magAccuracy}  epoch ${d.biasEpoch}\n` +
         `Hz g ${f(d.hz.gyro, 0)} u ${f(d.hz.up, 0)} m ${f(d.hz.mag, 0)}  tilt± ${f(d.tiltResidualDeg, 2)}°  drop ${d.dropped} rej ${d.rejected} gap ${d.gaps}\n` +
-        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  acc ignored ${d.calOverridden ? 'yes' : 'no'}`}
+        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  acc ignored ${d.calOverridden ? 'yes' : 'no'}  tilt ${f(d.tiltDeg, 0)}° ${d.inPosture ? 'listening' : 'held'}`}
     </RNText>
   );
 }

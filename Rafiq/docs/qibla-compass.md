@@ -88,6 +88,13 @@ Measurement variance R = σ_sys² + (0.5°·tan dip)² + (0.5 µT / H)² + R_sha
 
 A disagreement whose readings scatter more than max(6°, 2√R) is something moving nearby; its clock restarts.
 
+### 4.3b Posture: north is learned where it is used
+A phone magnetometer's leftover calibration error turns the measured field a few degrees differently in every posture. In the simulator, an ordinary leftover (3 µT, 3 % soft iron) reads about 3° differently upright, and a large one (8 µT) about 7°. Learned upright and used flat, north would carry that error over; past the gate, it read as "the field changed while the phone did not turn", which is the false interference seen with the phone held vertically.
+
+- **Gate**: the magnetometer is followed and judged only in the posture the heading is used in. In flat mode that means the screen within 50° of facing up; it leaves at 60°, the same thresholds at which the dial asks to lay the phone down. Camera mode is the mirror image (in beyond 40°, out below 30°). Out of posture, the gyroscope carries the heading and nothing is learned or flagged. Opened upright, there is no heading until the phone lies flat.
+- **Weight**: inside the posture, each reading carries 0.15° of extra doubt per degree of tilt from the operating posture, so passing through the half-raised postures barely moves north.
+- **Measured in the simulator** (raised to 85° for 11 s, then laid flat): the heading comes back within 0.4° with an ordinary leftover. With a large one it comes back within 2.3°, settling under 1° within 3 s.
+
 ### 4.4 `fieldCheck.ts`: the shape of the field vs the WMM
 A disturbance that tilts the field out of the model's dip by Δ, if its direction is otherwise random, turns it within the horizontal plane by about **Δ / cos(dip)**. A disturbance that only scales the field turns nothing. So:
 
@@ -138,11 +145,11 @@ First match wins:
 - Each batch goes to the engine on the JS thread. The heading goes to a shared value, eased on the UI thread over 40 ms (15 ms with reduced motion) only to hide the per-frame batches.
 - A coordinates change swaps the field model without restarting the sensors. A restart creates a new engine, because the gyro frame is new.
 - The lock cue is armed 0.5 s after the first `good`, so an opening never rings it.
-- **Raised** (pitch above 60°, flat again below 50°): `raisedT` springs 0→1, critically damped. The dial rolls the mat up from its tassels toward the niche (`PrayerMat`, a clip plus a gradient roll), dims and draws back the ring, and shows `LayFlatCoach`: a ghost phone lying down on a floor line over «ضع الهاتف مستويًا». Laid flat, it unrolls. No lock cue or edge bloom fires while raised.
+- **Raised** (pitch above 60°, flat again below 50°): `raisedT` springs 0→1, critically damped. The dial rolls the mat up from its tassels toward the niche (`PrayerMat`, a clip plus a gradient roll), dims and draws back the ring, and shows `LayFlatCoach`: a ghost phone lying down on a floor line. The words «ضع الهاتف مستويًا» are the hint line's. Laid flat, it unrolls. No lock cue or edge bloom fires while raised.
 - The UI's types (`Qibla`, `QiblaValues`, `Confidence`) are unchanged. `QiblaDebug` is now the engine's diagnostics, shown on the ground band in development builds.
 
 ## 6. Tests
-`npm test` runs the vitest suite: 65 tests. The engine scenarios use `engine/testing/sim.ts`, a physics simulator. It models:
+`npm test` runs the vitest suite: 69 tests. The engine scenarios use `engine/testing/sim.ts`, a physics simulator. It models:
 - the WMM field at real coordinates;
 - scripted rotations;
 - a gyroscope with bias, scale error and noise;

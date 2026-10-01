@@ -127,10 +127,11 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
   // Read by the sensor listener through refs, so neither change tears the sensors down.
   const modeRef = useRef(mode);
+  const engineRef = useRef<QiblaEngine | null>(null);
   useEffect(() => {
     modeRef.current = mode;
+    engineRef.current?.setMode(mode);
   }, [mode]);
-  const engineRef = useRef<QiblaEngine | null>(null);
   const latitude = coords?.latitude;
   const longitude = coords?.longitude;
   const model = useMemo(
@@ -159,6 +160,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       },
       modelRef.current,
     );
+    engine.setMode(modeRef.current);
     engineRef.current = engine;
     // Plain locals for the JS side: a shared value read back on the JS thread right after a
     // JS-thread write can still answer with the old value.

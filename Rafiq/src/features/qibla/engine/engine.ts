@@ -5,7 +5,7 @@ import { RATIO_FREE, createShapeWatch, judgeField, type FieldVerdict, type Shape
 import type { EarthField } from './geomag';
 import { SHOW_DISAGREEMENT_S, SIGMA_SYS_DEG, UPDATE_S, createNorthFilter } from './northFilter';
 import { createOrientation } from './orientation';
-import { poseOf } from './pose';
+import { poseOf, type HeadingMode } from './pose';
 import { createStreamMerger, type MotionBatch, type StreamKind } from './stream';
 import { cross, dot, norm, qFromWorldAxes, qRotate, qRotateInverse, scale, sub, unit, type Vec3 } from './vec';
 
@@ -24,6 +24,31 @@ export const COMPASS_ACCEL_REJECT = 1.0;
 /** …and the heading is smoothed over this long. */
 export const COMPASS_HEADING_TAU_S = 0.3;
 const GRAVITY = 9.80665;
+/**
+ * North is learned, and the field judged, only in the posture the heading is
+ * used in. A phone magnetometer's leftover calibration error (a few µT of
+ * hard iron, a few percent of soft iron) points the field a few degrees
+ * differently with every posture: learned upright and used flat, it would
+ * carry that error over, and a large enough difference reads as the field
+ * changing while the phone did not turn. Out of posture, the gyroscope
+ * carries the heading and the magnetometer is neither followed nor judged.
+ *
+ * Flat: the screen within 50° of facing up; it leaves at 60°, the same
+ * thresholds at which the dial asks to lay the phone down. Camera: the
+ * mirror image, upright beyond 40°, left below 30°.
+ */
+export const POSTURE = {
+  flat: { leaveDeg: 60, returnDeg: 50 },
+  camera: { leaveDeg: 30, returnDeg: 40 },
+} as const;
+/**
+ * Within the posture, a reading still says less the further the phone is
+ * tilted from where the heading is used (flat for the dial, upright for the
+ * camera): degrees of doubt per degree of tilt. A leftover of a few µT turns
+ * the field by ~5° at 40° of tilt, so 0.15°/° gives 6° there, and a phone
+ * passing through on its way up or down hardly moves north.
+ */
+export const POSTURE_DOUBT = 0.15;
 
 const UP: Vec3 = [0, 0, 1];
 
@@ -57,6 +82,10 @@ export interface EngineDebug {
   gaps: number;
   reacquisitions: number;
   disagreementS: number;
+  /** The phone is in the posture the heading is used in, so the magnetometer is listened to. */
+  inPosture: boolean;
+  /** Angle of the screen from facing straight up, degrees. */
+  tiltDeg: number;
   tiltResidualDeg: number;
   /** The platform's accuracy reads low but is ignored: the field has matched the model for long enough. */
   calOverridden: boolean;
@@ -88,6 +117,8 @@ export interface QiblaEngine {
   setModel(model: EarthField | null): void;
   /** The haptic actuator just fired: ignore the magnetometer for a moment. */
   noteActuator(): void;
+  /** Which posture the heading is used in (see `POSTURE`). Flat by default. */
+  setMode(mode: HeadingMode): void;
   /** Start over: the sensors were re-registered and the gyro frame is new. */
   reset(): void;
 }
@@ -122,6 +153,9 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
 
   let newestT = -Infinity;
   let maskUntil = -Infinity;
+  let mode: HeadingMode = 'flat';
+  let inPosture = true;
+  let tiltDeg = 0;
   let lastEpoch: number | null = null;
   let lastAccuracy = -1;
   let dropped = 0;
@@ -190,13 +224,21 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       const world = qRotate(q, m);
       const up = qRotateInverse(q, UP);
       const dipDeg = Math.asin(clamp(-dot(m, up) / fieldUt, -1, 1)) * RAD;
+      tiltDeg = Math.acos(clamp(up[2], -1, 1)) * RAD;
+      const p = POSTURE[mode];
+      inPosture =
+        mode === 'flat'
+          ? tiltDeg <= (inPosture ? p.leaveDeg : p.returnDeg)
+          : tiltDeg >= (inPosture ? p.leaveDeg : p.returnDeg);
+      lastDip = dipDeg;
+      lastField = fieldUt;
+      if (!inPosture) return;
       const verdict = model ? judgeField({ magnitudeUt: fieldUt, dipDeg }, model) : null;
-      const r = measurementVariance(fieldUt, dipDeg, verdict);
+      const away = mode === 'flat' ? tiltDeg : Math.abs(90 - tiltDeg);
+      const r = measurementVariance(fieldUt, dipDeg, verdict) + (POSTURE_DOUBT * away) ** 2;
       north.measure({ t, thetaDeg: normalizeDeg(Math.atan2(world[0], world[1]) * RAD), rDeg2: r, scoreDeg: verdict?.scoreDeg ?? 0 });
       watchField(t, fieldUt, dipDeg);
       lastVerdict = verdict;
-      lastDip = dipDeg;
-      lastField = fieldUt;
       lastMeasSigma = Math.sqrt(r);
       return;
     }
@@ -333,6 +375,8 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
         gaps: orientation.gaps,
         reacquisitions: ns.reacquisitions,
         disagreementS: ns.disagreementS,
+        inPosture,
+        tiltDeg,
         tiltResidualDeg: orientation.tiltResidualDeg,
         calOverridden: calibration.overridden,
       },
@@ -379,6 +423,12 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     noteActuator() {
       maskUntil = newestT + ACTUATOR_MASK_S;
     },
+    setMode(next) {
+      if (next === mode) return;
+      mode = next;
+      // Judged afresh against the new posture at the next reading.
+      inPosture = true;
+    },
     reset() {
       merger.reset();
       orientation.reset();
@@ -387,6 +437,8 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       calibration.reset();
       newestT = -Infinity;
       maskUntil = -Infinity;
+      inPosture = true;
+      tiltDeg = 0;
       lastEpoch = null;
       lastAccuracy = -1;
       dropped = 0;

@@ -13,7 +13,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useMotion } from '@/shared/lib/motion';
 import { useTheme } from '@/shared/theme/useTheme';
-import { Text } from '@/shared/ui/Text';
 
 /** How far the ghost phone tips: almost lying on the floor line, still readable as a phone. */
 const LAID_DEG = 78;
@@ -36,8 +35,9 @@ interface LayFlatCoachProps {
 
 /**
  * What to do, shown rather than described: a ghost phone standing on a floor
- * line lies down on it, again and again, over «ضع الهاتف مستويًا». It fades in
- * once the mat has rolled up and out as it unrolls.
+ * line lies down on it, again and again. The words («ضع الهاتف مستويًا») are
+ * the hint line's, under the dial. It fades in once the mat has rolled up and
+ * out as it unrolls.
  */
 export function LayFlatCoach({ t, active, size }: LayFlatCoachProps) {
   const { c } = useTheme();
@@ -95,18 +95,14 @@ export function LayFlatCoach({ t, active, size }: LayFlatCoachProps) {
           <View style={[styles.speaker, { width: 10 * k, height: 3 * k, top: 5 * k, backgroundColor: c.accent }]} />
         </Animated.View>
       </View>
-      <Text size={14} weight="semi" color={c.tp} align="center" style={styles.wide}>
-        ضع الهاتف مستويًا
-      </Text>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', alignItems: 'center', gap: 12, left: 0, right: 0 },
+  wrap: { position: 'absolute', alignItems: 'center', left: 0, right: 0 },
   floor: { position: 'absolute', height: 2, borderRadius: 1, opacity: 0.5 },
   // Centred by a half-width margin on each side's own terms, so an RTL swap of left/right changes nothing.
   ghost: { position: 'absolute', left: '50%', borderWidth: 2, transformOrigin: 'center bottom', alignItems: 'center' },
   speaker: { position: 'absolute', borderRadius: 2, opacity: 0.6 },
-  wide: { alignSelf: 'stretch' },
 });

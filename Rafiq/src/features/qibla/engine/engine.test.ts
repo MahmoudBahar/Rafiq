@@ -18,7 +18,12 @@ interface Tick {
 }
 
 /** Runs a scripted phone through the engine; returns every output with its time (script seconds). */
-function run(sim: Sim, model: SensorModel, until: number, hooks: { at?: number; then?: (e: ReturnType<typeof createQiblaEngine>) => void } = {}): Tick[] {
+function run(
+  sim: Sim,
+  model: SensorModel,
+  until: number,
+  hooks: { at?: number; then?: (e: ReturnType<typeof createQiblaEngine>) => void; mode?: 'flat' | 'camera' } = {},
+): Tick[] {
   const engine = createQiblaEngine(
     {
       hasGyro: !model.noGyro,
@@ -28,6 +33,7 @@ function run(sim: Sim, model: SensorModel, until: number, hooks: { at?: number; 
     },
     sim.field,
   );
+  if (hooks.mode) engine.setMode(hooks.mode);
   const ticks: Tick[] = [];
   let hooked = false;
   for (const { at, batch } of sim.batches(0, until)) {
@@ -116,12 +122,9 @@ describe('turning', () => {
     expect(maxError(ticks, sim, 1)).toBeLessThan(3);
   });
 
-  it('tracks the camera upright, and the top edge face down', () => {
+  it('tracks the camera upright in camera mode', () => {
     const up = createSim(CAIRO, { heading: () => 200, pitch: () => 88 }, ANDROID);
-    expect(maxError(run(up, ANDROID, 3), up, 1, Infinity, 'camera')).toBeLessThan(3);
-    const down = createSim(CAIRO, { heading: () => 70, roll: () => 180 }, ANDROID);
-    // Face down the top edge still points where the script says.
-    expect(maxError(run(down, ANDROID, 3), down, 1)).toBeLessThan(3);
+    expect(maxError(run(up, ANDROID, 3, { mode: 'camera' }), up, 1, Infinity, 'camera')).toBeLessThan(3);
   });
 
   it('raising the phone from flat to upright keeps the heading continuous', () => {
@@ -147,6 +150,48 @@ describe('turning', () => {
     const ticks = run(sim, ANDROID, 5);
     expect(maxError(ticks, sim, 3.2)).toBeLessThan(3);
     expect(after(ticks, 1).some((o) => o.confidence === 'interference')).toBe(false);
+  });
+});
+
+describe('posture', () => {
+  // A phone with a realistic calibration leftover: 8 µT of hard iron, a few percent of soft iron.
+  const leftover: SensorModel = { ...ANDROID, magScale: [1.02, 0.98, 1.08] };
+  const offset = () => [5, 4, -5] as const;
+  const raisedFor = (from: number, to: number) => (t: number) =>
+    t < from ? 0 : t < from + 1 ? 85 * (t - from) : t < to ? 85 : t < to + 1 ? 85 * (to + 1 - t) : 0;
+
+  it('held up for 11 s and laid flat again: no warning, and the same heading as before', () => {
+    const sim = createSim(CAIRO, { heading: () => 120, pitch: raisedFor(3, 15), deviceOffset: offset }, leftover);
+    const ticks = run(sim, leftover, 20);
+    expect(after(ticks, 1).some((o) => o.confidence !== 'good')).toBe(false);
+    const before = after(ticks, 2, 3).at(-1)!.flat;
+    const shift = (o: EngineOutput) => Math.abs(((o.flat - before + 540) % 360) - 180);
+    // Passing through the half-raised postures nudges north a little even with this large a leftover; it settles back.
+    for (const o of after(ticks, 16.2)) expect(shift(o)).toBeLessThan(2.5);
+    for (const o of after(ticks, 19)) expect(shift(o)).toBeLessThan(1.2);
+  });
+
+  it('with an ordinary leftover (3 µT), the heading comes back where it was at once', () => {
+    const model: SensorModel = { ...ANDROID, magScale: [1.03, 0.97, 1.03] };
+    const sim = createSim(CAIRO, { heading: () => 120, pitch: raisedFor(3, 15), deviceOffset: () => [2, -1.5, 2.5] }, model);
+    const ticks = run(sim, model, 18);
+    const before = after(ticks, 2, 3).at(-1)!.flat;
+    for (const o of after(ticks, 16.2)) expect(Math.abs(((o.flat - before + 540) % 360) - 180)).toBeLessThan(0.6);
+  });
+
+  it('the magnetometer is not listened to while the phone is up', () => {
+    const sim = createSim(CAIRO, { heading: () => 120, pitch: raisedFor(3, 15), deviceOffset: offset }, leftover);
+    const ticks = run(sim, leftover, 20);
+    expect(after(ticks, 5, 14).every((o) => !o.debug.inPosture)).toBe(true);
+    expect(after(ticks, 17).every((o) => o.debug.inPosture)).toBe(true);
+  });
+
+  it('opened upright, there is no heading until the phone lies flat', () => {
+    const sim = createSim(CAIRO, { heading: () => 120, pitch: (t) => (t < 3 ? 85 : t < 4 ? 85 * (4 - t) : 0) }, ANDROID);
+    const ticks = run(sim, ANDROID, 6);
+    expect(after(ticks, 0.5, 3).every((o) => !o.ready)).toBe(true);
+    expect(after(ticks, 4.6).every((o) => o.ready)).toBe(true);
+    expect(maxError(ticks, sim, 4.6)).toBeLessThan(3);
   });
 });
 
