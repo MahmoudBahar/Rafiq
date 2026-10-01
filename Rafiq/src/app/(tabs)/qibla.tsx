@@ -108,13 +108,20 @@ export default function QiblaScreen() {
   );
 }
 
-/** Development builds only: the raw numbers, to tell in ten seconds whether the conventions hold on a device. */
+/**
+ * Development builds only: the engine's numbers, to tell in ten seconds on a
+ * device whether the streams run at rate, the gyroscope's conventions hold
+ * (tilt residual near 0) and how the field compares with the model.
+ */
 function DevReadout({ d }: { d: QiblaDebug }) {
   const { c } = useTheme();
-  const f = (n: number) => n.toFixed(1);
+  const f = (n: number, digits = 1) => (Number.isFinite(n) ? n.toFixed(digits) : '—');
   return (
     <RNText style={[styles.dev, { color: c.tm }]} selectable>
-      {`compass ${f(d.compass)}  fused ${f(d.fused)}  platform ${d.platform}\n|B| ${f(d.fieldUt)} µT  dip ${f(d.dipDeg)}°  health ${d.health.toFixed(2)}  pitch ${f(d.pitch)}°${d.mirrored ? '  DIP MIRRORED' : ''}`}
+      {`${d.pipeline}  hdg ${f(d.heading)}  θ ${f(d.thetaDeg)}  σ ${f(d.sigmaDeg)}  ν ${f(d.innovationDeg)}  √R ${f(d.measSigmaDeg)}\n` +
+        `|B| ${f(d.fieldUt)}/${f(d.modelFieldUt)} µT  dip ${f(d.dipDeg)}/${f(d.modelDipDeg)}°  bent ${f(d.impliedDeg)}°  acc ${d.magAccuracy}  epoch ${d.biasEpoch}\n` +
+        `Hz g ${f(d.hz.gyro, 0)} u ${f(d.hz.up, 0)} m ${f(d.hz.mag, 0)}  tilt± ${f(d.tiltResidualDeg, 2)}°  drop ${d.dropped} rej ${d.rejected} gap ${d.gaps}\n` +
+        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  cal ${f(d.calSpread * 100, 0)}%/${f(d.calDipRange)}°`}
     </RNText>
   );
 }

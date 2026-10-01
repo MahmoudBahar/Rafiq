@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["RafiqMotionModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.rafiqmotion.RafiqMotionModule"]
+  }
+}

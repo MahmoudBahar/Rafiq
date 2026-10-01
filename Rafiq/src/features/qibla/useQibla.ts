@@ -1,7 +1,5 @@
-import * as Location from 'expo-location';
-import { DeviceMotion, Magnetometer } from 'expo-sensors';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 import {
   Easing,
   useAnimatedReaction,
@@ -12,72 +10,41 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
+import RafiqMotion from '../../../modules/rafiq-motion';
 import { lock } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import {
-  LOCK_ENTER_DEG,
-  LOCK_LEAVE_DEG,
-  NEAR_DEG,
-  RESET_STEP_DEG,
-  SETTLE_MS,
-  confidence as foldConfidence,
-  createFieldWatch,
-  createHeadingFuser,
-  createSignCheck,
-  createStillness,
-  declinationFromHeading,
-  declinationFromModel,
-  dipDeg,
-  expectedField,
-  fieldHealth,
-  headingsFromAttitude,
-  headingsFromField,
-  magneticToTrue,
+  bandFor,
+  createQiblaEngine,
+  earthField,
   qiblaBearing,
-  shortestDelta,
-  toW3C,
-  upFromAttitude,
+  unwrap,
+  wrap180,
   type Band,
   type Confidence,
   type Coords,
-  type FieldShape,
-  type FieldWatch,
-  type SignCheck,
+  type EngineDebug,
+  type HeadingMode,
+  type QiblaEngine,
 } from './engine';
 
-/** Which way the phone is "pointing" for this screen: its top (the dial, held flat) or its back camera. */
-export type HeadingMode = 'flat' | 'camera';
+export type { HeadingMode } from './engine';
 
-const MOTION_INTERVAL_MS = 33;
-/** The magnetometer is the compass truth, so it is read often. */
-const FIELD_INTERVAL_MS = 50;
-/** How often the confidence state (and the dev readout) is re-evaluated. */
-const CONFIDENCE_TICK_MS = 250;
-/** An interference reading holds this long so the card does not flicker with the field. */
-const INTERFERENCE_HOLD_MS = 2000;
-/** Per-frame pull toward the sensor heading at 60 fps: fast enough to feel live, slow enough to hide sensor grain. */
-const SMOOTH_PER_FRAME = 0.18;
-const REDUCED_PER_FRAME = 0.5;
+/** The screen eases toward the engine's heading over this long: just enough to hide the per-frame batches. */
+const EASE_MS = 40;
+const REDUCED_EASE_MS = 15;
 const FRAME_MS = 1000 / 60;
 const LOCK_FADE_MS = 250;
 /** The edge bloom on lock: a quick rise, a slow fade. */
 const EDGE_IN_MS = 140;
 const EDGE_OUT_MS = 900;
-/** After subscribing, the sensors are left to settle this long before a lock can ring. */
-const ARM_MS = 1500;
-/** A leap must hold for three samples (~100 ms) to be a jump; one is a magnetometer spike. */
-const STILLNESS = { windowMs: 1000, stableRangeDeg: 4, jumpDeg: 15, jumpSamples: 3 };
-/**
- * The fused step a sample may contribute: what the gyroscope says the phone
- * turned in that interval, with slack, plus a margin for sensor grain. A
- * larger step is a platform correction of its own yaw, not a turn of the hand.
- */
-const GATE_MARGIN_DEG = 6;
-const GATE_SLACK = 1.5;
-const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
+/** The lock cue is armed this long after the compass first reads good: an opening never rings it. */
+const ARM_MS = 500;
+/** How often the dev readout refreshes. */
+const DEBUG_TICK_MS = 250;
 
 export interface QiblaValues {
-  /** True heading, smoothed, unwrapped (runs past 360 rather than wrapping), so rotations stay continuous. */
+  /** True heading, eased, unwrapped (runs past 360 rather than wrapping), so rotations stay continuous. */
   heading: SharedValue<number>;
   /** bearing − heading, the short way: positive = turn right. */
   delta: SharedValue<number>;
@@ -89,19 +56,8 @@ export interface QiblaValues {
   edgeT: SharedValue<number>;
 }
 
-/** Raw numbers for a development readout; null in release builds. */
-export interface QiblaDebug {
-  compass: number;
-  fused: number;
-  platform: string;
-  fieldUt: number;
-  dipDeg: number;
-  pitch: number;
-  /** 0..1, how far the compass is believed this sample (field size and dip vs the model). */
-  health: number;
-  /** The dip is reading mirrored against the model: a convention to pin, or a reversed magnet nearby. */
-  mirrored: boolean;
-}
+/** The engine's raw numbers for a development readout; null in release builds. */
+export type QiblaDebug = EngineDebug & { heading: number };
 
 export interface Qibla {
   /** True bearing to the Kaaba, or null without coordinates. */
@@ -117,31 +73,20 @@ export interface Qibla {
   debug: QiblaDebug | null;
 }
 
-/** What the coordinates fix for the session: recomputed only when they change. */
-interface Model {
-  declination: number;
-  expected: FieldShape;
-  fieldWatch: FieldWatch;
-  signCheck: SignCheck;
-}
-
 /**
- * The live Qibla: sensors in, one smoothed heading out on the UI thread, and
- * the derived band / confidence as React state. Subscribes only while
- * `active` (the tab focused, the app in front): sensors cost battery.
+ * The live Qibla: native sensor batches in, one heading out on the UI
+ * thread, band / confidence as React state. Sensors run only while `active`
+ * (the tab focused) and the app is in front.
  *
- * North comes from the magnetometer, tilt-corrected by gravity, the way a
- * compass app does it. The fused rotation sensor contributes its pitch and
- * roll (the tilt, gyro-stabilised and free of the hand's own acceleration)
- * and its motion between magnetometer readings, and is pulled back onto the
- * compass every sample: its absolute heading is never trusted (on a Samsung
- * it sat 145° off for a minute on a still desk while reporting accuracy 3).
- * The magnetometer runs at 20 Hz against the 30 Hz motion loop, so a compass
- * sample can be up to 50 ms old; the fused motion covers the gap.
+ * The engine (see `engine/engine.ts`) takes tilt from the platform's gravity,
+ * turning from the gyroscope and north from the magnetometer; this hook only
+ * wires it to the screen. A coordinates change updates the bearing and the
+ * field model without restarting the sensors; a restart of the sensors
+ * starts the engine over, since the gyroscope's frame is new.
  */
 export function useQibla(coords: Coords | null, mode: HeadingMode, active: boolean): Qibla {
   const { reduced } = useMotion();
-  const bearing = useMemo(() => (coords ? qiblaBearing(coords) : null), [coords]);
+  const bearing = useMemo(() => (coords ? qiblaBearing(coords).bearing : null), [coords]);
 
   const heading = useSharedValue(0);
   const target = useSharedValue(0);
@@ -151,7 +96,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const edgeT = useSharedValue(0);
   const bearingSv = useSharedValue(bearing ?? 0);
   const haveTarget = useSharedValue(false);
-  /** The feed has settled since it started: only then does a lock get its cue. */
+  /** The compass has read good for a moment since the sensors started: only then does a lock get its cue. */
   const primed = useSharedValue(false);
   useEffect(() => {
     bearingSv.set(bearing ?? 0);
@@ -160,254 +105,140 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const [band, setBand] = useState<Band>('far');
   const [turn, setTurn] = useState({ deg: 0, right: true });
   const [raised, setRaised] = useState(false);
-  // What the sensors say; without coordinates there is nothing to sense for.
-  const [sensed, setConfidence] = useState<Confidence>('settling');
-  const confidence: Confidence = coords ? sensed : 'no-location';
+  // What this phone has never changes: asked once.
+  const available = useMemo(() => {
+    const a = RafiqMotion?.getAvailability();
+    return a && a.magnetometer && a.up ? a : null;
+  }, []);
+  const [sensed, setSensed] = useState<Exclude<Confidence, 'no-location'>>('settling');
+  const confidence: Confidence = !coords ? 'no-location' : available ? sensed : 'unavailable';
   const [debug, setDebug] = useState<QiblaDebug | null>(null);
 
-  // The subscription depends on `live` alone. Whatever else a sample needs
-  // (mode, the coordinates' model) is read through refs, so a change never
-  // tears the sensors down, resets the fuser or re-arms the cue.
+  // Read by the sensor listener through refs, so neither change tears the sensors down.
   const modeRef = useRef(mode);
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
-  const modelRef = useRef<Model | null>(null);
+  const engineRef = useRef<QiblaEngine | null>(null);
   const latitude = coords?.latitude;
   const longitude = coords?.longitude;
+  const model = useMemo(
+    () => (latitude === undefined || longitude === undefined ? null : earthField({ latitude, longitude }, new Date())),
+    [latitude, longitude],
+  );
+  const modelRef = useRef(model);
   useEffect(() => {
-    if (latitude === undefined || longitude === undefined) {
-      modelRef.current = null;
-      return;
-    }
-    const here = { latitude, longitude };
-    const field = expectedField(here, new Date());
-    modelRef.current = {
-      declination: declinationFromModel(here, new Date()),
-      expected: field,
-      fieldWatch: createFieldWatch(field),
-      signCheck: createSignCheck(field.dipDeg),
-    };
-  }, [latitude, longitude]);
-
-  // The readings the confidence tick folds; the listeners just drop values here.
-  // Plain refs for the JS side: a shared value read on the JS thread right after
-  // it was set there can still answer with the old value, so the JS side keeps
-  // its own copy of what it last wrote.
-  const readings = useRef({
-    sensorsAvailable: true,
-    fieldAnomaly: false,
-    accuracy: null as number | null,
-    /** The platform's own declination when it has one (its true − magnetic). */
-    declination: null as number | null,
-    stableForMs: 0,
-    /** Trust earned by holding still: kept once earned, so moving the phone does not fall back to "settling". */
-    settled: false,
-    interferenceUntil: 0,
-    /** Latest calibrated field, device frame (µT); null before the magnetometer speaks. */
-    mag: null as readonly number[] | null,
-    started: false,
-    // For the dev readout only.
-    /** The dip is reading mirrored (see createSignCheck). */
-    mirrored: false,
-    compass: 0,
-    fused: 0,
-    locMag: null as number | null,
-    locTrue: null as number | null,
-    fieldUt: 0,
-    dip: 0,
-    pitch: 0,
-    health: 1,
-  });
-  const stillness = useMemo(() => createStillness(STILLNESS), []);
-  const fuser = useMemo(() => createHeadingFuser(), []);
+    modelRef.current = model;
+    engineRef.current?.setModel(model);
+  }, [model]);
 
   const appActive = useAppActive();
   const live = active && appActive;
 
-  // Sensors → `target` (JS thread).
+  // Native batches → engine → `target` (JS thread).
   useEffect(() => {
-    if (!live) return;
-    const r = readings.current;
-    let cancelled = false;
-    const subs: { remove(): void }[] = [];
+    const module = RafiqMotion;
+    if (!live || !module || !available) return;
+    const engine = createQiblaEngine(
+      {
+        hasGyro: available.gyro,
+        hasMagnetometer: available.magnetometer,
+        hasUp: available.up,
+        upIsAccelerometer: available.upIsAccelerometer,
+        trustAccuracy: available.trustAccuracy,
+      },
+      modelRef.current,
+    );
+    engineRef.current = engine;
+    // Plain locals for the JS side: a shared value read back on the JS thread right after a
+    // JS-thread write can still answer with the old value.
+    let started = false;
+    let last = 0;
+    let shown: Confidence | null = null;
+    let latest: QiblaDebug | null = null;
+    let arm: ReturnType<typeof setTimeout> | null = null;
 
-    (async () => {
-      const [motion, magnet] = await Promise.all([DeviceMotion.isAvailableAsync(), Magnetometer.isAvailableAsync()]);
-      if (cancelled) return;
-      r.sensorsAvailable = motion && magnet;
-      if (!r.sensorsAvailable) return;
-
-      Magnetometer.setUpdateInterval(FIELD_INTERVAL_MS);
-      subs.push(
-        Magnetometer.addListener(({ x, y, z }) => {
-          r.mag = [x, y, z];
-        }),
-      );
-
-      DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
-      subs.push(
-        DeviceMotion.addListener(({ rotation, rotationRate, interval }) => {
-          const model = modelRef.current;
-          if (!rotation || !r.mag || !model) return;
-          const now = Date.now();
-          const mode = modeRef.current;
-          const declination = r.declination ?? model.declination;
-          const attitude = toW3C(rotation, PLATFORM);
-
-          // Down from the fused sensor's pitch and roll (gyro-stabilised, free of the
-          // hand's own acceleration, untouched by its yaw); north from the magnetometer.
-          const up = upFromAttitude(attitude);
-          const down = [-up[0], -up[1], -up[2]];
-          const m = r.mag;
-          const dip = dipDeg(m, down);
-          // Diagnostic only (see createSignCheck): a mirrored dip is either a platform
-          // convention we have not pinned, or a reversed magnet nearby. It changes nothing.
-          if (__DEV__) {
-            const mirrored = model.signCheck.push(dip, now);
-            if (mirrored && !r.mirrored) console.warn('[qibla] the dip has read mirrored for a second');
-            r.mirrored = mirrored;
-          }
-          const field = headingsFromField(m, down);
-          const magnetic = mode === 'camera' ? field.cameraHeading : field.flatHeading;
-          const compass = magneticToTrue(magnetic, declination);
-
-          // The motion: the fused sensor, whose changes are trusted and whose heading is not.
-          // The gyroscope bounds how far a real turn could have gone this sample.
-          const fused = headingsFromAttitude(attitude);
-          const motionHeading = magneticToTrue(mode === 'camera' ? fused.cameraHeading : fused.flatHeading, declination);
-          const dt = (interval > 0 ? interval : MOTION_INTERVAL_MS) / 1000;
-          const rate = rotationRate ? Math.hypot(rotationRate.alpha, rotationRate.beta, rotationRate.gamma) : null;
-          const maxStep = rate === null ? RESET_STEP_DEG : GATE_MARGIN_DEG + GATE_SLACK * rate * dt;
-          // How far to believe the compass this sample: fully on a healthy field, hardly at
-          // all on a bent one (a rebar floor), where the fused motion carries the heading.
-          const fieldUt = Math.hypot(m[0], m[1], m[2]);
-          const shape = { magnitudeUt: fieldUt, dipDeg: dip };
-          const health = fieldHealth(shape, model.expected);
-          const next = fuser.push(compass, motionHeading, maxStep, health);
-
-          const still = stillness.push(compass, now);
-          r.stableForMs = still.stableForMs;
-          if (still.stableForMs >= SETTLE_MS) r.settled = true;
-          if (still.jump) r.interferenceUntil = now + INTERFERENCE_HOLD_MS;
-          r.fieldAnomaly = model.fieldWatch.push(shape, now);
-
-          if (__DEV__) {
-            r.compass = compass;
-            r.fused = motionHeading;
-            r.fieldUt = fieldUt;
-            r.dip = dip;
-            r.pitch = field.pitch;
-            r.health = health;
-          }
-
-          pitch.set(field.pitch);
-          target.set(next);
-          if (!r.started) {
-            // First reading: start there rather than sweeping in from zero.
-            r.started = true;
-            heading.set(next);
-            haveTarget.set(true);
-          }
-        }),
-      );
-
-      const headingSub = await Location.watchHeadingAsync((sample) => {
-        r.accuracy = sample.accuracy;
-        const d = declinationFromHeading(sample.trueHeading, sample.magHeading);
-        if (d !== null) r.declination = d;
-        if (__DEV__) {
-          r.locMag = sample.magHeading;
-          r.locTrue = sample.trueHeading;
-        }
-      }).catch(() => null);
-      if (cancelled) headingSub?.remove();
-      else if (headingSub) subs.push(headingSub);
-    })();
-
-    // The sensors take a moment to settle after they register; the lock cue is
-    // armed only once that has passed, so an opening never rings it.
-    const arm = setTimeout(() => primed.set(true), ARM_MS);
-
-    const tick = setInterval(() => {
-      const now = Date.now();
-      const next = foldConfidence({
-        hasCoords: modelRef.current !== null,
-        sensorsAvailable: r.sensorsAvailable,
-        fieldAnomaly: r.fieldAnomaly,
-        jump: now < r.interferenceUntil,
-        accuracy: r.accuracy,
-        // "Settling" is for a feed that has not earned trust yet, not for a phone in motion.
-        stableForMs: r.settled ? SETTLE_MS : r.stableForMs,
-      });
-      setConfidence((prev) => (prev === next ? prev : next));
-      if (__DEV__ && r.started) {
-        setDebug({
-          compass: r.compass,
-          fused: r.fused,
-          platform: `${r.locMag === null ? '—' : Math.round(r.locMag)}/${r.locTrue === null ? '—' : Math.round(r.locTrue)} acc ${r.accuracy ?? '—'}`,
-          fieldUt: r.fieldUt,
-          dipDeg: r.dip,
-          pitch: r.pitch,
-          health: r.health,
-          mirrored: r.mirrored,
-        });
+    const sub = module.addListener('batch', (batch) => {
+      const out = engine.push(batch);
+      if (!out) return;
+      const raw = modeRef.current === 'camera' ? out.camera : out.flat;
+      const next = started ? unwrap(last, raw) : raw;
+      last = next;
+      pitch.set(out.pitch);
+      target.set(next);
+      if (!started) {
+        // First heading: start there rather than sweeping in from zero.
+        started = true;
+        heading.set(next);
+        haveTarget.set(true);
       }
-    }, CONFIDENCE_TICK_MS);
+      if (out.confidence !== shown) {
+        shown = out.confidence;
+        setSensed(out.confidence);
+        if (out.confidence === 'good' && arm === null) arm = setTimeout(() => primed.set(true), ARM_MS);
+      }
+      if (__DEV__) latest = { ...out.debug, heading: raw };
+    });
+    module.start();
+
+    const tick = __DEV__ ? setInterval(() => latest && setDebug(latest), DEBUG_TICK_MS) : null;
 
     return () => {
-      cancelled = true;
-      clearInterval(tick);
-      clearTimeout(arm);
-      subs.forEach((s) => s.remove());
-      fuser.reset();
-      r.fieldAnomaly = false;
-      r.accuracy = null;
-      r.stableForMs = 0;
-      r.settled = false;
-      r.mag = null;
-      r.started = false;
+      sub.remove();
+      module.stop();
+      if (tick) clearInterval(tick);
+      if (arm) clearTimeout(arm);
+      engineRef.current = null;
       haveTarget.set(false);
-      // The next first sample is an opening again, so it is silent again.
+      // The next start is an opening again, so it is silent again.
       primed.set(false);
+      setSensed('settling');
     };
-  }, [live, stillness, fuser, pitch, target, heading, haveTarget, primed]);
+  }, [live, available, heading, target, pitch, haveTarget, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
-  const k = reduced ? REDUCED_PER_FRAME : SMOOTH_PER_FRAME;
+  const easeMs = reduced ? REDUCED_EASE_MS : EASE_MS;
   const frame = useFrameCallback((info) => {
     'worklet';
     if (!haveTarget.get()) return;
     const dt = info.timeSincePreviousFrame ?? FRAME_MS;
-    const pull = 1 - Math.pow(1 - k, dt / FRAME_MS);
+    const pull = 1 - Math.exp(-dt / easeMs);
     const h = heading.get() + (target.get() - heading.get()) * pull;
     heading.set(h);
-    delta.set(shortestDelta(bearingSv.get(), h));
+    delta.set(wrap180(bearingSv.get(), h));
   }, false);
   useEffect(() => {
     frame.setActive(live);
   }, [frame, live]);
 
+  // The lock cue also tells the engine: the haptic actuator is a magnet, and the
+  // magnetometer is ignored while it runs.
+  const ring = useMemo(
+    () => () => {
+      lock();
+      engineRef.current?.noteActuator();
+    },
+    [],
+  );
+
   // Band with hysteresis, the lock cue, and the turn hint's number, from the UI thread.
   // The cue is for turning into the lock: a page that opens already on the
   // Qibla shows it without a sound, like the wheel, which is silent on open.
   const bandSv = useSharedValue<Band>('far');
-  const shown = useSharedValue(-1);
+  const shownTurn = useSharedValue(-1);
   useAnimatedReaction(
-    // Nothing to judge before the first sample: `delta` starts at 0, which is not a lock.
+    // Nothing to judge before the first heading: `delta` starts at 0, which is not a lock.
     () => (haveTarget.get() ? delta.get() : null),
     (d) => {
       if (d === null) return;
-      const a = Math.abs(d);
       const prev = bandSv.get();
-      const next: Band =
-        a <= (prev === 'locked' ? LOCK_LEAVE_DEG : LOCK_ENTER_DEG) ? 'locked' : a <= NEAR_DEG ? 'near' : 'far';
+      const next = bandFor(d, prev);
       if (next !== prev) {
         bandSv.set(next);
         lockT.set(withTiming(next === 'locked' ? 1 : 0, { duration: LOCK_FADE_MS }));
         scheduleOnRN(setBand, next);
         if (next === 'locked' && primed.get()) {
-          scheduleOnRN(lock);
+          scheduleOnRN(ring);
           edgeT.set(
             withSequence(
               withTiming(1, { duration: EDGE_IN_MS }),
@@ -416,10 +247,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           );
         }
       }
-      const deg = next === 'locked' ? 0 : Math.round(a);
+      const deg = next === 'locked' ? 0 : Math.round(Math.abs(d));
       const code = deg * 2 + (d >= 0 ? 1 : 0);
-      if (code !== shown.get()) {
-        shown.set(code);
+      if (code !== shownTurn.get()) {
+        shownTurn.set(code);
         scheduleOnRN(setTurn, { deg, right: d >= 0 });
       }
     },
