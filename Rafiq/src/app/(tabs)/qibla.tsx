@@ -71,7 +71,7 @@ export default function QiblaScreen() {
       </View>
 
       <View style={[styles.dial, { top: dialTop, height: horizon - dialTop - HINT_H }]} pointerEvents="none">
-        <CompassDial values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} />
+        <CompassDial values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} raised={qibla.raised} />
       </View>
 
       <View style={[styles.hint, { top: horizon - HINT_H, height: HINT_H }]} pointerEvents="none">

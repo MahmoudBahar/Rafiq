@@ -1,3 +1,4 @@
+import { LinearGradient as Gradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
@@ -8,12 +9,19 @@ export const MAT_W = 100;
 export const MAT_H = 170;
 const LAMP_Y = 46;
 const LIT_LAMP = '#f0c97a';
+/** Rolled up, the rug winds from its tassels toward the niche and keeps this much of itself out flat. */
+const ROLLED_KEEP = 0.14;
+/** The roll's thickness as a share of the mat's width: a thin edge as it starts, a fat roll once wound. */
+const ROLL_THIN = 0.08;
+const ROLL_FAT = 0.25;
 
 interface PrayerMatProps {
   /** Rendered width in dp; the height follows the box's ratio. */
   width: number;
   /** 0..1 lock progress: the niche warms and the lamp lights. */
   lockT: SharedValue<number>;
+  /** 0..1: the rug rolls up from its tassels toward the niche (the phone is held up). */
+  rollT: SharedValue<number>;
 }
 
 /**
@@ -23,32 +31,56 @@ interface PrayerMatProps {
  * re-rasterises the whole canvas on the CPU). The lamp's glow is a plain
  * view with a shadow, for the same reason.
  */
-export function PrayerMat({ width, lockT }: PrayerMatProps) {
+export function PrayerMat({ width, lockT, rollT }: PrayerMatProps) {
+  const { c } = useTheme();
   const height = (width * MAT_H) / MAT_W;
   const lit = useAnimatedStyle(() => ({ opacity: lockT.get() }));
+  // Rolling up: the flat part is cut back from the tassel end (the drawing itself never scales),
+  // and a roll rides the cut edge, thickening as more rug winds onto it.
+  const flat = useAnimatedStyle(() => {
+    const k = Math.min(1, Math.max(0, rollT.get()));
+    return { height: height * (1 - (1 - ROLLED_KEEP) * k) };
+  });
+  const roll = useAnimatedStyle(() => {
+    const k = Math.min(1, Math.max(0, rollT.get()));
+    const thick = width * (ROLL_THIN + (ROLL_FAT - ROLL_THIN) * k);
+    const appear = Math.min(1, Math.max(0, (k - 0.02) / 0.13));
+    return {
+      height: thick,
+      borderRadius: thick / 2,
+      top: height * (1 - (1 - ROLLED_KEEP) * k) - thick / 2,
+      opacity: appear * appear * (3 - 2 * appear),
+    };
+  });
   const glow = useAnimatedStyle(() => ({ opacity: lockT.get() * 0.9, transform: [{ scale: 0.6 + 0.4 * lockT.get() }] }));
   const lampSize = width * 0.22;
   return (
     <View style={{ width, height }}>
-      <Drawing width={width} height={height} lit={false} />
-      <Animated.View style={[StyleSheet.absoluteFill, lit]}>
-        <Drawing width={width} height={height} lit />
+      {/* The part still lying flat; the lamp's glow lives on it. */}
+      <Animated.View style={[styles.flat, { width }, flat]}>
+        <Drawing width={width} height={height} lit={false} />
+        <Animated.View style={[styles.drawing, { width, height }, lit]}>
+          <Drawing width={width} height={height} lit />
+        </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.glow,
+            glow,
+            {
+              width: lampSize,
+              height: lampSize,
+              borderRadius: lampSize / 2,
+              top: (LAMP_Y / MAT_H) * height - lampSize / 2,
+              left: width / 2 - lampSize / 2,
+              boxShadow: `0 0 ${lampSize}px ${lampSize * 0.35}px rgba(240,201,122,0.55)`,
+            },
+          ]}
+        />
       </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.glow,
-          glow,
-          {
-            width: lampSize,
-            height: lampSize,
-            borderRadius: lampSize / 2,
-            top: (LAMP_Y / MAT_H) * height - lampSize / 2,
-            left: width / 2 - lampSize / 2,
-            boxShadow: `0 0 ${lampSize}px ${lampSize * 0.35}px rgba(240,201,122,0.55)`,
-          },
-        ]}
-      />
+      <Animated.View pointerEvents="none" style={[styles.roll, { left: -width * 0.03, right: -width * 0.03 }, roll]}>
+        <Gradient colors={[c.tm, c.surface, c.selbr, c.tm]} locations={[0, 0.45, 0.6, 1]} style={StyleSheet.absoluteFill} />
+      </Animated.View>
     </View>
   );
 }
@@ -87,5 +119,8 @@ function Drawing({ width, height, lit }: { width: number; height: number; lit: b
 }
 
 const styles = StyleSheet.create({
+  flat: { position: 'absolute', top: 0, left: 0, overflow: 'hidden' },
+  drawing: { position: 'absolute', top: 0, left: 0 },
   glow: { position: 'absolute', backgroundColor: LIT_LAMP },
+  roll: { position: 'absolute', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.25)' },
 });

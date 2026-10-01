@@ -6,6 +6,7 @@ import {
   useFrameCallback,
   useSharedValue,
   withSequence,
+  withSpring,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -40,6 +41,13 @@ const EDGE_IN_MS = 140;
 const EDGE_OUT_MS = 900;
 /** The lock cue is armed this long after the compass first reads good: an opening never rings it. */
 const ARM_MS = 500;
+/**
+ * The mat rolls up when the phone is raised and unrolls when it lies flat
+ * again: critically damped springs (ω 7 rad/s up, a little quicker, 9 rad/s,
+ * back down), so it winds without bouncing.
+ */
+const ROLL_UP = { stiffness: 49, damping: 14, mass: 1 };
+const UNROLL = { stiffness: 81, damping: 18, mass: 1 };
 /** How often the dev readout refreshes. */
 const DEBUG_TICK_MS = 250;
 
@@ -54,6 +62,8 @@ export interface QiblaValues {
   lockT: SharedValue<number>;
   /** A one-shot bloom on entering the lock: up fast, then fading. */
   edgeT: SharedValue<number>;
+  /** 0..1, sprung: the phone is held up instead of flat (the mat rolls up and the screen asks to lay it down). */
+  raisedT: SharedValue<number>;
 }
 
 /** The engine's raw numbers for a development readout; null in release builds. */
@@ -94,6 +104,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const pitch = useSharedValue(0);
   const lockT = useSharedValue(0);
   const edgeT = useSharedValue(0);
+  const raisedT = useSharedValue(0);
   const bearingSv = useSharedValue(bearing ?? 0);
   const haveTarget = useSharedValue(false);
   /** The compass has read good for a moment since the sensors started: only then does a lock get its cue. */
@@ -229,6 +240,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // Qibla shows it without a sound, like the wheel, which is silent on open.
   const bandSv = useSharedValue<Band>('far');
   const shownTurn = useSharedValue(-1);
+  const raisedSv = useSharedValue(false);
   useAnimatedReaction(
     // Nothing to judge before the first heading: `delta` starts at 0, which is not a lock.
     () => (haveTarget.get() ? delta.get() : null),
@@ -240,7 +252,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         bandSv.set(next);
         lockT.set(withTiming(next === 'locked' ? 1 : 0, { duration: LOCK_FADE_MS }));
         scheduleOnRN(setBand, next);
-        if (next === 'locked' && primed.get()) {
+        // No cue while the phone is held up: the mat is rolled away and the screen is asking to lay it down.
+        if (next === 'locked' && primed.get() && !raisedSv.get()) {
           scheduleOnRN(ring);
           edgeT.set(
             withSequence(
@@ -260,7 +273,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   );
 
   // Posture: the dial wants the phone flat, the camera wants it up.
-  const raisedSv = useSharedValue(false);
   useAnimatedReaction(
     () => pitch.get(),
     (p) => {
@@ -268,10 +280,11 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       const is = mode === 'flat' ? (was ? p > 50 : p > 60) : was ? p < 40 : p < 30;
       if (is !== was) {
         raisedSv.set(is);
+        raisedT.set(reduced ? (is ? 1 : 0) : withSpring(is ? 1 : 0, is ? ROLL_UP : UNROLL));
         scheduleOnRN(setRaised, is);
       }
     },
-    [mode],
+    [mode, reduced],
   );
 
   return {
@@ -281,7 +294,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     turnRight: turn.right,
     confidence,
     raised,
-    values: { heading, delta, pitch, lockT, edgeT },
+    values: { heading, delta, pitch, lockT, edgeT, raisedT },
     debug,
   };
 }

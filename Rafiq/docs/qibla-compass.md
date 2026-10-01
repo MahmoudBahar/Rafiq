@@ -138,6 +138,7 @@ First match wins:
 - Each batch goes to the engine on the JS thread. The heading goes to a shared value, eased on the UI thread over 40 ms (15 ms with reduced motion) only to hide the per-frame batches.
 - A coordinates change swaps the field model without restarting the sensors. A restart creates a new engine, because the gyro frame is new.
 - The lock cue is armed 0.5 s after the first `good`, so an opening never rings it.
+- **Raised** (pitch above 60°, flat again below 50°): `raisedT` springs 0→1, critically damped. The dial rolls the mat up from its tassels toward the niche (`PrayerMat`, a clip plus a gradient roll), dims and draws back the ring, and shows `LayFlatCoach`: a ghost phone lying down on a floor line over «ضع الهاتف مستويًا». Laid flat, it unrolls. No lock cue or edge bloom fires while raised.
 - The UI's types (`Qibla`, `QiblaValues`, `Confidence`) are unchanged. `QiblaDebug` is now the engine's diagnostics, shown on the ground band in development builds.
 
 ## 6. Tests
