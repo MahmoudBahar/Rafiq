@@ -27,7 +27,7 @@ export interface RafiqMotionAvailability {
   /** The up stream is the raw accelerometer, hand acceleration included (no fused gravity on this phone). */
   upIsAccelerometer: boolean;
   magnetometer: boolean;
-  /** The platform's magnetometer accuracy can be believed on its own. */
+  /** Informational: whether the platform's magnetometer accuracy is believed on its own. The engine judges it the same way on both platforms. */
   trustAccuracy: boolean;
 }
 

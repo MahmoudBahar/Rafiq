@@ -1,122 +1,78 @@
-import { DEG, RAD } from './angles';
-import { qAngle, qConj, qMul, type Quat } from './vec';
-
-/** The platform's accuracy must read low this long before it counts. */
+/** The platform's accuracy must read low this long before it counts: a value that flickers on start-up is not a verdict. */
 export const ACCURACY_LOW_S = 1;
-/** Rotation slower than this (rad/s, ~30°/s) is "in place": the readings then differ only by orientation. */
-export const STILL_RATE = 30 * DEG;
-/** The invariance check needs the phone to have been seen across at least this much rotation. */
-export const COVERAGE_DEG = 90;
-/** …within this window. */
-export const WINDOW_S = 5;
-/** |B| varying by more than this share of the model's strength across orientations… */
-export const SPREAD_ENTER = 0.12;
-/** …together with the dip varying by more than this (degrees), is an offset riding on the phone. */
-export const DIP_RANGE_ENTER_DEG = 8;
-export const SPREAD_LEAVE = 0.08;
-export const DIP_RANGE_LEAVE_DEG = 5;
-
-interface Point {
-  t: number;
-  q: Quat;
-  magnitudeUt: number;
-  dipDeg: number;
-}
+/**
+ * A phone that keeps reporting a low accuracy while its field matches the
+ * World Magnetic Model this long is not believed: the field it measures is
+ * Earth's, size and dip, so whatever the flag says, the compass works. This
+ * is the guard against a phone whose flag is stuck low.
+ */
+export const HEALTHY_OVERRIDE_S = 10;
 
 export interface CalibrationWatch {
-  /** The platform's accuracy, 0–3 or -1 unknown. */
+  /** The platform's magnetometer accuracy, 0 (unreliable) … 3 (high), -1 unknown. */
   accuracy(value: number, t: number): void;
-  /** A field reading with the attitude it was taken at and the rotation rate (rad/s) at the time. */
-  reading(t: number, q: Quat, magnitudeUt: number, dipDeg: number, rate: number): void;
+  /** Whether the field, at `t`, matches the model closely (see `fieldCheck`). */
+  field(healthy: boolean, t: number): void;
   /** Whether the magnetometer needs calibrating. */
   needed(): boolean;
-  /** Diagnostics: the last window's |B| spread (share of the model) and dip range (degrees), when it covered enough rotation. */
-  readonly spread: number;
-  readonly dipRange: number;
+  /** The low accuracy is being ignored because the field matched the model for long enough (diagnostics). */
+  readonly overridden: boolean;
   reset(): void;
 }
 
 /**
- * Two independent signs that the magnetometer needs a figure-eight.
+ * Whether to ask for the figure-eight: the platform's own verdict on its
+ * magnetometer calibration. Android's TYPE_MAGNETIC_FIELD accuracy and
+ * CoreMotion's calibration state both come from the platform's running
+ * hard-iron fit, the one thing that knows whether its offset estimate has
+ * converged, and both rise while the phone is waved about. So:
+ *  - low (0–1) for a second → calibrate;
+ *  - medium or high → clear, at once, never latched;
+ *  - low but the measured field has matched the model for 10 s → not believed.
  *
- * The platform's own accuracy, where it can be believed: on iOS it is
- * CoreMotion's calibration state. Android's is not trusted on its own, as
- * some devices report 0 forever and a Samsung reported 3 while 40° off.
- *
- * And a physical invariant that holds on every phone: a calibrated sensor in
- * a uniform field reads the same |B| and the same dip whichever way it is
- * turned. An offset riding on the phone (an uncompensated bias, a magnetic
- * case) turns with it, so |B| and the dip change with orientation. Steel
- * nearby does not turn with the phone, so turning in place leaves them
- * alone: that is interference, not calibration, and is not reported here.
+ * Earlier this also guessed calibration from how |B| varied with the
+ * phone's orientation. It could not tell an offset riding on the phone from
+ * the phone being moved past furniture (the field changes with place too),
+ * and it could only clear during slow, in-place turns, never during the
+ * figure-eight it asked for. It is gone.
  */
-export function createCalibrationWatch(totalUt: number, trustAccuracy: boolean): CalibrationWatch {
+export function createCalibrationWatch(): CalibrationWatch {
   let lowSince: number | null = null;
-  let accuracyLow = false;
-  let offset = false;
-  let points: Point[] = [];
-  let spread = 0;
-  let dipRange = 0;
-
-  function evaluate() {
-    if (points.length < 5) return;
-    const ref = points[0].q;
-    let coverage = 0;
-    let sum = 0;
-    let sumSq = 0;
-    let dipMin = Infinity;
-    let dipMax = -Infinity;
-    for (const p of points) {
-      coverage = Math.max(coverage, qAngle(qMul(p.q, qConj(ref))) * RAD);
-      sum += p.magnitudeUt;
-      sumSq += p.magnitudeUt * p.magnitudeUt;
-      dipMin = Math.min(dipMin, p.dipDeg);
-      dipMax = Math.max(dipMax, p.dipDeg);
-    }
-    if (coverage < COVERAGE_DEG) return;
-    const n = points.length;
-    const mean = sum / n;
-    const sd = Math.sqrt(Math.max(0, sumSq / n - mean * mean));
-    spread = totalUt > 0 ? sd / totalUt : 0;
-    dipRange = dipMax - dipMin;
-    if (!offset && spread > SPREAD_ENTER && dipRange > DIP_RANGE_ENTER_DEG) offset = true;
-    else if (offset && spread < SPREAD_LEAVE && dipRange < DIP_RANGE_LEAVE_DEG) offset = false;
-  }
+  let low = false;
+  let healthySince: number | null = null;
+  let healthyFor = 0;
 
   return {
     accuracy(value, t) {
-      if (!trustAccuracy) return;
-      if (value >= 2) {
+      if (value >= 2 || value < 0) {
+        // Calibrated, or no verdict at all: nothing to ask for.
         lowSince = null;
-        accuracyLow = false;
+        low = false;
         return;
       }
-      if (value < 0) return; // Unknown says nothing either way.
       if (lowSince === null) lowSince = t;
-      if (t - lowSince >= ACCURACY_LOW_S) accuracyLow = true;
+      low = t - lowSince >= ACCURACY_LOW_S;
     },
-    reading(t, q, magnitudeUt, dipDeg, rate) {
-      while (points.length > 0 && t - points[0].t > WINDOW_S) points.shift();
-      if (rate > STILL_RATE) return;
-      points.push({ t, q, magnitudeUt, dipDeg });
-      evaluate();
+    field(healthy, t) {
+      if (!healthy) {
+        healthySince = null;
+        healthyFor = 0;
+        return;
+      }
+      if (healthySince === null) healthySince = t;
+      healthyFor = t - healthySince;
     },
     needed() {
-      return accuracyLow || offset;
+      return low && healthyFor < HEALTHY_OVERRIDE_S;
     },
-    get spread() {
-      return spread;
-    },
-    get dipRange() {
-      return dipRange;
+    get overridden() {
+      return low && healthyFor >= HEALTHY_OVERRIDE_S;
     },
     reset() {
       lowSince = null;
-      accuracyLow = false;
-      offset = false;
-      points = [];
-      spread = 0;
-      dipRange = 0;
+      low = false;
+      healthySince = null;
+      healthyFor = 0;
     },
   };
 }

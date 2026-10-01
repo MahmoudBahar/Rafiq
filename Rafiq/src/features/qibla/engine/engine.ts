@@ -1,13 +1,13 @@
 import { DEG, RAD, clamp, normalizeDeg, wrap180 } from './angles';
 import { createCalibrationWatch, type CalibrationWatch } from './calibration';
 import { foldConfidence, DISAGREEMENT_CLEAR_S, type Confidence } from './confidence';
-import { createShapeWatch, judgeField, type FieldVerdict, type ShapeWatch } from './fieldCheck';
+import { RATIO_FREE, createShapeWatch, judgeField, type FieldVerdict, type ShapeWatch } from './fieldCheck';
 import type { EarthField } from './geomag';
 import { SHOW_DISAGREEMENT_S, SIGMA_SYS_DEG, UPDATE_S, createNorthFilter } from './northFilter';
 import { createOrientation } from './orientation';
 import { poseOf } from './pose';
 import { createStreamMerger, type MotionBatch, type StreamKind } from './stream';
-import { cross, dot, norm, qFromWorldAxes, qRotate, qRotateInverse, scale, sub, unit, type Quat, type Vec3 } from './vec';
+import { cross, dot, norm, qFromWorldAxes, qRotate, qRotateInverse, scale, sub, unit, type Vec3 } from './vec';
 
 /** Residual tilt error of a fused gravity vector, degrees: it leaks into the heading as σ·tan(dip). */
 export const SIGMA_TILT_DEG = 0.5;
@@ -33,8 +33,6 @@ export interface EngineSensors {
   hasUp: boolean;
   /** The up stream is the raw accelerometer (m/s², hand acceleration included) rather than fused gravity. */
   upIsAccelerometer: boolean;
-  /** Believe the platform's calibration accuracy on its own (CoreMotion's is; Android's is not). */
-  trustAccuracy: boolean;
 }
 
 export interface EngineDebug {
@@ -60,11 +58,17 @@ export interface EngineDebug {
   reacquisitions: number;
   disagreementS: number;
   tiltResidualDeg: number;
-  calSpread: number;
-  calDipRange: number;
+  /** The platform's accuracy reads low but is ignored: the field has matched the model for long enough. */
+  calOverridden: boolean;
 }
 
 export interface EngineOutput {
+  /**
+   * North has been found and the headings below are real. Before that (the
+   * first 0.3 s, or for as long as an uncalibrated iPhone sends no field)
+   * they are NaN, but the confidence still says why.
+   */
+  ready: boolean;
   /** Sensor-clock time (s) the headings are for: the newest gyro sample (the newest sample of any kind without one). */
   t: number;
   /** True headings (magnetic without a model), degrees in [0, 360): the top edge, and the back camera. */
@@ -78,7 +82,7 @@ export interface EngineOutput {
 }
 
 export interface QiblaEngine {
-  /** Feed one native batch; returns the latest state, or null while there is no heading yet. */
+  /** Feed one native batch; returns the latest state, or null before any sample has been seen. */
   push(batch: MotionBatch): EngineOutput | null;
   /** The coordinates' field model changed (or went away); north in the gyro frame is kept. */
   setModel(model: EarthField | null): void;
@@ -114,14 +118,13 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
   const north = createNorthFilter();
   let model = initialModel;
   let shape: ShapeWatch = createShapeWatch(model?.zone ?? 'normal');
-  let calibration: CalibrationWatch = createCalibrationWatch(model?.totalUt ?? 0, sensors.trustAccuracy);
+  let calibration: CalibrationWatch = createCalibrationWatch();
 
   let newestT = -Infinity;
   let maskUntil = -Infinity;
   let lastEpoch: number | null = null;
   let lastAccuracy = -1;
   let dropped = 0;
-  let rate = 0;
   let gapsSeen = 0;
   let trusted = false;
   let shapeDisturbed = false;
@@ -132,6 +135,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
   let lastField = 0;
   let lastMeasSigma = 0;
   // One field verdict per 100 ms for the shape and calibration watches.
+  // A field that matches the model in size and dip (see `fieldCheck`).
   let bin = { start: -Infinity, field: 0, dip: 0, n: 0 };
   // Compass-only state.
   let tilt: Vec3 | null = null;
@@ -163,13 +167,12 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     return SIGMA_SYS_DEG ** 2 + tiltTerm ** 2 + noiseTerm ** 2 + (verdict?.rDeg2 ?? 0);
   }
 
-  function watchField(t: number, q: Quat, fieldUt: number, dipDeg: number) {
+  function watchField(t: number, fieldUt: number, dipDeg: number) {
     if (t - bin.start >= UPDATE_S) {
       if (bin.n > 0 && model) {
-        const field = bin.field / bin.n;
-        const dip = bin.dip / bin.n;
-        shapeDisturbed = shape.push(judgeField({ magnitudeUt: field, dipDeg: dip }, model), t);
-        calibration.reading(t, q, field, dip, rate);
+        const verdict = judgeField({ magnitudeUt: bin.field / bin.n, dipDeg: bin.dip / bin.n }, model);
+        shapeDisturbed = shape.push(verdict, t);
+        calibration.field(verdict.impliedDeg === 0 && verdict.ratio < RATIO_FREE && verdict.ratio > 1 / RATIO_FREE, t);
       }
       bin = { start: t, field: 0, dip: 0, n: 0 };
     }
@@ -190,7 +193,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       const verdict = model ? judgeField({ magnitudeUt: fieldUt, dipDeg }, model) : null;
       const r = measurementVariance(fieldUt, dipDeg, verdict);
       north.measure({ t, thetaDeg: normalizeDeg(Math.atan2(world[0], world[1]) * RAD), rDeg2: r, scoreDeg: verdict?.scoreDeg ?? 0 });
-      watchField(t, q, fieldUt, dipDeg);
+      watchField(t, fieldUt, dipDeg);
       lastVerdict = verdict;
       lastDip = dipDeg;
       lastField = fieldUt;
@@ -220,7 +223,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     lastVerdict = model ? judgeField({ magnitudeUt: fieldUt, dipDeg }, model) : null;
     lastDip = dipDeg;
     lastField = fieldUt;
-    watchField(t, q, fieldUt, dipDeg);
+    watchField(t, fieldUt, dipDeg);
   }
 
   function onUp(t: number, u: Vec3) {
@@ -241,7 +244,6 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
   }
 
   function onGyro(t: number, w: Vec3) {
-    rate = norm(w);
     const turned = orientation.gyro(t, w);
     if (orientation.gaps !== gapsSeen) {
       // Whatever the phone turned during the silence is unknown: find north again.
@@ -253,26 +255,27 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
   }
 
   function output(): EngineOutput | null {
+    if (newestT === -Infinity) return null;
     const declination = model?.declination ?? 0;
-    let flat: number;
-    let camera: number;
-    let pitch: number;
-    let seeded: boolean;
-    let sigmaDeg: number;
+    let flat = NaN;
+    let camera = NaN;
+    let pitch = NaN;
+    let seeded = false;
+    let sigmaDeg = Infinity;
     const ns = north.state();
     let t = newestT;
     if (fused) {
       const now = orientation.ahead(merger.pending('gyro'));
-      if (!now || !ns.seeded) return null;
-      t = now.t;
-      const pose = poseOf(now.q);
-      flat = normalizeDeg(pose.flat - ns.thetaDeg + declination);
-      camera = normalizeDeg(pose.camera - ns.thetaDeg + declination);
-      pitch = pose.pitch;
-      seeded = true;
-      sigmaDeg = Math.sqrt(ns.pDeg2);
-    } else {
-      if (!compass) return null;
+      if (now && ns.seeded) {
+        t = now.t;
+        const pose = poseOf(now.q);
+        flat = normalizeDeg(pose.flat - ns.thetaDeg + declination);
+        camera = normalizeDeg(pose.camera - ns.thetaDeg + declination);
+        pitch = pose.pitch;
+        seeded = true;
+        sigmaDeg = Math.sqrt(ns.pDeg2);
+      }
+    } else if (compass) {
       flat = normalizeDeg(compass.flat + declination);
       camera = normalizeDeg(compass.camera + declination);
       pitch = compass.pitch;
@@ -304,6 +307,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     if (confidence === 'good') trusted = true;
 
     return {
+      ready: seeded,
       t,
       flat,
       camera,
@@ -330,8 +334,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
         reacquisitions: ns.reacquisitions,
         disagreementS: ns.disagreementS,
         tiltResidualDeg: orientation.tiltResidualDeg,
-        calSpread: calibration.spread,
-        calDipRange: calibration.dipRange,
+        calOverridden: calibration.overridden,
       },
     };
   }
@@ -349,9 +352,14 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       newest(batch.up);
       newest(batch.mag);
       dropped += batch.dropped > 0 ? batch.dropped : 0;
-      lastAccuracy = batch.magAccuracy;
-      if (lastEpoch !== null && batch.biasEpoch !== lastEpoch) north.biasEpoch(newestT);
+      // The platform re-estimated the magnetometer's offset: its readings may step, and that step is
+      // the calibration improving, not interference. A rise of its accuracy says the same (iOS has no
+      // other sign of it); a fall is the platform noticing a disturbance, and hands nothing over.
+      const recalibrated =
+        (lastEpoch !== null && batch.biasEpoch !== lastEpoch) || (lastAccuracy >= 0 && batch.magAccuracy > lastAccuracy);
+      if (recalibrated) north.biasEpoch(newestT);
       lastEpoch = batch.biasEpoch;
+      lastAccuracy = batch.magAccuracy;
       calibration.accuracy(batch.magAccuracy, newestT);
 
       for (const s of merger.push(batch)) {
@@ -365,7 +373,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     setModel(next) {
       model = next;
       shape = createShapeWatch(next?.zone ?? 'normal');
-      calibration = createCalibrationWatch(next?.totalUt ?? 0, sensors.trustAccuracy);
+      calibration = createCalibrationWatch();
       shapeDisturbed = false;
     },
     noteActuator() {
@@ -380,8 +388,8 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       newestT = -Infinity;
       maskUntil = -Infinity;
       lastEpoch = null;
+      lastAccuracy = -1;
       dropped = 0;
-      rate = 0;
       gapsSeen = 0;
       trusted = false;
       shapeDisturbed = false;

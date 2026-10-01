@@ -11,7 +11,7 @@ export const TRUST = { good: '#5a9c7a', warn: '#c9a24a', bad: '#c0563f' } as con
 const LABEL: Record<Confidence, { text: string; tone: keyof typeof TRUST }> = {
   good: { text: 'البوصلة مستقرة', tone: 'good' },
   settling: { text: 'جارٍ الضبط', tone: 'warn' },
-  calibrate: { text: 'يحتاج معايرة', tone: 'warn' },
+  calibrate: { text: 'تحتاج معايرة', tone: 'warn' },
   interference: { text: 'المجال المغناطيسي مضطرب', tone: 'bad' },
   unavailable: { text: 'بلا بوصلة', tone: 'bad' },
   'no-location': { text: 'بلا موقع', tone: 'bad' },

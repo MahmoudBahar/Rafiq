@@ -111,7 +111,8 @@ export default function QiblaScreen() {
 /**
  * Development builds only: the engine's numbers, to tell in ten seconds on a
  * device whether the streams run at rate, the gyroscope's conventions hold
- * (tilt residual near 0) and how the field compares with the model.
+ * (tilt residual near 0), how the field compares with the model, and
+ * what the platform says about its magnetometer calibration (acc 0–3).
  */
 function DevReadout({ d }: { d: QiblaDebug }) {
   const { c } = useTheme();
@@ -121,7 +122,7 @@ function DevReadout({ d }: { d: QiblaDebug }) {
       {`${d.pipeline}  hdg ${f(d.heading)}  θ ${f(d.thetaDeg)}  σ ${f(d.sigmaDeg)}  ν ${f(d.innovationDeg)}  √R ${f(d.measSigmaDeg)}\n` +
         `|B| ${f(d.fieldUt)}/${f(d.modelFieldUt)} µT  dip ${f(d.dipDeg)}/${f(d.modelDipDeg)}°  bent ${f(d.impliedDeg)}°  acc ${d.magAccuracy}  epoch ${d.biasEpoch}\n` +
         `Hz g ${f(d.hz.gyro, 0)} u ${f(d.hz.up, 0)} m ${f(d.hz.mag, 0)}  tilt± ${f(d.tiltResidualDeg, 2)}°  drop ${d.dropped} rej ${d.rejected} gap ${d.gaps}\n` +
-        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  cal ${f(d.calSpread * 100, 0)}%/${f(d.calDipRange)}°`}
+        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  acc ignored ${d.calOverridden ? 'yes' : 'no'}`}
     </RNText>
   );
 }

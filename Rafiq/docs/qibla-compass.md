@@ -105,13 +105,15 @@ The **interference** rules:
 - Always in the WMM blackout zone (H < 2 µT).
 
 ### 4.5 `calibration.ts`
-- **iOS**: CoreMotion's calibration `uncalibrated` / `low` for 1 s → `calibrate`.
-- **Android's accuracy is not believed alone**: some phones report 0 forever, and a Samsung reported 3 while 40° off.
-- **Physical invariant, both platforms**: a calibrated sensor in a uniform field reads the same |B| and dip in every orientation.
-  - Only near-still samples (< 30°/s) count. Over ≥ 90° of rotation within 5 s:
-    - std(|B|)/F > 12 % **and** dip range > 8° → an offset riding on the phone → `calibrate`;
-    - it clears below 8 % and 5°.
-  - Steel nearby does not turn with the phone, so it does not trip this check.
+"Calibrate" is the platform's own verdict, the same rule on both platforms. The verdict is Android's `TYPE_MAGNETIC_FIELD` accuracy, or CoreMotion's calibration state. Both come from the platform's running hard-iron fit, and both rise while the phone is waved in a figure-eight.
+
+- Accuracy 0–1 held for 1 s → `calibrate`.
+- Accuracy 2–3 (or unknown) → clear at once. Nothing latches.
+- A phone stuck reporting low accuracy is not believed once the measured field has matched the WMM for 10 s: dip within the 5° allowance, strength within ×1.25. While the field is bent, it is believed.
+- A **rise** in accuracy (and, on Android, a step of the platform's bias estimate) counts as a recalibration. North is re-taken at once from the corrected field instead of the step reading as interference. A **fall** hands nothing over: that is the platform noticing a disturbance.
+- iOS sends no field at all while CoreMotion is uncalibrated. The engine still reports `calibrate` without a heading (`ready: false`), so the card appears instead of a frozen dial.
+
+An earlier version guessed calibration from |B| varying with orientation, and it was removed after device testing. It could not tell an offset on the phone from the phone being moved past furniture (the field changes with place). It could only clear during slow in-place turns, never during the figure-eight it asked for, so it stuck on.
 
 ### 4.6 `confidence.ts`
 First match wins:
@@ -139,7 +141,7 @@ First match wins:
 - The UI's types (`Qibla`, `QiblaValues`, `Confidence`) are unchanged. `QiblaDebug` is now the engine's diagnostics, shown on the ground band in development builds.
 
 ## 6. Tests
-`npm test` runs the vitest suite: 61 tests. The engine scenarios use `engine/testing/sim.ts`, a physics simulator. It models:
+`npm test` runs the vitest suite: 65 tests. The engine scenarios use `engine/testing/sim.ts`, a physics simulator. It models:
 - the WMM field at real coordinates;
 - scripted rotations;
 - a gyroscope with bias, scale error and noise;
@@ -147,7 +149,7 @@ First match wins:
 - Android-style separate jittered streams and iOS-style shared timestamps;
 - gaps, and disturbances that are world-fixed, phone-fixed or passing.
 
-Each scenario carries a time bound: start-up, a 630° spin at 400°/s, sweeps through north, upright and face down, a minute of gyro drift, gyro gaps, the laptop corner, the desk-and-cable field, a magnet swept past, a bent floor, the blackout zone, London / Oslo / Sydney, calibration offsets, platform recalibration, the haptic spike, and the no-gyroscope fallback. Mutation runs (gyro sign flipped, shape check off, gate off, scale term off) each fail the suite.
+Each scenario carries a time bound: start-up, a 630° spin at 400°/s, sweeps through north, upright and face down, a minute of gyro drift, gyro gaps, the laptop corner, the desk-and-cable field, a magnet swept past, a bent floor, the blackout zone, London / Oslo / Sydney, calibration (a figure-eight clears it, a magnet that leaves never latches it, walking past furniture never triggers it, a stuck-low accuracy is overridden, an uncalibrated iPhone still gets the card), platform recalibration, the haptic spike, and the no-gyroscope fallback. Mutation runs (gyro sign flipped, shape check off, gate off, scale term off) each fail the suite.
 
 ## 7. Verify on a device (dev readout)
 1. Hz: gyro ≈ 100, up ≈ 100, mag ≈ 50; 0 dropped.

@@ -22,7 +22,7 @@ export function StatusCard({ confidence, locating, onLocate, onChooseCity }: Sta
   const body = (() => {
     switch (confidence) {
       case 'calibrate':
-        return { title: 'يحتاج البوصلة إلى معايرة', text: 'حرّك الهاتف على شكل ٨ في الهواء عدة مرات', figure: true };
+        return { title: 'تحتاج البوصلة إلى معايرة', text: 'حرّك الهاتف على شكل ٨ في الهواء عدة مرات', figure: true };
       case 'interference':
         return { title: 'هناك ما يشوّش على البوصلة', text: 'ابتعد عن المعادن أو المغناطيس، كالغطاء المغناطيسي أو السماعات' };
       case 'no-location':

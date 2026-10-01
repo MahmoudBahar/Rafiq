@@ -145,7 +145,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         hasMagnetometer: available.magnetometer,
         hasUp: available.up,
         upIsAccelerometer: available.upIsAccelerometer,
-        trustAccuracy: available.trustAccuracy,
       },
       modelRef.current,
     );
@@ -161,16 +160,20 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     const sub = module.addListener('batch', (batch) => {
       const out = engine.push(batch);
       if (!out) return;
+      // Before north is found there is no heading, but the confidence still says why
+      // (an iPhone sends no field at all until its magnetometer is calibrated).
       const raw = modeRef.current === 'camera' ? out.camera : out.flat;
-      const next = started ? unwrap(last, raw) : raw;
-      last = next;
-      pitch.set(out.pitch);
-      target.set(next);
-      if (!started) {
-        // First heading: start there rather than sweeping in from zero.
-        started = true;
-        heading.set(next);
-        haveTarget.set(true);
+      if (out.ready) {
+        const next = started ? unwrap(last, raw) : raw;
+        last = next;
+        pitch.set(out.pitch);
+        target.set(next);
+        if (!started) {
+          // First heading: start there rather than sweeping in from zero.
+          started = true;
+          heading.set(next);
+          haveTarget.set(true);
+        }
       }
       if (out.confidence !== shown) {
         shown = out.confidence;

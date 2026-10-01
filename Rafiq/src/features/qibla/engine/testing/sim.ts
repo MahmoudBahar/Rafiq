@@ -170,6 +170,8 @@ export function createSim(coords: Coords, script: Script, model: SensorModel, da
       }
       while (mi < magTimes.length && magTimes[mi] + latency <= b) {
         const t = magTimes[mi++];
+        // Like the native module: CoreMotion's field is not sent while it is uncalibrated.
+        if (ios && (script.magAccuracy?.(t) ?? 3) === 0) continue;
         batch.mag.push(T0 + t, ...magAt(t));
       }
       out.push({ at: b, batch });

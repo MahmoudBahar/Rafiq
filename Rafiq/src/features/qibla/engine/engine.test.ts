@@ -25,7 +25,6 @@ function run(sim: Sim, model: SensorModel, until: number, hooks: { at?: number; 
       hasMagnetometer: true,
       hasUp: true,
       upIsAccelerometer: !!model.noGyro,
-      trustAccuracy: model.platform === 'ios',
     },
     sim.field,
   );
@@ -52,7 +51,7 @@ function maxError(ticks: Tick[], sim: Sim, from: number, to = Infinity, mode: 'f
   let worst = 0;
   let n = 0;
   for (const k of ticks) {
-    if (k.t < from || k.t >= to || !k.out) continue;
+    if (k.t < from || k.t >= to || !k.out?.ready) continue;
     n++;
     // Compared at the sensor time the output is for.
     const truth = sim.trueHeading(k.out.t - T0);
@@ -74,10 +73,13 @@ describe('start-up', () => {
     });
   }
 
-  it('is silent (no heading) before the first reading', () => {
+  it('has no heading before north is found, and says it is settling', () => {
     const sim = createSim(CAIRO, still(90), ANDROID);
-    const ticks = run(sim, ANDROID, 0.1);
-    expect(ticks[0].out).toBeNull();
+    const ticks = run(sim, ANDROID, 0.2);
+    const first = ticks.find((k) => k.out)!.out!;
+    expect(first.ready).toBe(false);
+    expect(Number.isNaN(first.flat)).toBe(true);
+    expect(first.confidence).toBe('settling');
   });
 
   it('finds north while the phone is already turning', () => {
@@ -243,10 +245,85 @@ describe('interference', () => {
 });
 
 describe('calibration', () => {
-  it('an offset riding on the phone is calibration, not interference', () => {
-    const sim = createSim(CAIRO, { heading: (t) => 20 * t, deviceOffset: () => [18, -10, 6] }, ANDROID);
+  // Accuracy as the platform reports it: 0 unreliable … 3 high.
+  const accuracy = (steps: [number, number][]) => (t: number) => {
+    let v = steps[0][1];
+    for (const [from, a] of steps) if (t >= from) v = a;
+    return v;
+  };
+
+  it('a low platform accuracy asks for calibration after a second, and clears the moment it rises', () => {
+    const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: accuracy([[0, 1], [4, 3]]) }, ANDROID);
+    const ticks = run(sim, ANDROID, 6);
+    expect(after(ticks, 0.5, 0.9).some((o) => o.confidence === 'calibrate')).toBe(false);
+    expect(after(ticks, 1.2, 4).every((o) => o.confidence === 'calibrate')).toBe(true);
+    expect(after(ticks, 4.1).every((o) => o.confidence === 'good')).toBe(true);
+  });
+
+  it('a figure-eight that the platform calibrates during clears it, and the corrected field is taken at once', () => {
+    // An offset riding on the phone until the platform's fit converges at 6 s, mid-figure-eight.
+    const fig8 = (t: number) => (t >= 2 && t < 8 ? 1 : 0);
+    const sim = createSim(
+      CAIRO,
+      {
+        // Whole cycles (1 Hz and 2 Hz over 6 s), so the motion ends where it began, without a jump.
+        heading: (t) => 140 + fig8(t) * 70 * Math.sin(2 * Math.PI * (t - 2)),
+        pitch: (t) => fig8(t) * 50 * Math.sin(4 * Math.PI * (t - 2)),
+        roll: (t) => fig8(t) * 40 * Math.sin(2 * Math.PI * (t - 2)),
+        deviceOffset: (t) => (t < 6 ? [18, -10, 6] : [0, 0, 0]),
+        magAccuracy: accuracy([[0, 0], [6, 3]]),
+      },
+      ANDROID,
+    );
     const ticks = run(sim, ANDROID, 12);
-    expect(after(ticks, 8).every((o) => o.confidence === 'calibrate')).toBe(true);
+    expect(after(ticks, 1.2, 6).every((o) => o.confidence === 'calibrate')).toBe(true);
+    expect(after(ticks, 6.1).some((o) => o.confidence !== 'good')).toBe(false);
+    expect(maxError(ticks, sim, 8.5)).toBeLessThan(3);
+  });
+
+  it('a magnet that leaves never latches anything', () => {
+    const sim = createSim(CAIRO, { heading: (t) => (t < 10 ? 20 * t : 200), deviceOffset: (t) => (t < 10 ? [18, -10, 6] : [0, 0, 0]) }, ANDROID);
+    const ticks = run(sim, ANDROID, 25);
+    expect(after(ticks, 0).some((o) => o.confidence === 'calibrate')).toBe(false);
+    expect(after(ticks, 20).every((o) => o.confidence === 'good')).toBe(true);
+  });
+
+  it('carrying the phone past furniture (the field changes with place) is never calibration', () => {
+    const sim = createSim(
+      CAIRO,
+      {
+        heading: (t) => 90 * Math.sin(t / 3),
+        pitch: (t) => 20 * Math.sin(t / 2),
+        external: (t) => [12 * Math.sin(t / 1.7), 9 * Math.cos(t / 2.3), 12 * Math.sin(t / 1.3)],
+      },
+      ANDROID,
+    );
+    const ticks = run(sim, ANDROID, 25);
+    expect(after(ticks, 0).some((o) => o.confidence === 'calibrate')).toBe(false);
+  });
+
+  it('a phone whose accuracy is stuck low is not believed once its field has matched the model for 10 s', () => {
+    const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: () => 0 }, ANDROID);
+    const ticks = run(sim, ANDROID, 14);
+    expect(after(ticks, 1.2, 10).every((o) => o.confidence === 'calibrate')).toBe(true);
+    expect(after(ticks, 10.8).every((o) => o.confidence === 'good')).toBe(true);
+    expect(after(ticks, 11).every((o) => o.debug.calOverridden)).toBe(true);
+  });
+
+  it('…but it is believed while the field is bent', () => {
+    const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: () => 0, external: () => [8, 6.7, -37.1] }, ANDROID);
+    const ticks = run(sim, ANDROID, 14);
+    expect(after(ticks, 1.2).every((o) => o.confidence === 'calibrate')).toBe(true);
+  });
+
+  it('iOS: an uncalibrated magnetometer sends no field, yet the screen is told to calibrate', () => {
+    const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: accuracy([[0, 0], [4, 3]]) }, IOS);
+    const ticks = run(sim, IOS, 6);
+    const early = after(ticks, 1.2, 4);
+    expect(early.every((o) => o.confidence === 'calibrate' && !o.ready)).toBe(true);
+    // Calibrated: the field arrives, north is found, the heading appears.
+    expect(after(ticks, 4.5).every((o) => o.ready && o.confidence === 'good')).toBe(true);
+    expect(maxError(ticks, sim, 4.5)).toBeLessThan(3);
   });
 
   it('a platform recalibration step is followed at once without a warning', () => {
@@ -258,18 +335,6 @@ describe('calibration', () => {
     const ticks = run(sim, ANDROID, 8);
     expect(after(ticks, 4).some((o) => o.confidence === 'interference')).toBe(false);
     expect(maxError(ticks, sim, 5)).toBeLessThan(3);
-  });
-
-  it('iOS: an uncalibrated magnetometer asks for calibration', () => {
-    const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: () => 0 }, IOS);
-    const ticks = run(sim, IOS, 3);
-    expect(after(ticks, 1.5).every((o) => o.confidence === 'calibrate')).toBe(true);
-  });
-
-  it("Android's accuracy alone does not (some phones report 0 forever)", () => {
-    const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: () => 0 }, ANDROID);
-    const ticks = run(sim, ANDROID, 3);
-    expect(after(ticks, 1.5).every((o) => o.confidence === 'good')).toBe(true);
   });
 });
 
