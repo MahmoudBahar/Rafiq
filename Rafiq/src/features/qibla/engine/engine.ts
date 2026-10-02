@@ -33,12 +33,12 @@ const GRAVITY = 9.80665;
  * changing while the phone did not turn. Out of posture, the gyroscope
  * carries the heading and the magnetometer is neither followed nor judged.
  *
- * Flat: the screen within 50° of facing up; it leaves at 60°, the same
+ * Flat: the screen within 35° of facing up; it leaves at 45°, the same
  * thresholds at which the dial asks to lay the phone down. Camera: the
  * mirror image, upright beyond 40°, left below 30°.
  */
 export const POSTURE = {
-  flat: { leaveDeg: 60, returnDeg: 50 },
+  flat: { leaveDeg: 45, returnDeg: 35 },
   camera: { leaveDeg: 30, returnDeg: 40 },
 } as const;
 /**

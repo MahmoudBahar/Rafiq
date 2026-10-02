@@ -7,6 +7,7 @@ export { normalizeDeg, unwrap, wrap180 } from './angles';
 export { LOCK_ENTER_DEG, LOCK_LEAVE_DEG, NEAR_DEG, bandFor, type Band } from './band';
 export { foldConfidence, type Confidence } from './confidence';
 export {
+  POSTURE,
   createQiblaEngine,
   type EngineDebug,
   type EngineOutput,

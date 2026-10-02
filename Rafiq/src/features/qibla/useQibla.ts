@@ -15,6 +15,7 @@ import RafiqMotion from '../../../modules/rafiq-motion';
 import { lock } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import {
+  POSTURE,
   bandFor,
   createQiblaEngine,
   earthField,
@@ -274,12 +275,17 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     },
   );
 
-  // Posture: the dial wants the phone flat, the camera wants it up.
+  // Posture: the dial wants the phone flat, the camera wants it up. The same thresholds the
+  // engine stops and starts listening to the magnetometer at (`POSTURE`), so the two move together.
+  const { flat: FLAT, camera: CAMERA } = POSTURE;
   useAnimatedReaction(
     () => pitch.get(),
     (p) => {
       const was = raisedSv.get();
-      const is = mode === 'flat' ? (was ? p > 50 : p > 60) : was ? p < 40 : p < 30;
+      const is =
+        mode === 'flat'
+          ? p > (was ? FLAT.returnDeg : FLAT.leaveDeg)
+          : p < (was ? CAMERA.returnDeg : CAMERA.leaveDeg);
       if (is !== was) {
         raisedSv.set(is);
         raisedT.set(reduced ? (is ? 1 : 0) : withSpring(is ? 1 : 0, is ? ROLL_UP : UNROLL));
