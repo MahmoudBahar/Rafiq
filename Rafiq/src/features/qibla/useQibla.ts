@@ -84,6 +84,14 @@ export interface Qibla {
   confidence: Confidence;
   /** A heading has arrived since the sensors started; before that the turn numbers mean nothing. */
   ready: boolean;
+  /**
+   * Counts sensor sessions (bumped when one stops). The screen keys the dial and the edge glow
+   * on it, so each session draws on fresh views. Reanimated (4.5, with its default
+   * FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS) copies settled animated values back into React
+   * every 500 ms; sent to the background mid-fade, the lamp came back drawn from a stale lit
+   * copy while its value was 0, and stayed lit until the next lock.
+   */
+  session: number;
   /** The phone is raised past the angle this mode makes sense at. */
   raised: boolean;
   values: QiblaValues;
@@ -121,6 +129,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const bandSv = useSharedValue<Band>('far');
   const shownTurn = useSharedValue(-1);
   const raisedSv = useSharedValue(false);
+  const trustedSv = useSharedValue(false);
   useEffect(() => {
     bearingSv.set(bearing ?? 0);
   }, [bearing, bearingSv]);
@@ -129,6 +138,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const [turn, setTurn] = useState({ deg: 0, right: true });
   const [raised, setRaised] = useState(false);
   const [ready, setReady] = useState(false);
+  const [session, setSession] = useState(0);
   // What this phone has never changes: asked once.
   const available = useMemo(() => {
     const a = RafiqMotion?.getAvailability();
@@ -230,16 +240,16 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       // The next start is an opening again, so it is silent again.
       primed.set(false);
       setSensed('settling');
-      // A lock belongs to the session that found it. Sent to the background on the Qibla and
-      // turned away meanwhile, the app must not come back with the lamp still lit: the band
-      // starts over from far and is judged afresh from the first new heading (silently, as
-      // the cue is not armed yet).
+      // A lock belongs to the session that found it: the band starts over from far and is
+      // judged afresh from the first new heading (silently, as the cue is not armed yet).
       bandSv.set('far');
       shownTurn.set(-1);
       lockT.set(0);
       edgeT.set(0);
       setBand('far');
       setTurn({ deg: 0, right: true });
+      // Fresh views for the next session (see `session`).
+      setSession((n) => n + 1);
     };
   }, [live, available, heading, target, pitch, haveTarget, readyT, primed, bandSv, shownTurn, lockT, edgeT]);
 
@@ -260,7 +270,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
   // The lamp, the halo and the lock cue are for a compass that can be believed: within 3° of
   // the Qibla on a disturbed or uncalibrated compass, nothing lights up (the hint says why).
-  const trustedSv = useSharedValue(false);
   useEffect(() => {
     trustedSv.set(confidence === 'good');
   }, [confidence, trustedSv]);
@@ -344,6 +353,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     turnRight: turn.right,
     confidence,
     ready,
+    session,
     raised,
     values: { heading, delta, pitch, lockT, edgeT, raisedT, readyT },
     debug,

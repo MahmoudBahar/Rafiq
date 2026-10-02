@@ -83,7 +83,7 @@ export default function QiblaScreen() {
         accessibilityRole="image"
         accessibilityLabel={`بوصلة القبلة. ${hintFor(qibla).spoken}`}
       >
-        <CompassDial values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} raised={qibla.raised} />
+        <CompassDial key={qibla.session} values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} raised={qibla.raised} />
       </View>
 
       <View style={[styles.hint, { top: horizon - HINT_H, height: HINT_H }]} pointerEvents="none">
@@ -118,7 +118,7 @@ export default function QiblaScreen() {
         )}
         {qibla.debug ? <DevReadout d={qibla.debug} /> : null}
       </View>
-      <LockGlow t={qibla.values.edgeT} />
+      <LockGlow key={qibla.session} t={qibla.values.edgeT} />
     </TabScene>
   );
 }
