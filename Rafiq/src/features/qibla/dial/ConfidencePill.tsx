@@ -1,4 +1,7 @@
-import { StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
+import Animated, { FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useMotion } from '@/shared/lib/motion';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
 import type { Confidence } from '../engine';
@@ -17,16 +20,31 @@ const LABEL: Record<Confidence, { text: string; tone: keyof typeof TRUST }> = {
   'no-location': { text: 'بلا موقع', tone: 'bad' },
 };
 
+/** How long a change of state takes: the dot blends, the new words fade in, the pill eases to its new width. */
+const CHANGE_MS = 220;
+
 export function ConfidencePill({ confidence }: { confidence: Confidence }) {
   const { c } = useTheme();
+  const { reduced } = useMotion();
   const { text, tone } = LABEL[confidence];
+  const color = useSharedValue<string>(TRUST[tone]);
+  useEffect(() => {
+    color.set(reduced ? TRUST[tone] : withTiming(TRUST[tone], { duration: CHANGE_MS }));
+  }, [tone, reduced, color]);
+  const dot = useAnimatedStyle(() => ({ backgroundColor: color.get() }));
   return (
-    <View style={[styles.pill, { backgroundColor: c.selbg, borderColor: c.selbr }]} accessibilityRole="text">
-      <View style={[styles.dot, { backgroundColor: TRUST[tone] }]} />
-      <Text size={11.5} weight="medium" color={c.ts}>
-        {text}
-      </Text>
-    </View>
+    <Animated.View
+      layout={reduced ? undefined : LinearTransition.duration(CHANGE_MS)}
+      style={[styles.pill, { backgroundColor: c.selbg, borderColor: c.selbr }]}
+      accessibilityRole="text"
+    >
+      <Animated.View style={[styles.dot, dot]} />
+      <Animated.View key={confidence} entering={reduced ? undefined : FadeIn.duration(CHANGE_MS)}>
+        <Text size={11.5} weight="medium" color={c.ts}>
+          {text}
+        </Text>
+      </Animated.View>
+    </Animated.View>
   );
 }
 

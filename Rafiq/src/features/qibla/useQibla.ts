@@ -49,6 +49,8 @@ const ARM_MS = 500;
  */
 const ROLL_UP = { stiffness: 49, damping: 14, mass: 1 };
 const UNROLL = { stiffness: 81, damping: 18, mass: 1 };
+/** The dial fades in over this long once the first heading arrives. */
+const READY_FADE_MS = 400;
 /** How often the dev readout refreshes. */
 const DEBUG_TICK_MS = 250;
 
@@ -65,6 +67,8 @@ export interface QiblaValues {
   edgeT: SharedValue<number>;
   /** 0..1, sprung: the phone is held up instead of flat (the mat rolls up and the screen asks to lay it down). */
   raisedT: SharedValue<number>;
+  /** 0 until the first heading arrives, then fades to 1: until then the dial knows nothing and says so by staying faint. */
+  readyT: SharedValue<number>;
 }
 
 /** The engine's raw numbers for a development readout; null in release builds. */
@@ -78,6 +82,8 @@ export interface Qibla {
   turnDeg: number;
   turnRight: boolean;
   confidence: Confidence;
+  /** A heading has arrived since the sensors started; before that the turn numbers mean nothing. */
+  ready: boolean;
   /** The phone is raised past the angle this mode makes sense at. */
   raised: boolean;
   values: QiblaValues;
@@ -106,6 +112,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const lockT = useSharedValue(0);
   const edgeT = useSharedValue(0);
   const raisedT = useSharedValue(0);
+  const readyT = useSharedValue(0);
   const bearingSv = useSharedValue(bearing ?? 0);
   const haveTarget = useSharedValue(false);
   /** The compass has read good for a moment since the sensors started: only then does a lock get its cue. */
@@ -117,6 +124,7 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const [band, setBand] = useState<Band>('far');
   const [turn, setTurn] = useState({ deg: 0, right: true });
   const [raised, setRaised] = useState(false);
+  const [ready, setReady] = useState(false);
   // What this phone has never changes: asked once.
   const available = useMemo(() => {
     const a = RafiqMotion?.getAvailability();
@@ -128,6 +136,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 
   // Read by the sensor listener through refs, so neither change tears the sensors down.
   const modeRef = useRef(mode);
+  const reducedRef = useRef(reduced);
+  useEffect(() => {
+    reducedRef.current = reduced;
+  }, [reduced]);
   const engineRef = useRef<QiblaEngine | null>(null);
   useEffect(() => {
     modeRef.current = mode;
@@ -187,6 +199,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
           started = true;
           heading.set(next);
           haveTarget.set(true);
+          readyT.set(reducedRef.current ? 1 : withTiming(1, { duration: READY_FADE_MS }));
+          setReady(true);
         }
       }
       if (out.confidence !== shown) {
@@ -207,11 +221,13 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       if (arm) clearTimeout(arm);
       engineRef.current = null;
       haveTarget.set(false);
+      readyT.set(0);
+      setReady(false);
       // The next start is an opening again, so it is silent again.
       primed.set(false);
       setSensed('settling');
     };
-  }, [live, available, heading, target, pitch, haveTarget, primed]);
+  }, [live, available, heading, target, pitch, haveTarget, readyT, primed]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const easeMs = reduced ? REDUCED_EASE_MS : EASE_MS;
@@ -227,6 +243,13 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   useEffect(() => {
     frame.setActive(live);
   }, [frame, live]);
+
+  // The lamp, the halo and the lock cue are for a compass that can be believed: within 3° of
+  // the Qibla on a disturbed or uncalibrated compass, nothing lights up (the hint says why).
+  const trustedSv = useSharedValue(false);
+  useEffect(() => {
+    trustedSv.set(confidence === 'good');
+  }, [confidence, trustedSv]);
 
   // The lock cue also tells the engine: the haptic actuator is a magnet, and the
   // magnetometer is ignored while it runs.
@@ -253,10 +276,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       const next = bandFor(d, prev);
       if (next !== prev) {
         bandSv.set(next);
-        lockT.set(withTiming(next === 'locked' ? 1 : 0, { duration: LOCK_FADE_MS }));
         scheduleOnRN(setBand, next);
-        // No cue while the phone is held up: the mat is rolled away and the screen is asking to lay it down.
-        if (next === 'locked' && primed.get() && !raisedSv.get()) {
+        // No cue while the phone is held up (the mat is rolled away and the screen is asking to lay
+        // it down), nor on a compass that cannot be believed.
+        if (next === 'locked' && primed.get() && !raisedSv.get() && trustedSv.get()) {
           scheduleOnRN(ring);
           edgeT.set(
             withSequence(
@@ -272,6 +295,14 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         shownTurn.set(code);
         scheduleOnRN(setTurn, { deg, right: d >= 0 });
       }
+    },
+  );
+
+  // The mat lights while locked on a trusted compass, and goes out when either stops.
+  useAnimatedReaction(
+    () => bandSv.get() === 'locked' && trustedSv.get(),
+    (lit, was) => {
+      if (lit !== was) lockT.set(withTiming(lit ? 1 : 0, { duration: LOCK_FADE_MS }));
     },
   );
 
@@ -301,8 +332,9 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     turnDeg: turn.deg,
     turnRight: turn.right,
     confidence,
+    ready,
     raised,
-    values: { heading, delta, pitch, lockT, edgeT, raisedT },
+    values: { heading, delta, pitch, lockT, edgeT, raisedT, readyT },
     debug,
   };
 }

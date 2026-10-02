@@ -146,7 +146,11 @@ First match wins:
 - A coordinates change swaps the field model without restarting the sensors. A restart creates a new engine, because the gyro frame is new.
 - The lock cue is armed 0.5 s after the first `good`, so an opening never rings it.
 - **Raised** (pitch above 45°, flat again below 35°): `raisedT` springs 0→1, critically damped. The dial rolls the mat up from its tassels toward the niche (`PrayerMat`, a clip plus a gradient roll), dims and draws back the ring, and shows `LayFlatCoach`: a ghost phone lying down on a floor line. The words «ضع الهاتف مستويًا» are the hint line's. Laid flat, it unrolls. No lock cue or edge bloom fires while raised.
-- The UI's types (`Qibla`, `QiblaValues`, `Confidence`) are unchanged. `QiblaDebug` is now the engine's diagnostics, shown on the ground band in development builds.
+- **Before the first heading** the dial stays at 30 % and the hint says «جارٍ تحديد الاتجاه…» (`ready`, `readyT`); with the first heading it fades in already pointing the right way.
+- **The lamp, the halo and the lock cue** need the compass to be `good`. Within 3° of the Qibla on a disturbed or uncalibrated compass, nothing lights up.
+- **Changes of state are eased**: the card rises in, the dial dims over 250 ms, and the pill blends its dot, fades in its words and eases its width. All of it is off under reduced motion.
+- **Screen readers**: the dial and the hint carry spoken labels (`hint.ts`, with Arabic number agreement: «٣ درجات», «١٢ درجة»). `useQiblaAnnouncer` speaks a new state once it has held for 400 ms, including the lock «أنت في اتجاه القبلة». While turning, it refreshes the angle left at most every 2.5 s and only after a 10° change.
+- The UI's types (`Qibla`, `QiblaValues`, `Confidence`) are unchanged apart from `Qibla.ready` and `QiblaValues.raisedT` / `readyT`. `QiblaDebug` is now the engine's diagnostics, shown on the ground band in development builds.
 
 ## 6. Tests
 `npm test` runs the vitest suite: 69 tests. The engine scenarios use `engine/testing/sim.ts`, a physics simulator. It models:

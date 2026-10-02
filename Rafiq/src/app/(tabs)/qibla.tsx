@@ -2,6 +2,7 @@ import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Text as RNText, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocate } from '@/features/prayer/useLocate';
 import { StatusCard } from '@/features/qibla/calibration/StatusCard';
@@ -9,8 +10,11 @@ import { CompassDial } from '@/features/qibla/dial/CompassDial';
 import { ConfidencePill } from '@/features/qibla/dial/ConfidencePill';
 import { LockGlow } from '@/features/qibla/dial/LockGlow';
 import { TurnHint } from '@/features/qibla/dial/TurnHint';
+import { hintFor } from '@/features/qibla/hint';
 import { useQibla, type QiblaDebug } from '@/features/qibla/useQibla';
+import { useQiblaAnnouncer } from '@/features/qibla/useQiblaAnnouncer';
 import { useQiblaCoords } from '@/features/qibla/useQiblaCoords';
+import { useMotion } from '@/shared/lib/motion';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { PressScale } from '@/shared/ui/PressScale';
@@ -38,6 +42,8 @@ export default function QiblaScreen() {
   const { coords, label, source } = useQiblaCoords();
   const qibla = useQibla(coords, 'flat', focused);
   const { locating, locate } = useLocate();
+  const m = useMotion();
+  useQiblaAnnouncer(qibla, focused);
 
   const window = useWindowDimensions();
   const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
@@ -70,7 +76,13 @@ export default function QiblaScreen() {
         <ConfidencePill confidence={qibla.confidence} />
       </View>
 
-      <View style={[styles.dial, { top: dialTop, height: horizon - dialTop - HINT_H }]} pointerEvents="none">
+      <View
+        style={[styles.dial, { top: dialTop, height: horizon - dialTop - HINT_H }]}
+        pointerEvents="none"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`بوصلة القبلة. ${hintFor(qibla).spoken}`}
+      >
         <CompassDial values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} raised={qibla.raised} />
       </View>
 
@@ -79,15 +91,18 @@ export default function QiblaScreen() {
       </View>
 
       <View style={[styles.ground, { top: horizon, backgroundColor: c.bg }]}>
+        {/* A card rises in when the compass needs the user's hand; the place line fades back after. */}
         {cardShowing ? (
-          <StatusCard
-            confidence={qibla.confidence}
-            locating={locating}
-            onLocate={() => void locate()}
-            onChooseCity={() => router.push('/settings')}
-          />
+          <Animated.View key={qibla.confidence} entering={m.fadeInUp(0, 280)}>
+            <StatusCard
+              confidence={qibla.confidence}
+              locating={locating}
+              onLocate={() => void locate()}
+              onChooseCity={() => router.push('/settings')}
+            />
+          </Animated.View>
         ) : (
-          <View style={styles.place}>
+          <Animated.View key="place" entering={m.fadeIn(0, 220)} style={styles.place}>
             <Text size={12.5} color={c.ts}>
               {source === 'fix' ? `من موقعك الحالي${label ? ` (${label})` : ''}` : label ? `من مدينة ${label}` : ''}
             </Text>
@@ -99,7 +114,7 @@ export default function QiblaScreen() {
                 {locating ? 'جارٍ التحديد…' : 'تحديد موقعي'}
               </Text>
             </PressScale>
-          </View>
+          </Animated.View>
         )}
         {qibla.debug ? <DevReadout d={qibla.debug} /> : null}
       </View>

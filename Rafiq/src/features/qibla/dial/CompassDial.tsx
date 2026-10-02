@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useMotion } from '@/shared/lib/motion';
 import Svg, { Line, Rect } from 'react-native-svg';
 import { physicalLeft } from '@/shared/lib/rtl';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -23,6 +25,11 @@ interface CompassDialProps {
 const POINTS = ['ش', 'ق', 'ج', 'غ'] as const;
 const TICKS = 72;
 const KAABA = 18;
+/** Behind a card the dial dims to this… */
+const DIMMED = 0.45;
+/** …and before the first heading it is this faint: it does not yet know which way it points. */
+const UNREADY = 0.3;
+const DIM_MS = 250;
 
 /**
  * The compass hero. The world (compass points and ticks) turns against the
@@ -37,7 +44,12 @@ const KAABA = 18;
  */
 export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDialProps) {
   const { c } = useTheme();
-  const { heading, lockT, raisedT } = values;
+  const { heading, lockT, raisedT, readyT } = values;
+  const { reduced } = useMotion();
+  const dimT = useSharedValue(dimmed ? 1 : 0);
+  useEffect(() => {
+    dimT.set(reduced ? (dimmed ? 1 : 0) : withTiming(dimmed ? 1 : 0, { duration: DIM_MS }));
+  }, [dimmed, reduced, dimT]);
   const r = size / 2;
   const matW = size * 0.4;
   const b = bearing ?? 0;
@@ -46,10 +58,14 @@ export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDi
     opacity: 1 - 0.8 * Math.min(1, Math.max(0, raisedT.get())),
     transform: [{ rotate: `${-heading.get()}deg` }],
   }));
-  // Raised: the whole dial draws back a little as the mat winds up.
+  // Raised, the whole dial draws back a little as the mat winds up; behind a card it dims, and before
+  // the first heading it stays faint.
   const recede = useAnimatedStyle(() => {
     const k = Math.min(1, Math.max(0, raisedT.get()));
-    return { transform: [{ translateY: -14 * k * (size / 196) }, { scale: 1 - 0.08 * k }] };
+    return {
+      opacity: (1 - (1 - DIMMED) * dimT.get()) * (UNREADY + (1 - UNREADY) * readyT.get()),
+      transform: [{ translateY: -14 * k * (size / 196) }, { scale: 1 - 0.08 * k }],
+    };
   });
   // The letters ride the ring but stay upright: they undo the ring's turn.
   const upright = useAnimatedStyle(() => ({ transform: [{ rotate: `${heading.get()}deg` }] }));
@@ -60,7 +76,7 @@ export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDi
 
   return (
     <View style={[{ width: size, height: size }, styles.center]}>
-      <Animated.View style={[{ width: size, height: size, opacity: dimmed ? 0.45 : 1 }, styles.center, recede]}>
+      <Animated.View style={[{ width: size, height: size }, styles.center, recede]}>
         {/* The lock's halo around the whole dial. */}
         <Animated.View
           pointerEvents="none"
