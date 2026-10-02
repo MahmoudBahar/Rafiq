@@ -117,6 +117,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const haveTarget = useSharedValue(false);
   /** The compass has read good for a moment since the sensors started: only then does a lock get its cue. */
   const primed = useSharedValue(false);
+  // UI-thread bookkeeping for the band, the turn number and the posture.
+  const bandSv = useSharedValue<Band>('far');
+  const shownTurn = useSharedValue(-1);
+  const raisedSv = useSharedValue(false);
   useEffect(() => {
     bearingSv.set(bearing ?? 0);
   }, [bearing, bearingSv]);
@@ -226,8 +230,18 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       // The next start is an opening again, so it is silent again.
       primed.set(false);
       setSensed('settling');
+      // A lock belongs to the session that found it. Sent to the background on the Qibla and
+      // turned away meanwhile, the app must not come back with the lamp still lit: the band
+      // starts over from far and is judged afresh from the first new heading (silently, as
+      // the cue is not armed yet).
+      bandSv.set('far');
+      shownTurn.set(-1);
+      lockT.set(0);
+      edgeT.set(0);
+      setBand('far');
+      setTurn({ deg: 0, right: true });
     };
-  }, [live, available, heading, target, pitch, haveTarget, readyT, primed]);
+  }, [live, available, heading, target, pitch, haveTarget, readyT, primed, bandSv, shownTurn, lockT, edgeT]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const easeMs = reduced ? REDUCED_EASE_MS : EASE_MS;
@@ -264,9 +278,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   // Band with hysteresis, the lock cue, and the turn hint's number, from the UI thread.
   // The cue is for turning into the lock: a page that opens already on the
   // Qibla shows it without a sound, like the wheel, which is silent on open.
-  const bandSv = useSharedValue<Band>('far');
-  const shownTurn = useSharedValue(-1);
-  const raisedSv = useSharedValue(false);
   useAnimatedReaction(
     // Nothing to judge before the first heading: `delta` starts at 0, which is not a lock.
     () => (haveTarget.get() ? delta.get() : null),
