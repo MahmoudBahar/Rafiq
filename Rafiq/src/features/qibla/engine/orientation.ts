@@ -5,6 +5,15 @@ const UP: Vec3 = [0, 0, 1];
 
 /** How quickly the tilt is pulled onto the platform's gravity. The platform's own fusion already removed the hand's acceleration, so this only has to hide its latency against the gyro. */
 export const TILT_TAU_S = 0.1;
+/**
+ * …and onto a raw accelerometer, on a phone with a gyroscope but no fused gravity. The
+ * accelerometer is only gravity on average: a sideways sway of 2.5 m/s² barely changes its
+ * magnitude (9.8 → 10.1), so no reject rule catches it, yet it tilts the reading by 14°. The
+ * gyroscope carries the tilt through such motion and the accelerometer corrects it slowly.
+ */
+export const RAW_ACCEL_TILT_TAU_S = 1.5;
+/** For this long after the first reading the tilt is pulled in fast whatever the source (an AHRS's initial alignment): a first sample taken mid-shove must not take seconds to wash out. */
+export const ALIGN_S = 1;
 /** A gyro silence longer than this is a gap: whatever the phone turned meanwhile is unknown. */
 export const GYRO_GAP_S = 0.1;
 /** Within this, a reading between two gyro samples is brought forward with the last rate. */
@@ -41,10 +50,11 @@ export interface Orientation {
  * reference is therefore the gyroscope's alone, never the platform's yaw,
  * and where north lies in this frame is the north filter's business.
  */
-export function createOrientation(): Orientation {
+export function createOrientation(tiltTauS: number = TILT_TAU_S): Orientation {
   let q: Quat | null = null;
   let lastGyro: { t: number; w: Vec3 } | null = null;
   let lastUpT: number | null = null;
+  let firstUpT: number | null = null;
   let gaps = 0;
   let residual = 0;
 
@@ -81,6 +91,7 @@ export function createOrientation(): Orientation {
         // First tilt: level the frame, yaw arbitrary (the north filter finds north).
         q = qBetween(measured, UP);
         lastUpT = t;
+        firstUpT = t;
         return;
       }
       const now = extrapolated(t) ?? q;
@@ -90,7 +101,8 @@ export function createOrientation(): Orientation {
       residual += 0.05 * (angle * RAD - residual);
       const dt = lastUpT === null ? 0 : Math.max(0, Math.min(0.5, t - lastUpT));
       lastUpT = t;
-      const k = 1 - Math.exp(-dt / TILT_TAU_S);
+      const aligning = firstUpT !== null && t - firstUpT < ALIGN_S;
+      const k = 1 - Math.exp(-dt / (aligning ? Math.min(tiltTauS, TILT_TAU_S) : tiltTauS));
       if (angle < 1e-9 || k <= 0) return;
       // A fraction k of the correction, about the same horizontal axis.
       const s = Math.sin(angle / 2);
@@ -124,6 +136,7 @@ export function createOrientation(): Orientation {
       q = null;
       lastGyro = null;
       lastUpT = null;
+      firstUpT = null;
       gaps = 0;
       residual = 0;
     },

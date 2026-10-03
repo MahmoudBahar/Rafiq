@@ -52,3 +52,16 @@ export function poseOf(q: Quat): Pose {
     pitch: Math.asin(clamp(top[2], -1, 1)) * RAD,
   };
 }
+
+/**
+ * Snapping an angle to quarter turns with hysteresis, the way a phone's screen rotation does:
+ * from the position `held` (a multiple of 90°, unwrapped), the angle `a` moves it on only once it
+ * is more than `hysteresisDeg` past the halfway point (45°). The result stays unwrapped, so easing
+ * from `held` to it always turns the short way. Runs on the UI thread.
+ */
+export function snapQuarter(held: number, a: number, hysteresisDeg: number): number {
+  'worklet';
+  const d = ((((a - held) % 360) + 540) % 360) - 180;
+  if (Math.abs(d) <= 45 + hysteresisDeg) return held;
+  return held + Math.round(d / 90) * 90;
+}

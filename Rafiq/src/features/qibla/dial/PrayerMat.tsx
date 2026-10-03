@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '@/shared/theme/useTheme';
+import { repainted } from '../repaint';
 
 /** The mat's drawing box; everything inside is placed in these units. */
 export const MAT_W = 100;
@@ -22,6 +23,8 @@ interface PrayerMatProps {
   lockT: SharedValue<number>;
   /** 0..1: the rug rolls up from its tassels toward the niche (the phone is held up). */
   rollT: SharedValue<number>;
+  /** Nudged when the sensors start, so these styles push fresh props (see repaint.ts). */
+  repaint: SharedValue<number>;
 }
 
 /**
@@ -31,15 +34,15 @@ interface PrayerMatProps {
  * re-rasterises the whole canvas on the CPU). The lamp's glow is a plain
  * view with a shadow, for the same reason.
  */
-export function PrayerMat({ width, lockT, rollT }: PrayerMatProps) {
+export function PrayerMat({ width, lockT, rollT, repaint }: PrayerMatProps) {
   const { c } = useTheme();
   const height = (width * MAT_H) / MAT_W;
-  const lit = useAnimatedStyle(() => ({ opacity: lockT.get() }));
+  const lit = useAnimatedStyle(() => ({ opacity: repainted(lockT.get(), repaint.get()) }));
   // Rolling up: the flat part is cut back from the tassel end (the drawing itself never scales),
   // and a roll rides the cut edge, thickening as more rug winds onto it.
   const flat = useAnimatedStyle(() => {
     const k = Math.min(1, Math.max(0, rollT.get()));
-    return { height: height * (1 - (1 - ROLLED_KEEP) * k) };
+    return { height: repainted(height * (1 - (1 - ROLLED_KEEP) * k), repaint.get()) };
   });
   const roll = useAnimatedStyle(() => {
     const k = Math.min(1, Math.max(0, rollT.get()));
@@ -49,10 +52,13 @@ export function PrayerMat({ width, lockT, rollT }: PrayerMatProps) {
       height: thick,
       borderRadius: thick / 2,
       top: height * (1 - (1 - ROLLED_KEEP) * k) - thick / 2,
-      opacity: appear * appear * (3 - 2 * appear),
+      opacity: repainted(appear * appear * (3 - 2 * appear), repaint.get()),
     };
   });
-  const glow = useAnimatedStyle(() => ({ opacity: lockT.get() * 0.9, transform: [{ scale: 0.6 + 0.4 * lockT.get() }] }));
+  const glow = useAnimatedStyle(() => ({
+    opacity: repainted(lockT.get() * 0.9, repaint.get()),
+    transform: [{ scale: 0.6 + 0.4 * lockT.get() }],
+  }));
   const lampSize = width * 0.22;
   return (
     <View style={{ width, height }}>

@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import kotlin.math.abs
 
 /** Gravity and the gyroscope at 100 Hz: under Android 12's 200 Hz cap, so no HIGH_SAMPLING_RATE_SENSORS. */
 private const val FAST_PERIOD_US = 10_000
@@ -19,8 +18,13 @@ private const val MAG_PERIOD_US = 20_000
 private const val FLUSH_MS = 16L
 /** A stream never holds more than this much unsent (seconds); older samples are dropped and counted. */
 private const val MAX_QUEUED_S = 1.0
-/** A bias estimate moving by more than this (µT) on any axis is a recalibration. */
-private const val BIAS_STEP_UT = 0.5f
+/**
+ * A bias estimate that jumps by more than this (µT, as a vector) between two consecutive estimates
+ * is a recalibration. Slow creep is not: it moves north by well under a degree, needs no hand-over,
+ * and counted as one it would open the engine's recalibration window while something magnetic
+ * is being absorbed. 2 µT against Cairo's 31 µT horizontal field is ~4° of north.
+ */
+private const val BIAS_STEP_UT = 2f
 
 /**
  * Streams the three sensors the Qibla engine needs, unprocessed and
@@ -176,12 +180,15 @@ private class Session(
         magAccuracy = event.accuracy
       }
       Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> if (v.size >= 6) {
-        // Measured from the last counted estimate, so a slow creep is counted once it adds up.
+        // Measured against the previous estimate, not the last counted one: only a sudden jump counts.
         val prev = lastBias
-        val stepped = prev != null &&
-          (abs(v[3] - prev[0]) > BIAS_STEP_UT || abs(v[4] - prev[1]) > BIAS_STEP_UT || abs(v[5] - prev[2]) > BIAS_STEP_UT)
-        if (stepped) biasEpoch++
-        if (prev == null || stepped) lastBias = floatArrayOf(v[3], v[4], v[5])
+        if (prev != null) {
+          val dx = v[3] - prev[0]
+          val dy = v[4] - prev[1]
+          val dz = v[5] - prev[2]
+          if (dx * dx + dy * dy + dz * dz > BIAS_STEP_UT * BIAS_STEP_UT) biasEpoch++
+        }
+        lastBias = floatArrayOf(v[3], v[4], v[5])
       }
     }
   }

@@ -33,6 +33,12 @@ export interface Sample {
 export const WATERMARK_MARGIN_S = 0.02;
 /** A stream silent this long behind the others no longer holds them back. */
 export const STALL_S = 0.25;
+/**
+ * A sample stamped this far ahead of every other stream and of its own stream's last sample is a
+ * glitched timestamp, not a measurement: taken, it would hold its stream's clock in the future and
+ * every later sample of that stream would be rejected as a reversal.
+ */
+export const MAX_LEAD_S = 1;
 
 // At one timestamp (iOS delivers all three together): turn first, then
 // correct the tilt, then measure north with the corrected attitude.
@@ -45,6 +51,8 @@ export interface StreamMerger {
   pending(kind: StreamKind): readonly Sample[];
   /** Samples dropped as non-finite, duplicate or out of order (diagnostics). */
   readonly rejected: number;
+  /** The newest accepted sample time of any stream (-Infinity before any). */
+  readonly newest: number;
   reset(): void;
 }
 
@@ -65,6 +73,13 @@ export function createStreamMerger(kinds: readonly StreamKind[]): StreamMerger {
   let first = Infinity;
   for (const k of kinds) queues.set(k, []);
 
+  /** The newest time any other stream has reached, or undefined while none has spoken. */
+  function newestOther(kind: StreamKind): number | undefined {
+    let n: number | undefined;
+    for (const [k, t] of lastT) if (k !== kind && (n === undefined || t > n)) n = t;
+    return n;
+  }
+
   function take(kind: StreamKind, flat: number[] | undefined) {
     const q = queues.get(kind);
     if (!q || !flat) return;
@@ -73,6 +88,14 @@ export function createStreamMerger(kinds: readonly StreamKind[]): StreamMerger {
       const v: Vec3 = [flat[i + 1], flat[i + 2], flat[i + 3]];
       const prev = lastT.get(kind) ?? -Infinity;
       if (!Number.isFinite(t) || !isFiniteVec(v) || t <= prev || t <= released) {
+        rejected++;
+        continue;
+      }
+      // Far ahead of everything, its own stream included: a glitch. (A stream resuming after a
+      // silence is ahead of its own last sample but in line with the others; a lone stream running
+      // on while the others are silent is in line with its own last sample.)
+      const others = newestOther(kind);
+      if (others !== undefined && t - others > MAX_LEAD_S && t - prev > MAX_LEAD_S) {
         rejected++;
         continue;
       }
@@ -117,6 +140,11 @@ export function createStreamMerger(kinds: readonly StreamKind[]): StreamMerger {
     },
     get rejected() {
       return rejected;
+    },
+    get newest() {
+      let n = -Infinity;
+      for (const t of lastT.values()) if (t > n) n = t;
+      return n;
     },
     reset() {
       for (const q of queues.values()) q.length = 0;

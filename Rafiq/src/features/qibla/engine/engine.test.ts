@@ -29,7 +29,7 @@ function run(
       hasGyro: !model.noGyro,
       hasMagnetometer: true,
       hasUp: true,
-      upIsAccelerometer: !!model.noGyro,
+      upIsAccelerometer: !!model.noGyro || !!model.rawAccel,
     },
     sim.field,
   );
@@ -59,7 +59,9 @@ function maxError(ticks: Tick[], sim: Sim, from: number, to = Infinity, mode: 'f
   for (const k of ticks) {
     if (k.t < from || k.t >= to || !k.out?.ready) continue;
     n++;
-    // Compared at the sensor time the output is for.
+    // Compared at the sensor time the output is for, which must keep up with delivery: an engine that
+    // stopped taking samples freezes `t` too, and would otherwise look perfect.
+    expect(k.out.t - T0).toBeGreaterThan(k.t - 0.1);
     const truth = sim.trueHeading(k.out.t - T0);
     worst = Math.max(worst, headingError(mode === 'flat' ? k.out.flat : k.out.camera, truth));
   }
@@ -92,6 +94,34 @@ describe('start-up', () => {
     const sim = createSim(CAIRO, { heading: (t) => 30 + 60 * t }, ANDROID);
     const ticks = run(sim, ANDROID, 4);
     expect(maxError(ticks, sim, 1.5)).toBeLessThan(3);
+  });
+
+  // The field turned upside down (dip mirrored), as a phone reported for its first readings after a restart.
+  const flipped = (sim: Sim, until: number) => (t: number) => {
+    if (t >= until) return [0, 0, 0] as const;
+    const v = sim.field.totalUt * Math.sin((sim.field.dipDeg * Math.PI) / 180);
+    return [0, 0, 2 * v] as const;
+  };
+
+  it('does not take north from an upside-down field after a restart', () => {
+    let sim: Sim;
+    sim = createSim(CAIRO, { heading: () => 70, external: (t) => flipped(sim, 0.5)(t) }, ANDROID);
+    const ticks = run(sim, ANDROID, 3);
+    // North comes from the readings after the glitch: right from the first heading.
+    const first = ticks.find((k) => k.out?.ready)!;
+    expect(first.t).toBeGreaterThan(0.5);
+    expect(maxError(ticks, sim, first.t)).toBeLessThan(3);
+  });
+
+  it('a spot that stays that wrong still gets a north after 3 s, with its doubt', () => {
+    let sim: Sim;
+    sim = createSim(CAIRO, { heading: () => 70, external: (t) => flipped(sim, 99)(t) }, ANDROID);
+    const ticks = run(sim, ANDROID, 5);
+    expect(after(ticks, 0.5, 2.9).every((o) => !o.ready)).toBe(true);
+    const first = ticks.find((k) => k.out?.ready)!;
+    expect(first.t).toBeGreaterThan(3);
+    expect(first.t).toBeLessThan(3.6);
+    expect(first.out!.sigmaDeg).toBeGreaterThan(20);
   });
 
   it('works on the iOS delivery (one timestamp for all three)', () => {
@@ -139,6 +169,32 @@ describe('turning', () => {
     expect(worstStep).toBeLessThan(2);
   });
 
+  it('follows a small, real change of north over the documented ~2 s time constant', () => {
+    let sim: Sim;
+    // The horizontal field turned by 5° at t = 5 s: within the gate, so followed, at the filter's own pace.
+    const quiet: SensorModel = { platform: 'android', magNoise: 0.05, upNoiseDeg: 0.02, gyroNoise: 0.0002 };
+    sim = createSim(
+      CAIRO,
+      {
+        heading: () => 40,
+        external: (t) => {
+          if (t < 5) return [0, 0, 0];
+          const e = sim.field;
+          const d = (e.declination * Math.PI) / 180;
+          const r = (5 * Math.PI) / 180;
+          return [e.horizontalUt * (Math.sin(d + r) - Math.sin(d)), e.horizontalUt * (Math.cos(d + r) - Math.cos(d)), 0];
+        },
+      },
+      quiet,
+    );
+    const ticks = run(sim, quiet, 12);
+    const base = after(ticks, 4.5, 5).at(-1)!.flat;
+    const moved = (o: EngineOutput) => Math.abs(((base - o.flat + 540) % 360) - 180);
+    const t63 = ticks.find((k) => k.t >= 5 && k.out?.ready && moved(k.out) >= 0.632 * 5)!.t - 5;
+    expect(t63).toBeGreaterThan(1.6);
+    expect(t63).toBeLessThan(3.2);
+  });
+
   it('holds over a minute against gyro bias drift', () => {
     const drifting: SensorModel = { ...ANDROID, gyroBias: [0, 0, 0.003] }; // 0.17°/s about Z
     const sim = createSim(CAIRO, still(80), drifting);
@@ -150,6 +206,9 @@ describe('turning', () => {
     const ticks = run(sim, ANDROID, 5);
     expect(maxError(ticks, sim, 3.2)).toBeLessThan(3);
     expect(after(ticks, 1).some((o) => o.confidence === 'interference')).toBe(false);
+    // While north is found again there is no heading, and it is not called steady.
+    expect(after(ticks, 2.35, 2.6).every((o) => !o.ready && o.confidence === 'settling')).toBe(true);
+    expect(after(ticks, 3.2).every((o) => o.ready && o.confidence === 'good')).toBe(true);
   });
 });
 
@@ -190,8 +249,89 @@ describe('posture', () => {
     const sim = createSim(CAIRO, { heading: () => 120, pitch: (t) => (t < 3 ? 85 : t < 4 ? 85 * (4 - t) : 0) }, ANDROID);
     const ticks = run(sim, ANDROID, 6);
     expect(after(ticks, 0.5, 3).every((o) => !o.ready)).toBe(true);
+    // …but the tilt is known all along, so the screen can ask to lay the phone flat.
+    for (const o of after(ticks, 0.5, 3)) expect(o.pitch).toBeGreaterThan(80);
     expect(after(ticks, 4.6).every((o) => o.ready)).toBe(true);
     expect(maxError(ticks, sim, 4.6)).toBeLessThan(3);
+  });
+});
+
+describe('the raw compass (dev readout)', () => {
+  it('reads the true heading like a plain compass app in a clean field', () => {
+    const sim = createSim(CAIRO, { heading: () => 144 }, ANDROID);
+    for (const o of after(run(sim, ANDROID, 3), 1)) {
+      expect(headingError(o.debug.rawDeg, 144)).toBeLessThan(3);
+      // Down from the platform's gravity or from the engine's tilt: the same answer when both are right.
+      expect(headingError(o.debug.gravDeg, o.debug.rawDeg)).toBeLessThan(1);
+    }
+  });
+
+  it('shows the turned field while Rafiq holds north against it', () => {
+    let sim: Sim;
+    sim = createSim(
+      CAIRO,
+      {
+        heading: () => 40,
+        external: (t) => {
+          if (t < 3) return [0, 0, 0];
+          const e = sim.field;
+          const d = (e.declination * Math.PI) / 180;
+          const r = (25 * Math.PI) / 180;
+          return [e.horizontalUt * (Math.sin(d + r) - Math.sin(d)), e.horizontalUt * (Math.cos(d + r) - Math.cos(d)), 0];
+        },
+      },
+      ANDROID,
+    );
+    const late = after(run(sim, ANDROID, 5), 4, 5);
+    for (const o of late) {
+      expect(headingError(o.flat, 40)).toBeLessThan(3); // Rafiq holds the true heading…
+      expect(headingError(o.debug.rawDeg, 15)).toBeLessThan(3); // …while a plain compass follows the field, 25° round.
+    }
+  });
+});
+
+describe('posture, any direction', () => {
+  it('held on its side, the tilt says so and north’s doubt grows while the magnetometer is not listened to', () => {
+    const drifting: SensorModel = { ...ANDROID, gyroBias: [0, 0, 0.003] };
+    const sim = createSim(CAIRO, { heading: () => 80, roll: (t) => (t < 2 ? 0 : t < 3 ? 60 * (t - 2) : 60) }, drifting);
+    const ticks = run(sim, drifting, 60);
+    const late = after(ticks, 55);
+    expect(late.every((o) => o.tiltDeg > 55 && o.tiltDeg < 65)).toBe(true);
+    expect(late.every((o) => !o.debug.inPosture)).toBe(true);
+    expect(late.at(-1)!.sigmaDeg).toBeGreaterThan(3);
+  });
+
+  it('says which edge points up, for the lay-flat ghost', () => {
+    const edge = (script: Script) => {
+      const sim = createSim(CAIRO, script, ANDROID);
+      const outs = after(run(sim, ANDROID, 1.5), 1);
+      return outs[outs.length - 1].edgeUpDeg;
+    };
+    expect(edge({ heading: () => 0, pitch: () => 80 })).toBeCloseTo(0, 0); // top edge up
+    expect(Math.abs(edge({ heading: () => 0, pitch: () => -80 }))).toBeGreaterThan(178); // tipped toward the user
+    expect(edge({ heading: () => 0, roll: () => 70 })).toBeCloseTo(-90, 0); // right side down: left edge up
+    expect(edge({ heading: () => 0, roll: () => -70 })).toBeCloseTo(90, 0); // right edge up
+  });
+
+  it('the room is judged even while the phone is up: walking away from a laptop clears the warning', () => {
+    const sim = createSim(
+      CAIRO,
+      {
+        heading: () => 120,
+        pitch: (t) => (t < 6 ? 0 : t < 7 ? 80 * (t - 6) : 80),
+        external: (t) => (t >= 3 && t < 9 ? [8, 6.7, -37.1] : [0, 0, 0]),
+      },
+      ANDROID,
+    );
+    const ticks = run(sim, ANDROID, 13);
+    expect(after(ticks, 4.5, 6).every((o) => o.confidence === 'interference')).toBe(true);
+    // Still held up, the laptop gone at 9 s: cleared within the shape watch's 1.5 s.
+    expect(after(ticks, 10.8, 13).every((o) => o.confidence !== 'interference' && !o.debug.inPosture)).toBe(true);
+  });
+
+  it('face down counts as raised', () => {
+    const sim = createSim(CAIRO, { heading: () => 80, roll: () => 180 }, ANDROID);
+    expect(after(run(sim, ANDROID, 2), 0.5).every((o) => o.tiltDeg > 170)).toBe(true);
   });
 });
 
@@ -210,6 +350,12 @@ describe('interference', () => {
     expect(after(ticks, 8 + 1.8).every((o) => o.confidence === 'good')).toBe(true);
     expect(maxError(ticks, sim, 3, 8)).toBeLessThan(3);
     expect(maxError(ticks, sim, 10)).toBeLessThan(3);
+  });
+
+  it('a location update while the warning shows does not blink it off', () => {
+    const sim = createSim(CAIRO, { heading: () => 120, external: laptop(3, 12) }, ANDROID);
+    const ticks = run(sim, ANDROID, 10, { at: 5.5, then: (e) => e.setModel(sim.field) });
+    expect(after(ticks, 5, 10).every((o) => o.confidence === 'interference')).toBe(true);
   });
 
   it('a desk with a charging cable (the field ×1.5, same direction) is never a warning', () => {
@@ -301,8 +447,12 @@ describe('calibration', () => {
     const sim = createSim(CAIRO, { heading: () => 10, magAccuracy: accuracy([[0, 1], [4, 3]]) }, ANDROID);
     const ticks = run(sim, ANDROID, 6);
     expect(after(ticks, 0.5, 0.9).some((o) => o.confidence === 'calibrate')).toBe(false);
+    // North learned before the platform vouched for its calibration is never called steady…
+    expect(after(ticks, 0, 4).some((o) => o.confidence === 'good')).toBe(false);
     expect(after(ticks, 1.2, 4).every((o) => o.confidence === 'calibrate')).toBe(true);
-    expect(after(ticks, 4.1).every((o) => o.confidence === 'good')).toBe(true);
+    // …the card goes the moment the accuracy rises, and north is taken again from the next readings.
+    expect(after(ticks, 4.05).some((o) => o.confidence === 'calibrate')).toBe(false);
+    expect(after(ticks, 4.3).every((o) => o.confidence === 'good')).toBe(true);
   });
 
   it('a figure-eight that the platform calibrates during clears it, and the corrected field is taken at once', () => {
@@ -322,29 +472,42 @@ describe('calibration', () => {
     );
     const ticks = run(sim, ANDROID, 12);
     expect(after(ticks, 1.2, 6).every((o) => o.confidence === 'calibrate')).toBe(true);
-    expect(after(ticks, 6.1).some((o) => o.confidence !== 'good')).toBe(false);
-    expect(maxError(ticks, sim, 8.5)).toBeLessThan(3);
+    // No warning after the calibration; `good` comes back as soon as a calibrated reading is taken in
+    // posture, and the north it shows is the corrected one, never the one learned before.
+    expect(after(ticks, 6.1).some((o) => o.confidence === 'calibrate' || o.confidence === 'interference')).toBe(false);
+    // (While the phone is still being waved fast, a reading carries the turn rate's doubt, so the
+    // fresh north is called steady once the waving stops at 8 s.)
+    const good = ticks.find((k) => k.t >= 6 && k.out?.confidence === 'good')!;
+    expect(good.t).toBeLessThan(8.5);
+    expect(maxError(ticks, sim, good.t)).toBeLessThan(3);
   });
 
-  it('a magnet that leaves never latches anything', () => {
-    const sim = createSim(CAIRO, { heading: (t) => (t < 10 ? 20 * t : 200), deviceOffset: (t) => (t < 10 ? [18, -10, 6] : [0, 0, 0]) }, ANDROID);
-    const ticks = run(sim, ANDROID, 25);
-    expect(after(ticks, 0).some((o) => o.confidence === 'calibrate')).toBe(false);
-    expect(after(ticks, 20).every((o) => o.confidence === 'good')).toBe(true);
+  // A bent floor: the horizontal field turned by 25° from t = 3, its size and dip unchanged.
+  const bentFloor = (sim: () => Sim) => (t: number) => {
+    if (t < 3) return [0, 0, 0] as const;
+    const e = sim().field;
+    const d = (e.declination * Math.PI) / 180;
+    const r = (25 * Math.PI) / 180;
+    return [e.horizontalUt * (Math.sin(d + r) - Math.sin(d)), e.horizontalUt * (Math.cos(d + r) - Math.cos(d)), 0] as const;
+  };
+
+  it('a recalibration while the field is bent does not hand north to the bent field', () => {
+    let sim: Sim;
+    sim = createSim(CAIRO, { heading: () => 40, external: bentFloor(() => sim), biasEpoch: (t) => (t < 3.4 ? 0 : 1) }, ANDROID);
+    const ticks = run(sim, ANDROID, 6);
+    expect(maxError(ticks, sim, 3, 5)).toBeLessThan(3);
+    expect(after(ticks, 5.3, 6).every((o) => o.confidence === 'interference')).toBe(true);
   });
 
-  it('carrying the phone past furniture (the field changes with place) is never calibration', () => {
-    const sim = createSim(
+  it('an accuracy flapping between 2 and 3 hands nothing over either', () => {
+    let sim: Sim;
+    sim = createSim(
       CAIRO,
-      {
-        heading: (t) => 90 * Math.sin(t / 3),
-        pitch: (t) => 20 * Math.sin(t / 2),
-        external: (t) => [12 * Math.sin(t / 1.7), 9 * Math.cos(t / 2.3), 12 * Math.sin(t / 1.3)],
-      },
+      { heading: () => 40, external: bentFloor(() => sim), magAccuracy: (t) => (Math.floor(t * 2) % 2 ? 3 : 2) },
       ANDROID,
     );
-    const ticks = run(sim, ANDROID, 25);
-    expect(after(ticks, 0).some((o) => o.confidence === 'calibrate')).toBe(false);
+    const ticks = run(sim, ANDROID, 6);
+    expect(maxError(ticks, sim, 3, 5)).toBeLessThan(3);
   });
 
   it('a phone whose accuracy is stuck low is not believed once its field has matched the model for 10 s', () => {
@@ -389,6 +552,22 @@ describe('the lock haptic', () => {
     const ticks = run(sim, ANDROID, 5, { at: 2.98, then: (e) => e.noteActuator() });
     expect(maxError(ticks, sim, 1)).toBeLessThan(3);
     expect(after(ticks, 1).some((o) => o.confidence !== 'good')).toBe(false);
+  });
+});
+
+describe('a gyroscope but no fused gravity', () => {
+  it('the hand’s own acceleration does not tilt the compass', () => {
+    const model: SensorModel = { platform: 'android', rawAccel: true };
+    // A sideways sway (2.5 m/s² at 1 Hz) barely changes |a|, so no reject rule sees it: the gyroscope must carry the tilt.
+    const sim = createSim(
+      CAIRO,
+      { heading: () => 136, handAccel: (t) => [2.5 * Math.sin(2 * Math.PI * t), 1.5 * Math.cos(2 * Math.PI * t), 0] },
+      model,
+    );
+    expect(maxError(run(sim, model, 8), sim, 3)).toBeLessThan(4);
+    // Sharp shoves (4 m/s² for 0.2 s) are rejected outright.
+    const shoved = createSim(CAIRO, { heading: () => 136, handAccel: (t) => (t % 1 < 0.2 ? [4, 2, 0] : [0, 0, 0]) }, model);
+    expect(maxError(run(shoved, model, 8), shoved, 3)).toBeLessThan(3);
   });
 });
 

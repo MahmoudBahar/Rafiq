@@ -49,8 +49,22 @@ const ARM_MS = 500;
  */
 const ROLL_UP = { stiffness: 49, damping: 14, mass: 1 };
 const UNROLL = { stiffness: 81, damping: 18, mass: 1 };
-/** The dial fades in over this long once the first heading arrives. */
+/** The dial fades in over this long… */
 const READY_FADE_MS = 400;
+/** …once north is known to within this (1σ, degrees). Until then it points, but faintly. */
+const CONFIDENT_SIGMA_DEG = 20;
+/**
+ * No batch for this long while the sensors should be running means the feed has gone silent (the
+ * developer "Sensors off" tile, a sensor service restarting, CoreMotion stopping): the heading on
+ * screen is no longer current…
+ */
+const SILENT_MS = 1000;
+/** …checked this often… */
+const WATCHDOG_MS = 500;
+/** …and the sensors are restarted at most this often while it lasts. */
+const RESTART_EVERY_MS = 5000;
+/** How long the repaint nudge runs when the sensors start: a few frames of fresh props (see repaint.ts). */
+const REPAINT_MS = 120;
 /** How often the dev readout refreshes. */
 const DEBUG_TICK_MS = 250;
 
@@ -67,8 +81,12 @@ export interface QiblaValues {
   edgeT: SharedValue<number>;
   /** 0..1, sprung: the phone is held up instead of flat (the mat rolls up and the screen asks to lay it down). */
   raisedT: SharedValue<number>;
-  /** 0 until the first heading arrives, then fades to 1: until then the dial knows nothing and says so by staying faint. */
+  /** 0 until north is known to within 20°, then fades to 1: until then the dial is unsure and says so by staying faint. */
   readyT: SharedValue<number>;
+  /** Which edge of the phone points up (0 top, 90 right, 180 bottom, −90 left): the lay-flat ghost mirrors it. */
+  edgeUp: SharedValue<number>;
+  /** Nudged for a few frames whenever the sensors start, so styles a background trip could leave stale push fresh props (see repaint.ts). */
+  repaint: SharedValue<number>;
 }
 
 /** The engine's raw numbers for a development readout; null in release builds. */
@@ -84,14 +102,6 @@ export interface Qibla {
   confidence: Confidence;
   /** A heading has arrived since the sensors started; before that the turn numbers mean nothing. */
   ready: boolean;
-  /**
-   * Counts sensor sessions (bumped when one stops). The screen keys the dial and the edge glow
-   * on it, so each session draws on fresh views. Reanimated (4.5, with its default
-   * FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS) copies settled animated values back into React
-   * every 500 ms; sent to the background mid-fade, the lamp came back drawn from a stale lit
-   * copy while its value was 0, and stayed lit until the next lock.
-   */
-  session: number;
   /** The phone is raised past the angle this mode makes sense at. */
   raised: boolean;
   values: QiblaValues;
@@ -117,10 +127,14 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const target = useSharedValue(0);
   const delta = useSharedValue(0);
   const pitch = useSharedValue(0);
+  /** The screen's angle from facing up, any direction (see `EngineOutput.tiltDeg`): what "raised" is judged by. */
+  const tilt = useSharedValue(0);
+  const edgeUp = useSharedValue(0);
   const lockT = useSharedValue(0);
   const edgeT = useSharedValue(0);
   const raisedT = useSharedValue(0);
   const readyT = useSharedValue(0);
+  const repaint = useSharedValue(0);
   const bearingSv = useSharedValue(bearing ?? 0);
   const haveTarget = useSharedValue(false);
   /** The compass has read good for a moment since the sensors started: only then does a lock get its cue. */
@@ -138,7 +152,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
   const [turn, setTurn] = useState({ deg: 0, right: true });
   const [raised, setRaised] = useState(false);
   const [ready, setReady] = useState(false);
-  const [session, setSession] = useState(0);
   // What this phone has never changes: asked once.
   const available = useMemo(() => {
     const a = RafiqMotion?.getAvailability();
@@ -196,25 +209,52 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     let shown: Confidence | null = null;
     let latest: QiblaDebug | null = null;
     let arm: ReturnType<typeof setTimeout> | null = null;
+    let shownFull = false;
+
+    let lastBatchAt = Date.now();
+    let lastRestart = 0;
+    // The heading in hand is no longer current (north is being found again, or the feed went
+    // silent): the dial goes faint, the hint says it is finding the direction, the band starts over.
+    const lose = () => {
+      if (!started) return;
+      started = false;
+      shownFull = false;
+      haveTarget.set(false);
+      readyT.set(reducedRef.current ? 0 : withTiming(0, { duration: READY_FADE_MS }));
+      bandSv.set('far');
+      shownTurn.set(-1);
+      setReady(false);
+      setBand('far');
+    };
 
     const sub = module.addListener('batch', (batch) => {
+      lastBatchAt = Date.now();
       const out = engine.push(batch);
       if (!out) return;
       // Before north is found there is no heading, but the confidence still says why
       // (an iPhone sends no field at all until its magnetometer is calibrated).
       const raw = modeRef.current === 'camera' ? out.camera : out.flat;
+      // The tilt arrives before north does: held upright, the phone is asked to lie flat at once.
+      if (Number.isFinite(out.pitch)) pitch.set(out.pitch);
+      if (Number.isFinite(out.tiltDeg)) tilt.set(out.tiltDeg);
+      if (Number.isFinite(out.edgeUpDeg)) edgeUp.set(out.edgeUpDeg);
+      // North is being found again (a gap in the gyro).
+      if (!out.ready) lose();
       if (out.ready) {
         const next = started ? unwrap(last, raw) : raw;
         last = next;
-        pitch.set(out.pitch);
         target.set(next);
         if (!started) {
           // First heading: start there rather than sweeping in from zero.
           started = true;
           heading.set(next);
           haveTarget.set(true);
-          readyT.set(reducedRef.current ? 1 : withTiming(1, { duration: READY_FADE_MS }));
           setReady(true);
+        }
+        if (!shownFull && out.sigmaDeg <= CONFIDENT_SIGMA_DEG) {
+          // Confident now: the dial comes up to full strength.
+          shownFull = true;
+          readyT.set(reducedRef.current ? 1 : withTiming(1, { duration: READY_FADE_MS }));
         }
       }
       if (out.confidence !== shown) {
@@ -225,13 +265,33 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       if (__DEV__) latest = { ...out.debug, heading: raw };
     });
     module.start();
+    // Back in front (or on the tab): the views take their current values afresh (see repaint.ts).
+    repaint.set(withSequence(withTiming(1, { duration: REPAINT_MS }), withTiming(0, { duration: 0 })));
 
     const tick = __DEV__ ? setInterval(() => latest && setDebug(latest), DEBUG_TICK_MS) : null;
+
+    // A silent feed would otherwise leave the last heading, the pill and a lit lamp standing while
+    // the user turns. When the samples come back, the engine sees a gyro gap and finds north again.
+    const watchdog = setInterval(() => {
+      const now = Date.now();
+      if (now - lastBatchAt < SILENT_MS) return;
+      lose();
+      if (shown !== 'settling') {
+        shown = 'settling';
+        setSensed('settling');
+      }
+      if (now - lastRestart > RESTART_EVERY_MS) {
+        lastRestart = now;
+        module.stop();
+        module.start();
+      }
+    }, WATCHDOG_MS);
 
     return () => {
       sub.remove();
       module.stop();
       if (tick) clearInterval(tick);
+      clearInterval(watchdog);
       if (arm) clearTimeout(arm);
       engineRef.current = null;
       haveTarget.set(false);
@@ -239,7 +299,9 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       setReady(false);
       // The next start is an opening again, so it is silent again.
       primed.set(false);
-      setSensed('settling');
+      // The pill keeps its state while the sensors are off: changing it off-screen or in the
+      // background animated its width with no frames to draw, leaving it at the old width.
+      // The first reading of the next session sets it, in view.
       // A lock belongs to the session that found it: the band starts over from far and is
       // judged afresh from the first new heading (silently, as the cue is not armed yet).
       bandSv.set('far');
@@ -248,10 +310,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
       edgeT.set(0);
       setBand('far');
       setTurn({ deg: 0, right: true });
-      // Fresh views for the next session (see `session`).
-      setSession((n) => n + 1);
     };
-  }, [live, available, heading, target, pitch, haveTarget, readyT, primed, bandSv, shownTurn, lockT, edgeT]);
+  }, [live, available, heading, target, pitch, tilt, edgeUp, haveTarget, readyT, primed, bandSv, shownTurn, lockT, edgeT, repaint]);
 
   // `target` → `heading` (UI thread), every frame while live.
   const easeMs = reduced ? REDUCED_EASE_MS : EASE_MS;
@@ -326,11 +386,13 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     },
   );
 
-  // Posture: the dial wants the phone flat, the camera wants it up. The same thresholds the
-  // engine stops and starts listening to the magnetometer at (`POSTURE`), so the two move together.
+  // Posture: the dial wants the phone flat, the camera wants it up. The same measure (the screen's
+  // tilt, in any direction: raised, tipped toward the user, on its side or face down) and the same
+  // thresholds (`POSTURE`) at which the engine stops and starts listening to the magnetometer, so
+  // the screen asks to lay the phone flat exactly when the compass stops being corrected.
   const { flat: FLAT, camera: CAMERA } = POSTURE;
   useAnimatedReaction(
-    () => pitch.get(),
+    () => tilt.get(),
     (p) => {
       const was = raisedSv.get();
       const is =
@@ -353,9 +415,8 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
     turnRight: turn.right,
     confidence,
     ready,
-    session,
     raised,
-    values: { heading, delta, pitch, lockT, edgeT, raisedT, readyT },
+    values: { heading, delta, pitch, lockT, edgeT, raisedT, readyT, edgeUp, repaint },
     debug,
   };
 }
@@ -363,7 +424,10 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
 function useAppActive(): boolean {
   const [active, setActive] = useState(AppState.currentState !== 'background');
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (s) => setActive(s === 'active'));
+    // iOS reports 'inactive' for a pulled-down notification shade, the app switcher or a system
+    // alert (the location prompt behind «تحديد موقعي»): the app is still on screen, so the compass
+    // keeps running rather than starting over. Only the background stops it.
+    const sub = AppState.addEventListener('change', (s) => setActive(s !== 'background'));
     return () => sub.remove();
   }, []);
   return active;

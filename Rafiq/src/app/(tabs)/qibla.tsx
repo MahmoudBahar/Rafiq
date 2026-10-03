@@ -1,8 +1,8 @@
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Text as RNText, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { Text as RNText, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocate } from '@/features/prayer/useLocate';
 import { StatusCard } from '@/features/qibla/calibration/StatusCard';
@@ -10,6 +10,7 @@ import { CompassDial } from '@/features/qibla/dial/CompassDial';
 import { ConfidencePill } from '@/features/qibla/dial/ConfidencePill';
 import { LockGlow } from '@/features/qibla/dial/LockGlow';
 import { TurnHint } from '@/features/qibla/dial/TurnHint';
+import { wrap180 } from '@/features/qibla/engine';
 import { hintFor } from '@/features/qibla/hint';
 import { useQibla, type QiblaDebug } from '@/features/qibla/useQibla';
 import { useQiblaAnnouncer } from '@/features/qibla/useQiblaAnnouncer';
@@ -22,16 +23,25 @@ import { useTabBarInset } from '@/shared/ui/TabBar';
 import { TabScene } from '@/shared/ui/TabScene';
 import { Display, Text } from '@/shared/ui/Text';
 
-/** Ground showing above the floating bar: the place line, or a card that needs the user's hand. */
-const GROUND_LIP = 150;
 const HEADER_H = 76;
 const HINT_H = 62;
+/** The place line under the bearing, when no card is showing. */
+const PLACE_H = 26;
+/** Clear sky kept above the tab bar when nothing floats there. */
+const BOTTOM_AIR = 18;
+/** The gap between whatever floats above the tab bar and the hint above it. */
+const FLOAT_GAP = 16;
 const SIDE = 32;
+/** How long the dial and hint take to move when a card arrives or leaves. */
+const MOVE_MS = 260;
 
 /**
  * The Qibla tab: a prayer mat that turns with the phone and lies straight
  * when the phone faces the Kaaba. The dial is the hero; under it, what to do
- * next; on the ground, where the bearing is taken from.
+ * next and where the bearing is taken from. Nothing else covers the screen:
+ * a card floats above the tab bar only while the compass needs the user's
+ * hand (calibrate, interference, no location, no compass), and the dial and
+ * hint move up to make room for it.
  */
 export default function QiblaScreen() {
   const router = useRouter();
@@ -48,13 +58,17 @@ export default function QiblaScreen() {
   const window = useWindowDimensions();
   const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
   const size = measured ?? { w: window.width, h: window.height };
-  const horizon = size.h - tabInset - GROUND_LIP;
-  const top = insets.top + 12;
-  const dialTop = top + HEADER_H;
-  const dial = Math.max(180, Math.min(size.w - SIDE * 2, horizon - dialTop - HINT_H - 16));
-
   const trusted = qibla.confidence === 'good' || qibla.confidence === 'settling';
   const cardShowing = !trusted;
+  // What floats above the tab bar (the card, and the dev readout in development builds) is measured,
+  // and the dial and hint end just above it.
+  const [floatingH, setFloatingH] = useState(0);
+  const horizon = size.h - tabInset - (floatingH > 0 ? floatingH + FLOAT_GAP : BOTTOM_AIR);
+  const hintH = HINT_H + (cardShowing ? 0 : PLACE_H);
+  const top = insets.top + 12;
+  const dialTop = top + HEADER_H;
+  const dial = Math.max(180, Math.min(size.w - SIDE * 2, horizon - dialTop - hintH - 16));
+  const move = m.reduced ? undefined : LinearTransition.duration(MOVE_MS);
 
   return (
     <TabScene
@@ -65,7 +79,7 @@ export default function QiblaScreen() {
       onLayout={(e) => setMeasured({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
     >
       {focused ? <StatusBar style={isDark ? 'light' : 'dark'} /> : null}
-      <View style={[styles.sky, { height: horizon + 40 }]}>
+      <View style={StyleSheet.absoluteFill}>
         <GradientBackground />
       </View>
 
@@ -76,24 +90,47 @@ export default function QiblaScreen() {
         <ConfidencePill confidence={qibla.confidence} />
       </View>
 
-      <View
-        style={[styles.dial, { top: dialTop, height: horizon - dialTop - HINT_H }]}
+      <Animated.View
+        layout={move}
+        style={[styles.dial, { top: dialTop, height: horizon - dialTop - hintH }]}
         pointerEvents="none"
         accessible
         accessibilityRole="image"
         accessibilityLabel={`بوصلة القبلة. ${hintFor(qibla).spoken}`}
       >
-        <CompassDial key={qibla.session} values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} raised={qibla.raised} />
-      </View>
+        <CompassDial values={qibla.values} bearing={qibla.bearing} size={dial} dimmed={cardShowing} raised={qibla.raised} />
+      </Animated.View>
 
-      <View style={[styles.hint, { top: horizon - HINT_H, height: HINT_H }]} pointerEvents="none">
-        <TurnHint qibla={qibla} />
-      </View>
+      <Animated.View layout={move} style={[styles.hint, { top: horizon - hintH, height: hintH }]} pointerEvents="box-none">
+        <View pointerEvents="none">
+          <TurnHint qibla={qibla} />
+        </View>
+        {/* Where the bearing is taken from, under the bearing itself. */}
+        {cardShowing ? null : (
+          <Animated.View key="place" entering={m.fadeIn(0, 220)} style={styles.place}>
+            <Text size={12} color={c.ts}>
+              {source === 'fix' ? `من موقعك الحالي${label ? ` (${label})` : ''}` : label ? `من مدينة ${label}` : ''}
+            </Text>
+            <Text size={12} color={c.tm}>
+              ·
+            </Text>
+            <PressScale accessibilityRole="button" accessibilityLabel="تحديد موقعي" onPress={() => void locate()} disabled={locating}>
+              <Text size={12} weight="medium" color={c.accent}>
+                {locating ? 'جارٍ التحديد…' : 'تحديد موقعي'}
+              </Text>
+            </PressScale>
+          </Animated.View>
+        )}
+      </Animated.View>
 
-      <View style={[styles.ground, { top: horizon, backgroundColor: c.bg }]}>
-        {/* A card rises in when the compass needs the user's hand; the place line fades back after. */}
+      {/* Floats above the tab bar only while there is something to show. */}
+      <View
+        style={[styles.floating, { bottom: tabInset + 8 }]}
+        pointerEvents="box-none"
+        onLayout={(e) => setFloatingH(Math.round(e.nativeEvent.layout.height))}
+      >
         {cardShowing ? (
-          <Animated.View key={qibla.confidence} entering={m.fadeInUp(0, 280)}>
+          <Animated.View key={qibla.confidence} entering={m.fadeInUp(0, 280)} exiting={m.fadeOut(160)} style={styles.cardShadow}>
             <StatusCard
               confidence={qibla.confidence}
               locating={locating}
@@ -101,24 +138,14 @@ export default function QiblaScreen() {
               onChooseCity={() => router.push('/settings')}
             />
           </Animated.View>
-        ) : (
-          <Animated.View key="place" entering={m.fadeIn(0, 220)} style={styles.place}>
-            <Text size={12.5} color={c.ts}>
-              {source === 'fix' ? `من موقعك الحالي${label ? ` (${label})` : ''}` : label ? `من مدينة ${label}` : ''}
-            </Text>
-            <Text size={12.5} color={c.tm}>
-              ·
-            </Text>
-            <PressScale accessibilityRole="button" accessibilityLabel="تحديد موقعي" onPress={() => void locate()} disabled={locating}>
-              <Text size={12.5} weight="medium" color={c.accent}>
-                {locating ? 'جارٍ التحديد…' : 'تحديد موقعي'}
-              </Text>
-            </PressScale>
-          </Animated.View>
-        )}
-        {qibla.debug ? <DevReadout d={qibla.debug} /> : null}
+        ) : null}
+        {qibla.debug ? (
+          <ScrollView style={[styles.devPanel, { backgroundColor: `${c.surface}e6`, borderColor: c.border }]} showsVerticalScrollIndicator>
+            <DevReadout d={qibla.debug} />
+          </ScrollView>
+        ) : null}
       </View>
-      <LockGlow key={qibla.session} t={qibla.values.edgeT} />
+      <LockGlow t={qibla.values.edgeT} repaint={qibla.values.repaint} />
     </TabScene>
   );
 }
@@ -134,30 +161,24 @@ function DevReadout({ d }: { d: QiblaDebug }) {
   const f = (n: number, digits = 1) => (Number.isFinite(n) ? n.toFixed(digits) : '—');
   return (
     <RNText style={[styles.dev, { color: c.tm }]} selectable>
-      {`${d.pipeline}  hdg ${f(d.heading)}  θ ${f(d.thetaDeg)}  σ ${f(d.sigmaDeg)}  ν ${f(d.innovationDeg)}  √R ${f(d.measSigmaDeg)}\n` +
+      {`hdg ${f(d.heading)}  raw ${f(d.rawDeg)}  grav ${f(d.gravDeg)}  (true north)\n` +
+        `raw−hdg ${f(wrap180(d.rawDeg, d.heading))}  grav−raw ${f(wrap180(d.gravDeg, d.rawDeg))}\n` +
+        `θ ${f(d.thetaDeg)}  σ ${f(d.sigmaDeg)}  ν ${f(d.innovationDeg)}  √R ${f(d.measSigmaDeg)}\n` +
         `|B| ${f(d.fieldUt)}/${f(d.modelFieldUt)} µT  dip ${f(d.dipDeg)}/${f(d.modelDipDeg)}°  bent ${f(d.impliedDeg)}°  acc ${d.magAccuracy}  epoch ${d.biasEpoch}\n` +
         `Hz g ${f(d.hz.gyro, 0)} u ${f(d.hz.up, 0)} m ${f(d.hz.mag, 0)}  tilt± ${f(d.tiltResidualDeg, 2)}°  drop ${d.dropped} rej ${d.rejected} gap ${d.gaps}\n` +
-        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  acc ignored ${d.calOverridden ? 'yes' : 'no'}  tilt ${f(d.tiltDeg, 0)}° ${d.inPosture ? 'listening' : 'held'}`}
+        `disagree ${f(d.disagreementS)}s  reacq ${d.reacquisitions}  acc ignored ${d.calOverridden ? 'yes' : 'no'}  tilt ${f(d.tiltDeg, 0)}° ${d.inPosture ? 'listening' : 'held'}${d.outOfModel ? '  WMM OUT OF RANGE' : ''}`}
     </RNText>
   );
 }
 
 const styles = StyleSheet.create({
-  sky: { position: 'absolute', left: 0, right: 0, top: 0 },
-  dev: { marginTop: 14, fontSize: 11, lineHeight: 16, fontFamily: 'monospace', writingDirection: 'ltr', textAlign: 'left' },
+  dev: { fontSize: 10.5, lineHeight: 15, fontFamily: 'monospace', writingDirection: 'ltr', textAlign: 'left' },
   header: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: 6 },
   wide: { alignSelf: 'stretch' },
   dial: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   hint: { position: 'absolute', left: 0, right: 0, justifyContent: 'center' },
-  ground: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopStartRadius: 32,
-    borderTopEndRadius: 32,
-    paddingTop: 16,
-    paddingHorizontal: 20,
-  },
-  place: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  place: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 6 },
+  floating: { position: 'absolute', left: 16, right: 16, gap: 8 },
+  cardShadow: { borderRadius: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.22)' },
+  devPanel: { maxHeight: 112, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
 });

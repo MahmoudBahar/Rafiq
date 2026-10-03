@@ -20,7 +20,11 @@ const LABEL: Record<Confidence, { text: string; tone: keyof typeof TRUST }> = {
   'no-location': { text: 'بلا موقع', tone: 'bad' },
 };
 
-/** How long a change of state takes: the dot blends, the new words fade in, the pill eases to its new width. */
+/**
+ * How long a change of state takes: the dot blends, the new words fade in, the pill eases to its
+ * new width. The words are laid out at the new width at once, so the pill clips them while it
+ * grows: a longer label is revealed by the widening pill instead of spilling past it.
+ */
 const CHANGE_MS = 220;
 
 export function ConfidencePill({ confidence }: { confidence: Confidence }) {
@@ -57,6 +61,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
+    overflow: 'hidden',
   },
   dot: { width: 7, height: 7, borderRadius: 4 },
 });

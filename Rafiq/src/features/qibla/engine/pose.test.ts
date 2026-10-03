@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEG } from './angles';
-import { poseOf } from './pose';
+import { poseOf, snapQuarter } from './pose';
 import { qAxisAngle, qMul, qYaw } from './vec';
 
 // Device→world for a phone whose top points at `heading` (clockwise), raised by `pitch`, rolled by `roll`.
@@ -34,5 +34,25 @@ describe('poseOf', () => {
       expect(step).toBeLessThan(5);
       prev = next;
     }
+  });
+});
+
+describe('snapQuarter', () => {
+  it('holds through wobble up to 20° past the halfway point', () => {
+    for (const a of [-60, -30, 0, 30, 64.9]) expect(snapQuarter(0, a, 20)).toBe(0);
+  });
+  it('moves on, one quarter, once clearly in the next position', () => {
+    expect(snapQuarter(0, 66, 20)).toBe(90);
+    expect(snapQuarter(0, -66, 20)).toBe(-90);
+    expect(snapQuarter(90, 20, 20)).toBe(0);
+  });
+  it('takes the short way across ±180 and stays unwrapped', () => {
+    expect(snapQuarter(180, -170, 20)).toBe(180); // still the same position, seen from the other side
+    expect(snapQuarter(180, -100, 20)).toBe(270); // −90 is a quarter on from 180, turning on
+    expect(snapQuarter(-90, 179, 20)).toBe(-180);
+  });
+  it('a half turn at once lands on the opposite position (either way round is as short)', () => {
+    const r = snapQuarter(0, 180, 20);
+    expect(Math.abs(r)).toBe(180);
   });
 });

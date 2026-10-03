@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { I18nManager, StyleSheet } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import { repainted } from '../repaint';
 
 const DEPTH = 96;
 const SIDE = DEPTH * 0.7;
@@ -15,8 +16,8 @@ const ACCENT = 'rgba(201,123,90,';
  * RTL but a gradient's direction stays physical, so a logical `left` strip
  * would land on the right edge with its bright side facing inward.
  */
-export function LockGlow({ t }: { t: SharedValue<number> }) {
-  const style = useAnimatedStyle(() => ({ opacity: t.get() }));
+export function LockGlow({ t, repaint }: { t: SharedValue<number>; repaint: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => ({ opacity: repainted(t.get(), repaint.get()) }));
   const colors = [`${ACCENT}0.9)`, `${ACCENT}0)`] as const;
   const rtl = I18nManager.isRTL;
   const physicalLeft = rtl ? { right: 0 } : { left: 0 };

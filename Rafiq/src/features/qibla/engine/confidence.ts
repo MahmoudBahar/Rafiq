@@ -17,6 +17,8 @@ export interface ConfidenceInput {
   disagreement: boolean;
   /** North has been found (or, without a gyroscope, the compass has spoken). */
   seeded: boolean;
+  /** North rests on readings the platform did not vouch for (see `PROVISIONAL_SIGMA_DEG`). */
+  provisional: boolean;
   sigmaDeg: number;
 }
 
@@ -31,6 +33,9 @@ export function foldConfidence(i: ConfidenceInput, trusted: boolean): Confidence
   if (i.unavailable) return 'unavailable';
   if (i.calibrate) return 'calibrate';
   if (i.shapeDisturbed || i.disagreement) return 'interference';
-  if (!trusted && (!i.seeded || i.sigmaDeg > TRUST_SIGMA_DEG)) return 'settling';
+  // Not even an earned trust covers a north that is being found again (after a gap in the gyro):
+  // there is no heading to be steady about.
+  if (!i.seeded || i.provisional) return 'settling';
+  if (!trusted && i.sigmaDeg > TRUST_SIGMA_DEG) return 'settling';
   return 'good';
 }

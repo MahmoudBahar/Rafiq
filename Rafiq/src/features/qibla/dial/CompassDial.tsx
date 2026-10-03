@@ -6,6 +6,7 @@ import Svg, { Line, Rect } from 'react-native-svg';
 import { physicalLeft } from '@/shared/lib/rtl';
 import { useTheme } from '@/shared/theme/useTheme';
 import { Text } from '@/shared/ui/Text';
+import { repainted } from '../repaint';
 import type { QiblaValues } from '../useQibla';
 import { LayFlatCoach } from './LayFlatCoach';
 import { PrayerMat } from './PrayerMat';
@@ -44,7 +45,7 @@ const DIM_MS = 250;
  */
 export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDialProps) {
   const { c } = useTheme();
-  const { heading, lockT, raisedT, readyT } = values;
+  const { heading, lockT, raisedT, readyT, repaint } = values;
   const { reduced } = useMotion();
   const dimT = useSharedValue(dimmed ? 1 : 0);
   useEffect(() => {
@@ -54,8 +55,9 @@ export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDi
   const matW = size * 0.4;
   const b = bearing ?? 0;
 
+  // Styles that can be left stale by a trip to the background read `repaint` (see repaint.ts).
   const world = useAnimatedStyle(() => ({
-    opacity: 1 - 0.8 * Math.min(1, Math.max(0, raisedT.get())),
+    opacity: repainted(1 - 0.8 * Math.min(1, Math.max(0, raisedT.get())), repaint.get()),
     transform: [{ rotate: `${-heading.get()}deg` }],
   }));
   // Raised, the whole dial draws back a little as the mat winds up; behind a card it dims, and before
@@ -63,16 +65,19 @@ export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDi
   const recede = useAnimatedStyle(() => {
     const k = Math.min(1, Math.max(0, raisedT.get()));
     return {
-      opacity: (1 - (1 - DIMMED) * dimT.get()) * (UNREADY + (1 - UNREADY) * readyT.get()),
-      transform: [{ translateY: -14 * k * (size / 196) }, { scale: 1 - 0.08 * k }],
+      opacity: repainted((1 - (1 - DIMMED) * dimT.get()) * (UNREADY + (1 - UNREADY) * readyT.get()), repaint.get()),
+      transform: [{ translateY: -14 * k * (size / 196) }, { scale: repainted(1 - 0.08 * k, repaint.get()) }],
     };
   });
   // The letters ride the ring but stay upright: they undo the ring's turn.
   const upright = useAnimatedStyle(() => ({ transform: [{ rotate: `${heading.get()}deg` }] }));
   const mat = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${bearing === null ? 0 : b - heading.get()}deg` }, { scale: 1 + 0.04 * lockT.get() }],
+    transform: [
+      { rotate: `${bearing === null ? 0 : b - heading.get()}deg` },
+      { scale: repainted(1 + 0.04 * lockT.get(), repaint.get()) },
+    ],
   }));
-  const halo = useAnimatedStyle(() => ({ opacity: lockT.get() }));
+  const halo = useAnimatedStyle(() => ({ opacity: repainted(lockT.get(), repaint.get()) }));
 
   return (
     <View style={[{ width: size, height: size }, styles.center]}>
@@ -128,14 +133,14 @@ export function CompassDial({ values, bearing, size, dimmed, raised }: CompassDi
               <Rect x="1" y="6" width="16" height="4" fill="#d9b25c" />
             </Svg>
           </View>
-          <PrayerMat width={matW} lockT={lockT} rollT={raisedT} />
+          <PrayerMat width={matW} lockT={lockT} rollT={raisedT} repaint={repaint} />
           <View style={{ height: KAABA + 8 }} />
         </Animated.View>
 
         {/* The phone's own direction: a fixed mark at the top. */}
         <View pointerEvents="none" style={[styles.index, physicalLeft(r - 7), { top: 0, borderTopColor: c.accent }]} />
       </Animated.View>
-      <LayFlatCoach t={raisedT} active={raised} size={size} />
+      <LayFlatCoach t={raisedT} edgeUp={values.edgeUp} repaint={repaint} active={raised} size={size} />
     </View>
   );
 }

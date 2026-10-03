@@ -1,10 +1,10 @@
-import { DEG, RAD, clamp, normalizeDeg, wrap180 } from './angles';
+import { DEG, RAD, circularStats, clamp, normalizeDeg, wrap180 } from './angles';
 import { createCalibrationWatch, type CalibrationWatch } from './calibration';
 import { foldConfidence, DISAGREEMENT_CLEAR_S, type Confidence } from './confidence';
 import { RATIO_FREE, createShapeWatch, judgeField, type FieldVerdict, type ShapeWatch } from './fieldCheck';
 import type { EarthField } from './geomag';
 import { SHOW_DISAGREEMENT_S, SIGMA_SYS_DEG, UPDATE_S, createNorthFilter } from './northFilter';
-import { createOrientation } from './orientation';
+import { RAW_ACCEL_TILT_TAU_S, TILT_TAU_S, createOrientation } from './orientation';
 import { poseOf, type HeadingMode } from './pose';
 import { createStreamMerger, type MotionBatch, type StreamKind } from './stream';
 import { cross, dot, norm, qFromWorldAxes, qRotate, qRotateInverse, scale, sub, unit, type Vec3 } from './vec';
@@ -15,6 +15,13 @@ export const SIGMA_TILT_DEG = 0.5;
 export const SIGMA_B_UT = 0.5;
 /** A field weaker than this (µT) is no reading at all: CoreMotion reports zeros while uncalibrated. */
 export const MIN_FIELD_UT = 1;
+/**
+ * How late a magnetometer reading may be against its own timestamp (s): internal averaging and
+ * read-out. Paired with the attitude at its stamp, a reading taken while turning at ω points
+ * about ω·δ/cos(dip) wrong, so the turn rate costs it that much doubt and a fast spin no longer
+ * pulls north. Measure it on a device: spin flat at a steady rate each way; δ ≈ ν/ω.
+ */
+export const MAG_LATENCY_S = 0.01;
 /** After the lock haptic fires, the magnetometer is ignored this long: the actuator is a magnet. */
 export const ACTUATOR_MASK_S = 0.25;
 /** Without a gyroscope: the accelerometer's tilt is smoothed over this long… */
@@ -31,7 +38,10 @@ const GRAVITY = 9.80665;
  * differently with every posture: learned upright and used flat, it would
  * carry that error over, and a large enough difference reads as the field
  * changing while the phone did not turn. Out of posture, the gyroscope
- * carries the heading and the magnetometer is neither followed nor judged.
+ * carries the heading and north is not learned from the magnetometer. The
+ * field's shape is still judged in every posture: it describes the room, not
+ * the heading, so walking away from a laptop with the phone held up clears
+ * the warning as it would flat.
  *
  * Flat: the screen within 35° of facing up; it leaves at 45°, the same
  * thresholds at which the dial asks to lay the phone down. Camera: the
@@ -62,6 +72,21 @@ export interface EngineSensors {
 
 export interface EngineDebug {
   pipeline: 'fused' | 'compass';
+  /**
+   * A plain compass, for comparison: the true heading straight from the latest magnetometer
+   * reading, levelled by gravity, with none of the filter's memory (what a simple compass app
+   * shows, in true north). Rafiq's heading departs from it on purpose while it holds north
+   * against a disturbance, and by the posture-dependent calibration leftover.
+   */
+  rawDeg: number;
+  /**
+   * The same plain compass computed exactly as Android's SensorManager.getRotationMatrix +
+   * getOrientation do: down straight from the platform's gravity sample, nothing of the engine's
+   * own tilt. Next to `rawDeg` it separates a tilt error of the engine from a difference inside the
+   * platform's fused sensor. Both are averaged over the last ~0.2 s (10 readings), as compass apps
+   * smooth theirs.
+   */
+  gravDeg: number;
   /** Where magnetic north lies in the gyro frame, degrees. */
   thetaDeg: number;
   innovationDeg: number;
@@ -89,6 +114,8 @@ export interface EngineDebug {
   tiltResidualDeg: number;
   /** The platform's accuracy reads low but is ignored: the field has matched the model for long enough. */
   calOverridden: boolean;
+  /** The date is outside the magnetic model's years (a wrong clock, or after Nov 2029): the nearest model is used. */
+  outOfModel: boolean;
 }
 
 export interface EngineOutput {
@@ -103,8 +130,22 @@ export interface EngineOutput {
   /** True headings (magnetic without a model), degrees in [0, 360): the top edge, and the back camera. */
   flat: number;
   camera: number;
-  /** 0 flat, 90 upright. */
+  /** 0 flat, 90 upright. Known from the first reading, before north is (NaN only before any tilt). */
   pitch: number;
+  /**
+   * The screen's angle from facing straight up, in any direction (0 flat, 90 upright or on its
+   * side, 180 face down): the measure the posture gate uses (`POSTURE`), so the screen asks to
+   * lay the phone flat exactly when the magnetometer stops being listened to.
+   */
+  tiltDeg: number;
+  /**
+   * Which edge of the phone points up, as an angle in the screen's plane: 0 the top edge, 90 the
+   * right edge, 180 the bottom (tipped toward the user), −90 the left. Meaningful once the phone is
+   * tilted; the lay-flat demonstration draws its ghost phone this way round.
+   */
+  edgeUpDeg: number;
+  /** How sure north is, 1σ in degrees (Infinity before it is found). */
+  sigmaDeg: number;
   /** Sensor-side confidence; the caller adds `no-location`. */
   confidence: Exclude<Confidence, 'no-location'>;
   debug: EngineDebug;
@@ -145,7 +186,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
   const fused = sensors.hasGyro && sensors.hasUp;
 
   const merger = createStreamMerger(kinds);
-  const orientation = createOrientation();
+  const orientation = createOrientation(sensors.upIsAccelerometer ? RAW_ACCEL_TILT_TAU_S : TILT_TAU_S);
   const north = createNorthFilter();
   let model = initialModel;
   let shape: ShapeWatch = createShapeWatch(model?.zone ?? 'normal');
@@ -168,11 +209,20 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
   let lastDip = 0;
   let lastField = 0;
   let lastMeasSigma = 0;
+  let lastRaw = NaN;
+  let lastGrav = NaN;
+  /** The platform's latest gravity direction (device frame, unit), for `gravDeg`. */
+  let platformUp: Vec3 | null = null;
+  /** The last few plain-compass readings, for the readout's averages. */
+  const rawRecent: number[] = [];
+  const gravRecent: number[] = [];
+  /** The gyroscope's latest rate, degrees per second (any axis). */
+  let rateDegS = 0;
   // One field verdict per 100 ms for the shape and calibration watches.
   // A field that matches the model in size and dip (see `fieldCheck`).
   let bin = { start: -Infinity, field: 0, dip: 0, n: 0 };
   // Compass-only state.
-  let tilt: Vec3 | null = null;
+  let upLevel: Vec3 | null = null;
   let tiltT: number | null = null;
   let compass: { flat: number; camera: number; pitch: number; t: number } | null = null;
   // Measured rates.
@@ -226,25 +276,40 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       const dipDeg = Math.asin(clamp(-dot(m, up) / fieldUt, -1, 1)) * RAD;
       tiltDeg = Math.acos(clamp(up[2], -1, 1)) * RAD;
       const p = POSTURE[mode];
+      const wasInPosture = inPosture;
       inPosture =
         mode === 'flat'
           ? tiltDeg <= (inPosture ? p.leaveDeg : p.returnDeg)
           : tiltDeg >= (inPosture ? p.leaveDeg : p.returnDeg);
+      if (wasInPosture && !inPosture) north.pause();
       lastDip = dipDeg;
       lastField = fieldUt;
-      if (!inPosture) return;
+      lastRaw = averaged(rawRecent, rawCompass(m, up));
+      if (platformUp) lastGrav = averaged(gravRecent, rawCompass(m, platformUp));
       const verdict = model ? judgeField({ magnitudeUt: fieldUt, dipDeg }, model) : null;
-      const away = mode === 'flat' ? tiltDeg : Math.abs(90 - tiltDeg);
-      const r = measurementVariance(fieldUt, dipDeg, verdict) + (POSTURE_DOUBT * away) ** 2;
-      north.measure({ t, thetaDeg: normalizeDeg(Math.atan2(world[0], world[1]) * RAD), rDeg2: r, scoreDeg: verdict?.scoreDeg ?? 0 });
-      watchField(t, fieldUt, dipDeg);
       lastVerdict = verdict;
+      // The room is judged in every posture; north only in the one it is used in.
+      watchField(t, fieldUt, dipDeg);
+      if (!inPosture) return;
+      const away = mode === 'flat' ? tiltDeg : Math.abs(90 - tiltDeg);
+      const lag = (rateDegS * MAG_LATENCY_S) / Math.cos(clamp(Math.abs(model?.dipDeg ?? dipDeg), 0, 80) * DEG);
+      const r = measurementVariance(fieldUt, dipDeg, verdict) + (POSTURE_DOUBT * away) ** 2 + lag ** 2;
+      // The platform's own calibration verdict, as it stands for this reading: low (0–1) is not vouched
+      // for, unless the field has matched the model long enough to override it.
+      const vouched = !(lastAccuracy === 0 || lastAccuracy === 1) || calibration.overridden;
+      north.measure({
+        t,
+        thetaDeg: normalizeDeg(Math.atan2(world[0], world[1]) * RAD),
+        rDeg2: r,
+        scoreDeg: verdict?.scoreDeg ?? 0,
+        vouched,
+      });
       lastMeasSigma = Math.sqrt(r);
       return;
     }
     // Compass only: north straight from the field, levelled by the smoothed accelerometer.
-    if (!tilt) return;
-    const upDev = tilt;
+    if (!upLevel) return;
+    const upDev = upLevel;
     const vertical = dot(m, upDev);
     const northDev = unit(sub(m, scale(upDev, vertical)));
     if (!northDev) return;
@@ -252,6 +317,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     const q = qFromWorldAxes(eastDev, northDev, upDev);
     const pose = poseOf(q);
     const dipDeg = Math.asin(clamp(-vertical / fieldUt, -1, 1)) * RAD;
+    lastRaw = normalizeDeg((mode === 'camera' ? pose.camera : pose.flat) + (model?.declination ?? 0));
     if (!compass) compass = { ...pose, t };
     else {
       const k = 1 - Math.exp(-Math.max(0, t - compass.t) / COMPASS_HEADING_TAU_S);
@@ -268,29 +334,55 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     watchField(t, fieldUt, dipDeg);
   }
 
+  /** The plain-compass heading (see `EngineDebug.rawDeg`) from one reading and the device's up. */
+  function rawCompass(m: Vec3, upDev: Vec3): number {
+    const northDev = unit(sub(m, scale(upDev, dot(m, upDev))));
+    if (!northDev) return NaN;
+    const pose = poseOf(qFromWorldAxes(cross(northDev, upDev), northDev, upDev));
+    return normalizeDeg((mode === 'camera' ? pose.camera : pose.flat) + (model?.declination ?? 0));
+  }
+
+  /** Keeps the last ten readings in `recent` and returns their circular mean. */
+  function averaged(recent: number[], deg: number): number {
+    if (Number.isFinite(deg)) {
+      recent.push(deg);
+      if (recent.length > 10) recent.shift();
+    }
+    const stats = circularStats();
+    for (const d of recent) stats.add(d);
+    return stats.mean();
+  }
+
   function onUp(t: number, u: Vec3) {
+    // A raw accelerometer (no fused gravity on this phone) carries the hand's own acceleration:
+    // a reading off 1 g is not gravity, whichever pipeline it feeds.
+    if (sensors.upIsAccelerometer && Math.abs(norm(u) - GRAVITY) > COMPASS_ACCEL_REJECT) return;
+    platformUp = unit(u) ?? platformUp;
     if (fused) {
       orientation.up(t, u);
       return;
     }
-    if (sensors.upIsAccelerometer && Math.abs(norm(u) - GRAVITY) > COMPASS_ACCEL_REJECT) return;
     const measured = unit(u);
     if (!measured) return;
-    if (!tilt || tiltT === null) {
-      tilt = measured;
+    if (!upLevel || tiltT === null) {
+      upLevel = measured;
     } else {
       const k = 1 - Math.exp(-Math.max(0, t - tiltT) / COMPASS_TILT_TAU_S);
-      tilt = unit([tilt[0] + k * (measured[0] - tilt[0]), tilt[1] + k * (measured[1] - tilt[1]), tilt[2] + k * (measured[2] - tilt[2])]) ?? tilt;
+      upLevel = unit([upLevel[0] + k * (measured[0] - upLevel[0]), upLevel[1] + k * (measured[1] - upLevel[1]), upLevel[2] + k * (measured[2] - upLevel[2])]) ?? upLevel;
     }
     tiltT = t;
   }
 
   function onGyro(t: number, w: Vec3) {
+    north.advance(t);
+    rateDegS = norm(w) * RAD;
     const turned = orientation.gyro(t, w);
     if (orientation.gaps !== gapsSeen) {
       // Whatever the phone turned during the silence is unknown: find north again.
       gapsSeen = orientation.gaps;
       north.reseed();
+      // North found again is judged afresh: trust earned by the old north does not cover the new one.
+      trusted = false;
       return;
     }
     if (turned !== null) north.turned(turned);
@@ -302,20 +394,29 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
     let flat = NaN;
     let camera = NaN;
     let pitch = NaN;
+    let tilt = NaN;
+    let edgeUp = NaN;
     let seeded = false;
     let sigmaDeg = Infinity;
     const ns = north.state();
     let t = newestT;
     if (fused) {
       const now = orientation.ahead(merger.pending('gyro'));
-      if (now && ns.seeded) {
+      if (now) {
         t = now.t;
         const pose = poseOf(now.q);
-        flat = normalizeDeg(pose.flat - ns.thetaDeg + declination);
-        camera = normalizeDeg(pose.camera - ns.thetaDeg + declination);
+        // The tilt needs no north: it is reported from the first reading, so a phone opened
+        // upright (where north is not learned) is still asked to lie flat.
         pitch = pose.pitch;
-        seeded = true;
-        sigmaDeg = Math.sqrt(ns.pDeg2);
+        const upDev = qRotateInverse(now.q, UP);
+        tilt = Math.acos(clamp(upDev[2], -1, 1)) * RAD;
+        edgeUp = Math.atan2(upDev[0], upDev[1]) * RAD;
+        if (ns.seeded) {
+          flat = normalizeDeg(pose.flat - ns.thetaDeg + declination);
+          camera = normalizeDeg(pose.camera - ns.thetaDeg + declination);
+          seeded = true;
+          sigmaDeg = Math.sqrt(ns.pDeg2);
+        }
       }
     } else if (compass) {
       flat = normalizeDeg(compass.flat + declination);
@@ -324,9 +425,20 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       seeded = true;
       sigmaDeg = SIGMA_SYS_DEG;
     }
+    if (!fused && upLevel) {
+      // The top edge's elevation is the up vector's share along the device's Y axis; the screen's
+      // tilt is the angle between up and the screen's normal (Z).
+      if (!compass) pitch = Math.asin(clamp(upLevel[1], -1, 1)) * RAD;
+      tilt = Math.acos(clamp(upLevel[2], -1, 1)) * RAD;
+      edgeUp = Math.atan2(upLevel[0], upLevel[1]) * RAD;
+    }
 
-    // The disagreement is shown once it has held, and cleared once the field has agreed again for a moment.
-    if (ns.disagreementS >= SHOW_DISAGREEMENT_S) {
+    // The disagreement is shown once it has held, and cleared once the field has agreed again for a
+    // moment. Out of posture it cannot be judged (no reading is taken), so it is not shown.
+    if (!inPosture) {
+      disagreement = false;
+      agreedSince = null;
+    } else if (ns.disagreementS >= SHOW_DISAGREEMENT_S) {
       disagreement = true;
       agreedSince = null;
     } else if (disagreement && ns.disagreementS === 0) {
@@ -342,6 +454,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
         shapeDisturbed: shapeDisturbed || model?.zone === 'blackout',
         disagreement,
         seeded,
+        provisional: fused && ns.provisional,
         sigmaDeg,
       },
       trusted,
@@ -354,9 +467,14 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       flat,
       camera,
       pitch,
+      tiltDeg: tilt,
+      edgeUpDeg: edgeUp,
+      sigmaDeg,
       confidence,
       debug: {
         pipeline: fused ? 'fused' : 'compass',
+        rawDeg: lastRaw,
+        gravDeg: lastGrav,
         thetaDeg: ns.thetaDeg,
         innovationDeg: ns.innovationDeg,
         sigmaDeg,
@@ -379,34 +497,31 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
         tiltDeg,
         tiltResidualDeg: orientation.tiltResidualDeg,
         calOverridden: calibration.overridden,
+        outOfModel: model?.outOfModel ?? false,
       },
     };
   }
 
-  function newest(flat: number[] | undefined) {
-    if (flat && flat.length >= 4) {
-      const t = flat[flat.length - 4];
-      if (Number.isFinite(t) && t > newestT) newestT = t;
-    }
-  }
-
   return {
     push(batch) {
-      newest(batch.gyro);
-      newest(batch.up);
-      newest(batch.mag);
+      // Sample times as the merger accepted them: a glitched timestamp must not move the clock that
+      // the calibration watch and the actuator mask run on.
+      const samples = merger.push(batch);
+      if (merger.newest > newestT) newestT = merger.newest;
       dropped += batch.dropped > 0 ? batch.dropped : 0;
       // The platform re-estimated the magnetometer's offset: its readings may step, and that step is
-      // the calibration improving, not interference. A rise of its accuracy says the same (iOS has no
-      // other sign of it); a fall is the platform noticing a disturbance, and hands nothing over.
+      // the calibration improving, not interference. Its accuracy rising from low (0–1) to
+      // calibrated (2–3) says the same (iOS has no other sign of it); a fall, or a flap between 2
+      // and 3, hands nothing over. The north filter still bounds what a recalibration may move.
       const recalibrated =
-        (lastEpoch !== null && batch.biasEpoch !== lastEpoch) || (lastAccuracy >= 0 && batch.magAccuracy > lastAccuracy);
+        (lastEpoch !== null && batch.biasEpoch !== lastEpoch) ||
+        (lastAccuracy >= 0 && lastAccuracy <= 1 && batch.magAccuracy >= 2);
       if (recalibrated) north.biasEpoch(newestT);
       lastEpoch = batch.biasEpoch;
       lastAccuracy = batch.magAccuracy;
       calibration.accuracy(batch.magAccuracy, newestT);
 
-      for (const s of merger.push(batch)) {
+      for (const s of samples) {
         count(s.kind, s.t);
         if (s.kind === 'gyro') onGyro(s.t, s.v);
         else if (s.kind === 'up') onUp(s.t, s.v);
@@ -415,10 +530,16 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       return output();
     },
     setModel(next) {
+      // A new fix moves the model by a hair: the field watches keep what they have seen, so a
+      // warning on screen does not blink off with every location update. Only a change of WMM zone
+      // (into or out of the blackout) starts the shape watch over. Calibration is the platform's
+      // verdict and does not depend on the model at all.
+      const zoneChanged = (next?.zone ?? 'normal') !== (model?.zone ?? 'normal');
       model = next;
-      shape = createShapeWatch(next?.zone ?? 'normal');
-      calibration = createCalibrationWatch();
-      shapeDisturbed = false;
+      if (zoneChanged) {
+        shape = createShapeWatch(next?.zone ?? 'normal');
+        shapeDisturbed = false;
+      }
     },
     noteActuator() {
       maskUntil = newestT + ACTUATOR_MASK_S;
@@ -439,6 +560,7 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       maskUntil = -Infinity;
       inPosture = true;
       tiltDeg = 0;
+      rateDegS = 0;
       lastEpoch = null;
       lastAccuracy = -1;
       dropped = 0;
@@ -448,8 +570,13 @@ export function createQiblaEngine(sensors: EngineSensors, initialModel: EarthFie
       disagreement = false;
       agreedSince = null;
       lastVerdict = null;
+      lastRaw = NaN;
+      lastGrav = NaN;
+      platformUp = null;
+      rawRecent.length = 0;
+      gravRecent.length = 0;
       bin = { start: -Infinity, field: 0, dip: 0, n: 0 };
-      tilt = null;
+      upLevel = null;
       tiltT = null;
       compass = null;
     },

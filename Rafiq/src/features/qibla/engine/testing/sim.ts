@@ -26,6 +26,8 @@ export interface Script {
   magAccuracy?: (t: number) => number;
   /** Gyro silent (no samples) when this returns true. */
   gyroSilent?: (t: number) => boolean;
+  /** The hand's own acceleration, m/s², device frame: what a raw accelerometer adds to gravity. */
+  handAccel?: (t: number) => Vec3;
 }
 
 export interface SensorModel {
@@ -44,6 +46,10 @@ export interface SensorModel {
   magScale?: Vec3;
   /** Without a gyroscope: the up stream is the raw accelerometer, hand acceleration included. */
   noGyro?: boolean;
+  /** A gyroscope but no fused gravity: the up stream is still the raw accelerometer. */
+  rawAccel?: boolean;
+  /** The magnetometer's latency: the field at t is stamped t + magDelay (internal filtering, read-out). */
+  magDelay?: number;
   /** Seed for the noise. */
   seed?: number;
 }
@@ -115,9 +121,14 @@ export function createSim(coords: Coords, script: Script, model: SensorModel, da
     const up = qRotate(qConj(q), [0, 0, 1]);
     const e = (model.upNoiseDeg ?? 0.2) * DEG;
     const tilted = qRotate(qAxisAngle([1, 0, 0], e * gauss()), qRotate(qAxisAngle([0, 1, 0], e * gauss()), up));
-    if (!model.noGyro) return tilted;
-    // The raw accelerometer: gravity's reaction plus whatever the hand adds (here, none beyond noise).
-    return [tilted[0] * 9.80665 + 0.05 * gauss(), tilted[1] * 9.80665 + 0.05 * gauss(), tilted[2] * 9.80665 + 0.05 * gauss()];
+    if (!model.noGyro && !model.rawAccel) return tilted;
+    // The raw accelerometer: gravity's reaction plus whatever the hand adds.
+    const a = script.handAccel?.(t) ?? [0, 0, 0];
+    return [
+      tilted[0] * 9.80665 + a[0] + 0.05 * gauss(),
+      tilted[1] * 9.80665 + a[1] + 0.05 * gauss(),
+      tilted[2] * 9.80665 + a[2] + 0.05 * gauss(),
+    ];
   }
 
   function magAt(t: number): Vec3 {
@@ -172,7 +183,7 @@ export function createSim(coords: Coords, script: Script, model: SensorModel, da
         const t = magTimes[mi++];
         // Like the native module: CoreMotion's field is not sent while it is uncalibrated.
         if (ios && (script.magAccuracy?.(t) ?? 3) === 0) continue;
-        batch.mag.push(T0 + t, ...magAt(t));
+        batch.mag.push(T0 + t + (model.magDelay ?? 0), ...magAt(t));
       }
       out.push({ at: b, batch });
     }

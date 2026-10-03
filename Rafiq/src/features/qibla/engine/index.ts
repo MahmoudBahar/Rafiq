@@ -16,6 +16,6 @@ export {
 } from './engine';
 export { KAABA, geodesic, qiblaBearing, type QiblaBearing } from './geodesy';
 export { earthField, type EarthField } from './geomag';
-export { type HeadingMode } from './pose';
+export { snapQuarter, type HeadingMode } from './pose';
 export { type MotionBatch } from './stream';
 export type { Coords } from './types';

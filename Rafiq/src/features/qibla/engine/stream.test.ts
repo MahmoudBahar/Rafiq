@@ -30,6 +30,15 @@ describe('createStreamMerger', () => {
     expect(out.length).toBeGreaterThan(gyro.length - 5);
   });
 
+  it('a sample older than what was already released is dropped, not processed out of order', () => {
+    const m = createStreamMerger(['gyro', 'up']);
+    m.push({ gyro: flat([1.0, 0], [1.1, 0]), up: flat([1.0, 0], [1.1, 0]), mag: [] });
+    const before = m.rejected;
+    // A gravity sample for 1.0 s arrives after the watermark has passed it.
+    m.push({ gyro: flat([1.2, 0]), up: flat([1.05, 0], [1.2, 0]), mag: [] });
+    expect(m.rejected).toBe(before + 1);
+  });
+
   it('a stream that never speaks holds the start only briefly', () => {
     const m = createStreamMerger(['gyro', 'mag']);
     expect(m.push({ gyro: flat([1, 0], [1.1, 0]), up: [], mag: [] })).toEqual([]);

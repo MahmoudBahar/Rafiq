@@ -23,11 +23,22 @@ export interface EarthField {
   outOfModel: boolean;
 }
 
+/** A date inside WMM2025 (valid Nov 2024 – Nov 2029): its model's own bounds are read from it. */
+const LATEST_MODEL_DATE = new Date(Date.UTC(2025, 6, 1));
+/** A date inside the oldest model the package carries (WMM2015). */
+const EARLIEST_MODEL_DATE = new Date(Date.UTC(2015, 6, 1));
+const DAY_MS = 86400000;
+
 /**
- * The WMM2025 field at `coords` (sea level) on `date`. Altitude changes the
- * field by about 0.05 % per km: nothing a phone can see. Outside the model's
- * years the nearest model is used and flagged; the secular drift of the
- * declination is a fraction of a degree per year in most places.
+ * The WMM field at `coords` (sea level) on `date`. Altitude changes the field
+ * by about 0.05 % per km: nothing a phone can see.
+ *
+ * Outside the models' years (a phone with a wrong clock, or after Nov 2029)
+ * the date is clamped into the nearest model's validity and the result is
+ * flagged `outOfModel`; the declination drifts by a fraction of a degree a
+ * year in most places, so the nearest model is still a fair answer. The
+ * package's own out-of-bounds option is not used: it reports through
+ * `console.error`, a red error in development builds.
  */
 export function earthField(coords: Coords, date: Date): EarthField {
   let outOfModel = false;
@@ -36,7 +47,12 @@ export function earthField(coords: Coords, date: Date): EarthField {
     m = model(date);
   } catch {
     outOfModel = true;
-    m = model(date, { allowOutOfBoundsModel: true });
+    const latest = model(LATEST_MODEL_DATE);
+    const clamped =
+      date.getTime() > latest.end_date.getTime()
+        ? new Date(latest.end_date.getTime() - DAY_MS)
+        : new Date(Math.max(date.getTime(), model(EARLIEST_MODEL_DATE).start_date.getTime() + DAY_MS));
+    m = model(clamped);
   }
   const p = m.point([coords.latitude, coords.longitude]);
   const horizontalUt = p.h / 1000;

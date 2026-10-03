@@ -13,6 +13,35 @@ describe('the WMM at Cairo', () => {
   });
 });
 
+describe('earthField at the edges', () => {
+  it('a date past the model is clamped into it and flagged, without the package logging an error', () => {
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...a: unknown[]) => errors.push(a);
+    try {
+      const late = earthField({ latitude: 30.0444, longitude: 31.2357 }, new Date('2031-06-01'));
+      expect(late.outOfModel).toBe(true);
+      expect(late.totalUt).toBeCloseTo(44, 0);
+      const early = earthField({ latitude: 30.0444, longitude: 31.2357 }, new Date('2001-01-01'));
+      expect(early.outOfModel).toBe(true);
+      expect(Number.isFinite(early.declination)).toBe(true);
+    } finally {
+      console.error = original;
+    }
+    expect(errors).toEqual([]);
+  });
+
+  // The package switches method at the poles itself (model.js), so nothing needs guarding: kept as a check.
+  it('a coordinate exactly at a pole does not throw', () => {
+    expect(() => earthField({ latitude: 90, longitude: 0 }, new Date('2026-10-01'))).not.toThrow();
+    expect(() => earthField({ latitude: -90, longitude: 0 }, new Date('2026-10-01'))).not.toThrow();
+  });
+
+  it('a date inside the model is not flagged', () => {
+    expect(cairo.outOfModel).toBe(false);
+  });
+});
+
 describe('judgeField against the measurements on a Samsung S24 Ultra in Cairo', () => {
   it('desk with a charging cable (65 µT, dip 43°, heading right): no implied error', () => {
     const v = judgeField({ magnitudeUt: 65, dipDeg: 43 }, cairo);

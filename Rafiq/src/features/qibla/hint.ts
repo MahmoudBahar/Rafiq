@@ -16,11 +16,14 @@ export interface Hint {
 /**
  * "n degrees" in Arabic, as a screen reader should say it: one and two take
  * the singular and dual, three to ten the plural, eleven and up the singular.
+ * Past a hundred the last two digits decide: 103–110 and 203–210 take the
+ * plural too («١٠٥ درجات»), the rest the singular.
  */
 export function degreesSpoken(n: number): string {
   if (n === 1) return 'درجة واحدة';
   if (n === 2) return 'درجتان';
-  if (n >= 3 && n <= 10) return `${toArabicIndic(n)} درجات`;
+  const tail = n % 100;
+  if (tail >= 3 && tail <= 10) return `${toArabicIndic(n)} درجات`;
   return `${toArabicIndic(n)} درجة`;
 }
 
