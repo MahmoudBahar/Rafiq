@@ -96,12 +96,20 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "يحتاج رفيق إلى موقعك لحساب مواقيت الصلاة في مدينتك بدقة. لا يُشارك موقعك مع أي جهة.",
+          "locationWhenInUsePermission": "يحتاج رفيق إلى موقعك لحساب مواقيت الصلاة في مدينتك بدقة وتحديد اتجاه القبلة. لا يُشارك موقعك مع أي جهة.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "motionUsagePermission": "لا يستخدم رفيق بيانات الحركة، ولن يطلب منك هذا الإذن.",
+          "motionUsagePermission": "يستخدم رفيق حساسات الحركة لتوجيه بوصلة القبلة فقط، ولا يحتفظ بأي بيانات.",
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "يعرض رفيق اتجاه القبلة فوق صورة الكاميرا مباشرة. لا تُلتقط أي صور ولا تُحفظ.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
         }
       ]
     ],

@@ -202,7 +202,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <TabScene name="index" side="start" launch style={{ backgroundColor: c.bg }}>
+    <TabScene name="index" index={0} slot={0} launch style={{ backgroundColor: c.bg }}>
       <View
         style={[styles.header, { paddingTop: insets.top + 16 }]}
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}

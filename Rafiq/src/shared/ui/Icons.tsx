@@ -167,6 +167,16 @@ export function CompassIcon({ size, color, strokeWidth = 1.8 }: IconProps) {
   );
 }
 
+export function CameraIcon({ size, color, strokeWidth = 1.8 }: IconProps) {
+  const s = strokeProps(color, strokeWidth);
+  return (
+    <Base size={size}>
+      <Path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1.4-2h5.2L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" {...s} />
+      <Circle cx="12" cy="13" r="3.2" {...s} />
+    </Base>
+  );
+}
+
 export function SunIcon({ size, color, strokeWidth = 2 }: IconProps) {
   const s = strokeProps(color, strokeWidth);
   return (

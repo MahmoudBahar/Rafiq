@@ -5,7 +5,8 @@ import { Platform } from 'react-native';
  * The app's haptic vocabulary, kept deliberately small: the wheel's detents
  * and end stops, the day pager locking into place, the nav bar tabs (a click
  * for a change of page, a refusal for a tab that is not there yet), the
- * fine-tune steppers, and the tasbih beads of the azkar reader.
+ * fine-tune steppers, the tasbih beads of the azkar reader, and the compass
+ * coming round onto the Qibla.
  * Fire-and-forget, React-free and safe to call from `scheduleOnRN`. On
  * Android the system `performHapticFeedback` constants are used: expo's
  * impact styles there are 40–60 ms waveforms that read as a buzz.
@@ -63,4 +64,13 @@ export function bead() {
 /** A zekr, or the whole set, completed. */
 export function success() {
   androidOr(Haptics.AndroidHaptics.Confirm, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+}
+
+/**
+ * The phone has come round onto the Qibla: one firm knock on entering the
+ * band, silent while turning. The heavy system effect rather than the light
+ * `Confirm` tick, so arriving is felt through a hand holding the phone flat.
+ */
+export function lock() {
+  androidOr(Haptics.AndroidHaptics.Long_Press, impact(Haptics.ImpactFeedbackStyle.Heavy));
 }
