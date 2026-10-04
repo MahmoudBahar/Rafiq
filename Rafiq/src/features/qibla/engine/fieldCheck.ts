@@ -7,21 +7,31 @@ import type { EarthField } from './geomag';
  * calibration each carry a degree or two.
  */
 export const DIP_ALLOWANCE_DEG = 5;
-/** Implied heading error above which the field counts as bent (degrees)… */
+/**
+ * The field's doubt (see `scoreDeg`: the dip departure's implied heading
+ * error plus the size's doubt) above which it counts as bent, in degrees…
+ */
 export const BENT_ENTER_DEG = 10;
 /** …and below which it counts as straight again. */
 export const BENT_LEAVE_DEG = 7;
-/** A field outside this many times the model's strength is a magnet or steel right by the phone, whatever its direction. */
-export const RATIO_ENTER_LOW = 0.4;
-export const RATIO_ENTER_HIGH = 2.0;
-export const RATIO_LEAVE_LOW = 0.45;
-export const RATIO_LEAVE_HIGH = 1.8;
+/**
+ * A field outside this share of the model's strength is reported on its own,
+ * whatever its dip: something nearby adds a field a quarter of Earth's or more,
+ * enough to turn the heading by tens of degrees. It was 0.4–2.0, so lenient
+ * that a field at 72 % (a weak spot by a desk, the heading 150° off) and one at
+ * 180 % (a laptop corner) both read steady. A desk with a charging cable (×1.5)
+ * whose heading happened to be right is now reported too: that field cannot be
+ * told apart from one that bends the heading.
+ */
+export const RATIO_ENTER_LOW = 0.75;
+export const RATIO_ENTER_HIGH = 1.3;
+/** Back inside this band (for the leave time) it clears. */
+export const RATIO_LEAVE_LOW = 0.8;
+export const RATIO_LEAVE_HIGH = 1.25;
 /**
  * Within this ratio of the model's strength the size is a phone's ordinary
- * error (soft-iron scale, a charging current) and costs nothing. Beyond it
- * the magnetometer is listened to less, but no warning is raised: a field
- * that is only stronger, pointing the same way, moves the heading by 0°
- * (a Samsung on a desk with a cable read ×1.5 with a correct heading).
+ * error (soft-iron scale) and costs nothing; beyond it the magnetometer is
+ * listened to less and the size adds to the field's doubt.
  */
 export const RATIO_FREE = 1.25;
 /** Each unit of |ln ratio| beyond the free band counts as this many degrees of doubt. */
@@ -60,10 +70,10 @@ export interface FieldVerdict {
  * horizontal part is the cos(dip) share of the field, so the same push
  * turns it further. A disturbance that only scales the field turns nothing.
  *
- * Checked against the two measured cases in Cairo (model 44 µT, dip 45°):
+ * Checked against the measured cases in Cairo (model 44 µT, dip 45°):
  * a desk with a charging cable read 65 µT dipping 43° with a correct
- * heading (0° here: not flagged); a laptop corner read 78 µT dipping 61°
- * with the heading wrong (15.6° here: flagged).
+ * heading (0° here; its size alone is now reported, see RATIO_ENTER_HIGH);
+ * a laptop corner read 78 µT dipping 61° with the heading wrong (15.6°).
  */
 export function impliedHeadingError(dipDeg: number, model: Pick<EarthField, 'dipDeg'>): number {
   const excess = Math.max(0, Math.abs(dipDeg - model.dipDeg) - DIP_ALLOWANCE_DEG);
@@ -103,9 +113,10 @@ export function createShapeWatch(zone: EarthField['zone']): ShapeWatch {
   return {
     push(v, t) {
       if (zone === 'blackout') return true;
-      const bad = v.impliedDeg > BENT_ENTER_DEG || v.ratio < RATIO_ENTER_LOW || v.ratio > RATIO_ENTER_HIGH;
-      const good =
-        v.impliedDeg < BENT_LEAVE_DEG && v.ratio > RATIO_LEAVE_LOW && v.ratio < RATIO_LEAVE_HIGH;
+      // The dip's and the size's signs are added: each can sit just under its own limit while
+      // together they say the field is not Earth's (a weak spot: 72 % strength, dip 10° shallow).
+      const bad = v.scoreDeg > BENT_ENTER_DEG || v.ratio < RATIO_ENTER_LOW || v.ratio > RATIO_ENTER_HIGH;
+      const good = v.scoreDeg < BENT_LEAVE_DEG && v.ratio > RATIO_LEAVE_LOW && v.ratio < RATIO_LEAVE_HIGH;
       const wantsChange = disturbed ? good : bad;
       if (!wantsChange) {
         since = null;

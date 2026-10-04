@@ -358,26 +358,54 @@ describe('interference', () => {
     expect(after(ticks, 5, 10).every((o) => o.confidence === 'interference')).toBe(true);
   });
 
-  it('a desk with a charging cable (the field ×1.5, same direction) is never a warning', () => {
-    const sim = createSim(CAIRO, { heading: () => 60, external: () => [0, 0, 0] }, ANDROID);
-    const e = sim.field;
-    const scaled = createSim(
+  // The field scaled by k along its own direction: stronger or weaker, pointing the same way.
+  const scaledBy = (sim: () => Sim, k: number) => () => {
+    const e = sim().field;
+    const h = e.horizontalUt * (k - 1);
+    const v = e.totalUt * Math.sin((e.dipDeg * Math.PI) / 180) * (k - 1);
+    const d = (e.declination * Math.PI) / 180;
+    return [h * Math.sin(d), h * Math.cos(d), -v] as const;
+  };
+
+  it('a desk with a charging cable (the field ×1.5) is reported: that much extra field cannot be told from one that bends the heading', () => {
+    let sim: Sim;
+    sim = createSim(CAIRO, { heading: (t) => 60 + 30 * Math.sin(t), external: scaledBy(() => sim, 1.5) }, ANDROID);
+    const ticks = run(sim, ANDROID, 6);
+    expect(after(ticks, 2).every((o) => o.confidence === 'interference')).toBe(true);
+  });
+
+  it('a field within ±15 % of the model is never reported', () => {
+    for (const k of [0.86, 1.15]) {
+      let sim: Sim;
+      sim = createSim(CAIRO, { heading: (t) => 60 + 30 * Math.sin(t), external: scaledBy(() => sim, k) }, ANDROID);
+      const ticks = run(sim, ANDROID, 8);
+      expect(after(ticks, 0).some((o) => o.confidence === 'interference')).toBe(false);
+    }
+  });
+
+  it('a weak spot (72 % strength, dip 10° shallow, as measured by a desk) is reported though neither sign alone is far off', () => {
+    // A world-fixed field that leaves 72 % of the strength at a 35° dip, as the S24 read there.
+    let sim: Sim;
+    sim = createSim(
       CAIRO,
       {
-        heading: (t) => 60 + 30 * Math.sin(t),
+        heading: () => 290,
         external: () => {
-          const h = e.horizontalUt * 0.5;
-          const v = e.totalUt * Math.sin((e.dipDeg * Math.PI) / 180) * 0.5;
+          const e = sim.field;
+          const target = 0.72 * e.totalUt;
+          const dip = (35 * Math.PI) / 180;
           const d = (e.declination * Math.PI) / 180;
-          return [h * Math.sin(d), h * Math.cos(d), -v];
+          const h0 = e.horizontalUt;
+          const v0 = e.totalUt * Math.sin((e.dipDeg * Math.PI) / 180);
+          const h1 = target * Math.cos(dip);
+          const v1 = target * Math.sin(dip);
+          return [(h1 - h0) * Math.sin(d), (h1 - h0) * Math.cos(d), -(v1 - v0)] as const;
         },
       },
       ANDROID,
     );
-    const ticks = run(scaled, ANDROID, 10);
-    expect(after(ticks, 0).some((o) => o.confidence === 'interference')).toBe(false);
-    expect(maxError(ticks, scaled, 1.5)).toBeLessThan(3);
-    void sim;
+    const ticks = run(sim, ANDROID, 4);
+    expect(after(ticks, 1.6).every((o) => o.confidence === 'interference')).toBe(true);
   });
 
   it('a magnet swept past for half a second is neither shown nor followed', () => {

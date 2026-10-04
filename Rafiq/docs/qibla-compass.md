@@ -106,16 +106,19 @@ A phone magnetometer's leftover calibration error turns the measured field a few
 A disturbance that tilts the field out of the model's dip by Δ, if its direction is otherwise random, turns it within the horizontal plane by about **Δ / cos(dip)**. A disturbance that only scales the field turns nothing. So:
 
 - **implied heading error** e = max(0, |dip − dip_model| − 5°) / cos(dip_model). The 5° allows for tilt and calibration error in the dip itself.
-- **magnitude** only costs doubt beyond ×1.25: 30° per unit of |ln ratio| beyond that, added to R, never a warning on its own.
+- **size doubt** s: 30° per unit of |ln ratio| beyond ×1.25 (or below ÷1.25), added to R.
+- **field doubt** = e + s. The two signs are added: each can sit under its own limit while together they say the field is not Earth's.
 
-| measured in Cairo (WMM: 44 µT, dip 45°) | e | verdict |
-|---|---|---|
-| desk + charging cable, 65 µT / 43° (heading was right) | 0° | not flagged |
-| laptop corner, 78 µT / 61° (heading was wrong) | 15.6° | flagged |
+| measured in Cairo (WMM: 44 µT, dip 45°) | e | s | verdict |
+|---|---|---|---|
+| desk + charging cable, 65 µT / 43° (heading was right) | 0° | 5° | flagged by its size (×1.48) |
+| laptop corner, 78 µT / 61° (heading was wrong) | 15.6° | 10° | flagged |
+| weak spot by a desk, 31.8 µT / 35° (heading ~150° off) | 7.1° | 3.2° | flagged (doubt 10.2°, and 72 % strength) |
 
 The **interference** rules:
-- Enter when e > 10° for 1 s, or the ratio is < 0.4 or > 2.0 for 1 s.
-- Leave after 1.5 s of e < 7° with the ratio in 0.45–1.8.
+- Enter when e + s > 10° for 1 s, or the strength is outside 75–130 % of the model for 1 s.
+- Leave after 1.5 s of e + s < 7° with the strength in 80–125 %.
+- The strength band was 40–200 % until 2026-10-03, when the weak spot above (heading 150° off) and the laptop corner both read "steady". A field a quarter off Earth's means something nearby adds a field of that size, which can turn the heading by tens of degrees; the desk with the cable, whose heading happened to be right, is reported too, since no measurement tells the two apart.
 - Always in the WMM blackout zone (H < 2 µT).
 
 ### 4.5 `calibration.ts`

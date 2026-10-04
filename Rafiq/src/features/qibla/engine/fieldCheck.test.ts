@@ -85,6 +85,33 @@ describe('createShapeWatch', () => {
     const w = createShapeWatch('normal');
     for (let t = 0; t < 5; t += 0.1) expect(w.push(Math.round(t * 10) % 2 ? bent : fine, t)).toBe(false);
   });
+  it('outside 75–130 % of the model strength is reported; back inside 80–125 % it clears', () => {
+    for (const ut of [31.8, 70, 82]) {
+      const w = createShapeWatch('normal');
+      const v = judgeField({ magnitudeUt: ut, dipDeg: 45 }, cairo);
+      w.push(v, 0);
+      expect(w.push(v, 1)).toBe(true);
+    }
+    const w = createShapeWatch('normal');
+    for (const ut of [40, 44, 50]) expect(w.push(judgeField({ magnitudeUt: ut, dipDeg: 45 }, cairo), 0)).toBe(false);
+  });
+
+  it('the dip and the size add up: 72 % at a 35° dip (7° + 3°) is reported, though each alone is under its limit', () => {
+    const v = judgeField({ magnitudeUt: 31.8, dipDeg: 35 }, cairo);
+    expect(v.impliedDeg).toBeLessThan(10);
+    expect(v.scoreDeg).toBeGreaterThan(10);
+  });
+
+  it('a field inside the strength band whose dip and size together pass 10° is reported; the dip alone would not be', () => {
+    // 76 %: inside 75–130 %, 1.5° of size doubt. Dip 11.5° shallow: 9.2° implied, just under 10°.
+    const v = judgeField({ magnitudeUt: 0.76 * cairo.totalUt, dipDeg: cairo.dipDeg - 11.5 }, cairo);
+    expect(v.impliedDeg).toBeLessThan(10);
+    expect(v.scoreDeg).toBeGreaterThan(10);
+    const w = createShapeWatch('normal');
+    w.push(v, 0);
+    expect(w.push(v, 1)).toBe(true);
+  });
+
   it('the blackout zone always reports', () => {
     expect(createShapeWatch('blackout').push(fine, 0)).toBe(true);
   });
