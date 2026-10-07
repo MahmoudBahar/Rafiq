@@ -9,7 +9,7 @@ describe('generated azkar data', () => {
     expect(AZKAR_SETS.morning.items).toHaveLength(31);
     expect(AZKAR_SETS.evening.items).toHaveLength(30);
     expect(AZKAR_SETS.waking.items).toHaveLength(4);
-    expect(AZKAR_SETS.prayer.items).toHaveLength(10);
+    expect(AZKAR_SETS.prayer.items).toHaveLength(15);
     expect(AZKAR_SETS.sleep.items).toHaveLength(18);
   });
 
@@ -38,10 +38,10 @@ describe('generated azkar data', () => {
         for (const p of z.prayers ?? []) expect(FARD_KEYS).toContain(p);
       }
     }
-    expect(itemsForPrayer('fajr')).toHaveLength(10);
-    expect(itemsForPrayer('maghrib')).toHaveLength(9);
-    expect(itemsForPrayer('dhuhr')).toHaveLength(8);
-    expect(itemsForPrayer('maghrib').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(itemsForPrayer('fajr')).toHaveLength(15);
+    expect(itemsForPrayer('maghrib')).toHaveLength(14);
+    expect(itemsForPrayer('dhuhr')).toHaveLength(13);
+    expect(itemsForPrayer('maghrib').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   });
 
   it('ships clean text: no stray marks, ayah marks on every Qur\'an entry', () => {
@@ -65,7 +65,12 @@ describe('generated azkar data', () => {
   it('gives each of the three Quls its own page, as the morning set does', () => {
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.count)).toEqual([3, 3, 3]);
-    expect(AZKAR_SETS.prayer.items.slice(4, 7).map((z) => z.count)).toEqual([1, 1, 1]);
+    expect(AZKAR_SETS.prayer.items.slice(9, 12).map((z) => z.count)).toEqual([1, 1, 1]);
+  });
+
+  it('gives every counted phrase after a prayer its own page', () => {
+    expect(AZKAR_SETS.prayer.items.slice(0, 9).map((z) => z.count)).toEqual([3, 1, 3, 1, 1, 33, 33, 33, 1]);
+    expect(AZKAR_SETS.prayer.items.every((z) => !z.stages)).toBe(true);
   });
 
   it('splits the sleep tasbih into three pages, the last said thirty-four times', () => {
