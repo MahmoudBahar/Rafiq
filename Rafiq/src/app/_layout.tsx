@@ -101,15 +101,13 @@ function RootStack() {
               contentStyle: { backgroundColor: 'transparent' },
             }}
           />
-          {/* Same arrangement for the azkar reader: the dial stays beneath it and its ground rises into the page.
-              The reader plays its own fade in and out, so the stack adds no transition of its own: the native
-              one ran on an already transparent page, and while it ran the tab beneath, whose dial scene now sits
-              in a blur target, could lose that scene for a frame. */}
+          {/* Same arrangement for the azkar reader: the dial stays beneath it and its ground rises into the page. */}
           <Stack.Screen
             name="azkar/[set]"
             options={{
               presentation: 'transparentModal',
-              animation: 'none',
+              animation: 'fade',
+              animationDuration: 180,
               contentStyle: { backgroundColor: 'transparent' },
             }}
           />
