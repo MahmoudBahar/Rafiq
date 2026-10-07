@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PrayerAzkarTune } from '@/features/azkar/PrayerAzkarTune';
 import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } from '@/features/prayer/engine';
 import { FineTune } from '@/features/prayer/FineTune';
 import { IqamaTune } from '@/features/prayer/IqamaTune';
@@ -155,6 +156,8 @@ export default function SettingsScreen() {
           <FineTune />
 
           <IqamaTune />
+
+          <PrayerAzkarTune />
 
           <View style={styles.section}>
             <SectionLabel>المظهر</SectionLabel>
