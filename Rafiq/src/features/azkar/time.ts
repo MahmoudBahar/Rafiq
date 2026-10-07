@@ -3,13 +3,13 @@ import { computeDay, type DayTimes } from '@/features/prayer/engine';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { addDays, isoDate } from '@/shared/lib/gregorian';
 import { useWallClock } from '@/shared/lib/useWallClock';
-import type { AzkarSetId } from './data';
+import type { DialSide } from './data';
 
 /**
  * Which set belongs to this moment: the morning azkar from Fajr until Asr,
  * the evening azkar from Asr through the night until the next Fajr.
  */
-export function azkarSideAt(now: Date, day: DayTimes): AzkarSetId {
+export function azkarSideAt(now: Date, day: DayTimes): DialSide {
   const t = now.getTime();
   return t >= day.byKey.fajr.getTime() && t < day.byKey.asr.getTime() ? 'morning' : 'evening';
 }
@@ -30,7 +30,7 @@ export function azkarDayKey(now: Date, day: DayTimes): string {
  * without that wake it showed the finished session for up to a minute past
  * Fajr while a reader opened in the meantime was already on the new day.
  */
-export function useAzkarClock(): { side: AzkarSetId; dayKey: string } {
+export function useAzkarClock(): { side: DialSide; dayKey: string } {
   const cfg = usePrayerConfig();
   const [wakeAt, setWakeAt] = useState<number | undefined>(undefined);
   const now = useWallClock(60_000, wakeAt);

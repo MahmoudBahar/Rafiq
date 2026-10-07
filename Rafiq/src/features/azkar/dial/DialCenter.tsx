@@ -4,15 +4,15 @@ import { toArabicIndic } from '@/shared/lib/arabic';
 import { dialSky, radius } from '@/shared/theme/tokens';
 import { PressScale } from '@/shared/ui/PressScale';
 import { Display, Text } from '@/shared/ui/Text';
-import { AZKAR_SETS, type AzkarSetId } from '../data';
+import { AZKAR_SETS, type DialSide } from '../data';
 import type { AzkarProgress } from '../progress';
 import type { DialValues } from './useDial';
 
 interface DialCenterProps {
   values: DialValues;
-  side: AzkarSetId;
-  progress: Record<AzkarSetId, AzkarProgress>;
-  onStart: (set: AzkarSetId) => void;
+  side: DialSide;
+  progress: Record<DialSide, AzkarProgress>;
+  onStart: (set: DialSide) => void;
 }
 
 /**
@@ -43,9 +43,9 @@ export function DialCenter({ values, side, progress, onStart }: DialCenterProps)
 }
 
 interface LayerProps {
-  set: AzkarSetId;
+  set: DialSide;
   progress: AzkarProgress;
-  onStart: (set: AzkarSetId) => void;
+  onStart: (set: DialSide) => void;
 }
 
 function Layer({ set, progress, onStart }: LayerProps) {

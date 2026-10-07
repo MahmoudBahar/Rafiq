@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
-import { AZKAR_SETS, isAzkarSetId, type AzkarSetId } from '@/features/azkar/data';
+import { AZKAR_SETS, isDialSide, type DialSide } from '@/features/azkar/data';
 import { flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
@@ -58,8 +58,8 @@ export default function AzkarReaderScreen() {
   const { c } = useTheme();
   const { reduced } = useMotion();
 
-  const valid = isAzkarSetId(params.set);
-  const setId: AzkarSetId = isAzkarSetId(params.set) ? params.set : 'morning';
+  const valid = isDialSide(params.set);
+  const setId: DialSide = isDialSide(params.set) ? params.set : 'morning';
   const { items, title } = AZKAR_SETS[setId];
   const sky = dialSky[setId];
   const n = items.length;

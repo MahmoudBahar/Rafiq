@@ -9,7 +9,7 @@ import { DialBodies } from '@/features/azkar/dial/DialBodies';
 import { DialCenter } from '@/features/azkar/dial/DialCenter';
 import { DialSky } from '@/features/azkar/dial/DialSky';
 import { useDial } from '@/features/azkar/dial/useDial';
-import type { AzkarSetId } from '@/features/azkar/data';
+import type { DialSide } from '@/features/azkar/data';
 import { useAzkarProgress } from '@/features/azkar/progress';
 import { useAzkarClock } from '@/features/azkar/time';
 import { dialSky } from '@/shared/theme/tokens';
@@ -55,7 +55,7 @@ export default function AzkarScreen() {
   const onMorning = useAnimatedStyle(() => ({ opacity: 1 - t.get() }));
   const onEvening = useAnimatedStyle(() => ({ opacity: t.get() }));
 
-  const start = (set: AzkarSetId) => {
+  const start = (set: DialSide) => {
     if (progress[set].complete) progress[set].reset();
     router.push({ pathname: '/azkar/[set]', params: { set, ground: String(Math.round(horizon)) } });
   };

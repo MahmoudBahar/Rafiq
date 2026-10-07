@@ -11,7 +11,7 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { detent } from '@/shared/lib/haptics';
-import type { AzkarSetId } from '../data';
+import type { DialSide } from '../data';
 
 /** Bodies rise on the right and set on the left under RTL, as on the home arc (see prayer/sky.ts). */
 export const SKY_DIR = I18nManager.isRTL ? 1 : -1;
@@ -28,7 +28,7 @@ export interface DialValues {
   t: DerivedValue<number>;
 }
 
-const angleOf = (side: AzkarSetId) => (side === 'evening' ? 180 : 0);
+const angleOf = (side: DialSide) => (side === 'evening' ? 180 : 0);
 
 /**
  * The dial's rotation: a horizontal drag anywhere on the sky turns it (a tap
@@ -36,9 +36,9 @@ const angleOf = (side: AzkarSetId) => (side === 'evening' ? 180 : 0);
  * spring, and a detent is felt as it crosses the half-way point. `side` is the React-side answer
  * and flips as the dial crosses the half-way point.
  */
-export function useDial(clockSide: AzkarSetId) {
+export function useDial(clockSide: DialSide) {
   const { width } = useWindowDimensions();
-  const [side, setSide] = useState<AzkarSetId>(clockSide);
+  const [side, setSide] = useState<DialSide>(clockSide);
 
   const theta = useSharedValue(angleOf(clockSide));
   const start = useSharedValue(0);

@@ -9,7 +9,7 @@ import type { Zekr } from '../data';
 import { BeadStrand, roundAt, roundsOf } from './BeadStrand';
 
 /** Short azkar are set large; a long passage steps down so less of it needs scrolling. */
-const sizeFor = (length: number) => (length <= 120 ? 30 : length <= 300 ? 26 : 23);
+const sizeFor = (length: number) => (length <= 120 ? 30 : length <= 300 ? 26 : length <= 700 ? 23 : 20);
 
 interface ZekrPageProps {
   zekr: Zekr;
@@ -28,8 +28,8 @@ interface ZekrPageProps {
 /**
  * One zekr: its text, and beneath it its own tasbih strand and counter, so the
  * whole page turns as one. The text is never truncated: it is centred when it
- * fits and scrolls when it does not (the longest passage runs to seven hundred
- * characters).
+ * fits and scrolls when it does not (the longest passage, آل عمران ١٩٠–٢٠٠, runs past
+ * eighteen hundred characters).
  */
 export function ZekrPage({ zekr, page, owner, count, glow, said, width, showVirtue }: ZekrPageProps) {
   const { c } = useTheme();

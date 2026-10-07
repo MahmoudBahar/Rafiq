@@ -1,24 +1,62 @@
 // One-off generator for src/features/azkar/data/azkar.generated.ts.
-//   node scripts/build-azkar.mjs ../azkar_obj.json
-// The source is a flat list of { category, count, description, reference, zekr };
-// only the morning and evening sets ship for now.
+//   node scripts/build-azkar.mjs ../azkar_obj.json ../mushafs-2.json
+//
+// Sources (both kept outside the repo):
+// - azkar_obj.json: a flat list of { category, count, description, reference, zekr }.
+//   The morning and evening sets carry numeric counts; the waking, after-prayer and
+//   sleep sets carry `count: ""` with the count written inside the text, so those are
+//   read from the text and from the per-entry recipes below.
+// - mushafs-2.json: Quranpedia.net's Hafs mushaf in the Uthmani (KFGQPC) text
+//   (`/v1/mushafs/2`). Every Qur'an passage in the app is taken from it, so the
+//   azkar file's own Qur'an spelling is never shipped. Licence: free to use inside
+//   apps with no attribution required; the data is corrected continuously, resync
+//   with https://quranpedia.net/api/v1/changes?since=2026-10-06.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SETS = [
-  { id: 'morning', prefix: 'm', category: 'أذكار الصباح', expected: 31 },
-  { id: 'evening', prefix: 'e', category: 'أذكار المساء', expected: 30 },
-];
-const COUNTS = new Set([1, 3, 4, 7, 10, 100]);
 const DATA_VERSION = 1;
+const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+const ar = (n) => String(n).replace(/\d/g, (d) => AR_DIGITS[d]);
 
-const source = process.argv[2];
-if (!source) {
-  console.error('usage: node scripts/build-azkar.mjs <azkar_obj.json>');
+const [azkarPath, mushafPath] = process.argv.slice(2);
+if (!azkarPath || !mushafPath) {
+  console.error('usage: node scripts/build-azkar.mjs <azkar_obj.json> <mushafs-2.json>');
   process.exit(1);
 }
-const records = JSON.parse(readFileSync(resolve(source), 'utf8'));
+const records = JSON.parse(readFileSync(resolve(azkarPath), 'utf8'));
+const mushaf = JSON.parse(readFileSync(resolve(mushafPath), 'utf8'));
+
+// ---------------------------------------------------------------- Qur'an
+
+const SURAHS = new Map(mushaf.data.surahs.map((s) => [s.id, s]));
+
+/** One ayah's text, with the mushaf's own navigation mark (۞) and any BOM dropped. Tatweel stays: hamza sits on it. */
+function ayah(surah, n) {
+  const s = SURAHS.get(surah);
+  const a = s?.ayahs.find((x) => x.number === n);
+  if (!a) throw new Error(`mushaf: ${surah}:${n} not found`);
+  return a.text.replace(/﻿/g, '').replace(/۞/g, '').replace(/[ \t]+/g, ' ').trim();
+}
+
+const BASMALA = ayah(1, 1);
+const surahName = (surah) => SURAHS.get(surah).name;
+
+/** A run of ayat as one display string: each ayah followed by ۝ and its number; the basmala on its own line when asked. */
+function passage(surah, from, to, { basmala = false } = {}) {
+  const body = [];
+  for (let n = from; n <= to; n++) body.push(`${ayah(surah, n)} ۝${ar(n)}`);
+  const text = body.join(' ');
+  return basmala ? `${BASMALA}\n${text}` : text;
+}
+
+const wholeSurah = (surah) => passage(surah, 1, SURAHS.get(surah).ayahs.length, { basmala: true });
+/** The three Quls, each with its basmala, as one page. */
+const QULS = [112, 113, 114].map(wholeSurah).join('\n\n');
+const KURSI = passage(2, 255, 255);
+const BAQARA_END = passage(2, 285, 286);
+
+// ---------------------------------------------------------------- text cleaning
 
 /**
  * The source stretches words with tatweel (U+0640) for justification, which
@@ -29,41 +67,167 @@ const records = JSON.parse(readFileSync(resolve(source), 'utf8'));
 function clean(text) {
   const out = text
     .normalize('NFC')
-    .replace(/\u0640/g, '')
-    .replace(/([\u064B-\u0652])\1+/g, '$1')
+    .replace(/ـ/g, '')
+    .replace(/([ً-ْ])\1+/g, '$1')
     .replace(/\r\n?/g, '\n')
     .split('\n')
-    .map((line) => line.replace(/[ \t\u00A0]+/g, ' ').replace(/ ([،.؛:])/g, '$1').trim())
+    .map((line) => line.replace(/[ \t ]+/g, ' ').replace(/ ([،.؛:])/g, '$1').trim())
     .filter(Boolean)
     .join('\n');
   return out.length > 0 ? out : null;
 }
 
-const sets = SETS.map(({ id, prefix, category, expected }) => {
+const COUNT_WORDS = '(ثَلاَثَاً|ثلاثاً وثلاثين|أربعاً وثلاثينَ|ثلاثاً|ثَلاَثَ مَرَّاتٍ)';
+
+/**
+ * The newer sets wrap hadith text in (( )) or ( ), write the count inside the
+ * text, and add instructions and conditions in the same string. The wrappers and
+ * the notes go; the words themselves are never changed. Instructions and
+ * condition tails are stripped per entry below, since they are free text.
+ */
+function cleanZekr(text) {
+  const t = text
+    .normalize('NFC')
+    .replace(new RegExp(`\\(\\s*${COUNT_WORDS}\\s*\\)`, 'g'), '')
+    .replace(new RegExp(`\\[\\s*${COUNT_WORDS}\\s*\\]`, 'g'), '')
+    .replace(/\(\s*يفعلُ ذلك ثلاثَ مرَّاتٍ\s*\)/g, '')
+    .replace(/\(\(|\)\)|\(|\)/g, '')
+    .replace(/,/g, '،')
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/ ([،.؛:])/g, '$1')
+    .trim()
+    .replace(/\.\s*$/, '')
+    .replace(/^[ .،]+|[ .،]+$/g, '');
+  return clean(t);
+}
+
+/** Keeps the isti'adha line the source puts before a passage, replacing the passage itself. */
+function withLeadLine(original, quranText) {
+  const first = original.split('\n')[0];
+  const lead = /أَعُوذُ بِاللهِ/.test(first) ? clean(first) : null;
+  return lead ? `${lead}\n${quranText}` : quranText;
+}
+
+/** Splits a cleaned compound entry into its stages; the regex must match the whole text. */
+function split(text, re, counts) {
+  const m = text.match(re);
+  if (!m) throw new Error(`stage split failed: ${text.slice(0, 60)}`);
+  const parts = m.slice(1);
+  if (parts.length !== counts.length) throw new Error('stage split: wrong group count');
+  return parts.map((p, i) => ({ text: p.trim().replace(/[،.]+$/, ''), count: counts[i] }));
+}
+
+// ---------------------------------------------------------------- sets
+
+const SETS = [
+  { id: 'morning', prefix: 'm', category: 'أذكار الصباح', expected: 31, countsInFile: true },
+  { id: 'evening', prefix: 'e', category: 'أذكار المساء', expected: 30, countsInFile: true },
+  { id: 'waking', prefix: 'w', category: 'أذكار الاستيقاظ من النوم', expected: 4, countsInFile: false },
+  { id: 'prayer', prefix: 'p', category: 'الأذكار بعد السلام من الصلاة', expected: 8, countsInFile: false },
+  { id: 'sleep', prefix: 's', category: 'أذكار النوم', expected: 13, countsInFile: false },
+];
+const COUNTS = new Set([1, 3, 4, 7, 10, 100]);
+
+const TASBIH = /^(سُبْحَانَ اللَّهِ)،?\s+(وَالْحَمْدُ لِلَّهِ)،?\s+(وَاللَّهُ أَكْبَرُ)$/;
+
+/**
+ * Per-entry recipes, keyed by id. `quran` replaces the text with a mushaf
+ * passage (keeping a leading isti'adha line); `stages` splits a compound entry;
+ * `tail` strips a condition written after the words; `prayers` limits an
+ * after-prayer entry to certain prayers. Anything not listed is the cleaned
+ * source text, said once.
+ */
+const RECIPES = {
+  // shipped sets: only the Qur'an passages change, counts and virtues stay
+  m01: { quran: KURSI },
+  m02: { quran: wholeSurah(112) },
+  m03: { quran: wholeSurah(113) },
+  m04: { quran: wholeSurah(114) },
+  e01: { quran: KURSI },
+  e02: { quran: BAQARA_END },
+  e03: { quran: wholeSurah(112) },
+  e04: { quran: wholeSurah(113) },
+  e05: { quran: wholeSurah(114) },
+
+  w04: { quran: passage(3, 190, 200), reference: 'آل عمران ١٩٠–٢٠٠' },
+
+  s01: { quran: QULS, count: 3, reference: 'الإخلاص والمعوذتان' },
+  s02: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
+  s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
+  s08: { stages: (t) => split(t, TASBIH, [33, 33, 34]) },
+  s12: {
+    surahs: [32, 67].map((n) => ({ name: surahName(n), text: wholeSurah(n) })),
+    text: 'سورة السجدة وسورة الملك',
+    reference: 'السجدة · الملك',
+  },
+
+  p01: { stages: (t) => split(t, /^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
+  p02: { stages: (t) => split(t, /^(لاَ إِلَهَ إِلاَّ اللَّهُ.*?قَدِيرٌ)،?\s+(اللَّهُمَّ لاَ مَانِعَ.*)$/s, [3, 1]) },
+  p04: {
+    stages: (t) =>
+      split(t, /^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]),
+  },
+  p05: { quran: QULS, reference: 'الإخلاص والمعوذتان' },
+  p06: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
+  p07: { tail: /\s*عَشْرَ مَرّاتٍ بَعْدَ صَلاةِ الْمَغْرِبِ وَالصُّبْحِ\.?$/, count: 10, prayers: ['fajr', 'maghrib'] },
+  p08: { tail: /\s*بَعْدَ السّلامِ مِنْ صَلاَةِ الفَجْرِ\.?$/, prayers: ['fajr'] },
+};
+
+const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
   const rows = records.filter((r) => r.category === category);
   if (rows.length !== expected) {
     throw new Error(`${category}: expected ${expected} entries, found ${rows.length}`);
   }
   const items = rows.map((r, i) => {
-    if (!COUNTS.has(r.count)) throw new Error(`${category} #${i + 1}: unexpected count ${r.count}`);
-    const text = clean(r.zekr);
-    if (!text) throw new Error(`${category} #${i + 1}: empty text`);
-    return {
-      id: `${prefix}${String(i + 1).padStart(2, '0')}`,
-      text,
-      count: r.count,
+    const zid = `${prefix}${String(i + 1).padStart(2, '0')}`;
+    const recipe = RECIPES[zid] ?? {};
+    const raw = recipe.tail ? r.zekr.replace(recipe.tail, '') : r.zekr;
+    const zekr = {
+      id: zid,
+      text: countsInFile ? clean(raw) : cleanZekr(raw),
+      count: countsInFile ? r.count : (recipe.count ?? 1),
       virtue: clean(r.description ?? ''),
-      reference: clean(r.reference ?? ''),
+      reference: recipe.reference ?? clean(r.reference ?? ''),
     };
+    if (countsInFile && !COUNTS.has(r.count)) throw new Error(`${category} #${i + 1}: unexpected count ${r.count}`);
+    if (!zekr.text) throw new Error(`${category} #${i + 1}: empty text`);
+    if (recipe.quran) {
+      zekr.text = withLeadLine(r.zekr.normalize('NFC'), recipe.quran);
+      zekr.kind = 'quran';
+    }
+    if (recipe.stages) {
+      zekr.stages = recipe.stages(zekr.text);
+      zekr.count = zekr.stages.reduce((n, s) => n + s.count, 0);
+      zekr.text = zekr.stages.map((s) => s.text).join('، ');
+    }
+    if (recipe.surahs) {
+      zekr.kind = 'surahs';
+      zekr.text = recipe.text;
+      zekr.surahs = recipe.surahs;
+    }
+    if (recipe.prayers) zekr.prayers = recipe.prayers;
+    return zekr;
   });
   return { id, items };
 });
+
+// ---------------------------------------------------------------- checks and output
+
+for (const { id, items } of sets) {
+  for (const z of items) {
+    if (z.stages && z.stages.reduce((n, s) => n + s.count, 0) !== z.count) throw new Error(`${z.id}: stage sum`);
+    if (/[﻿۞]/.test(z.text)) throw new Error(`${z.id}: stray mark`);
+    if (z.kind === 'quran' && !z.text.includes('۝')) throw new Error(`${z.id}: no ayah marks`);
+  }
+  void id;
+}
 
 const body = sets
   .map(({ id, items }) => `export const ${id.toUpperCase()}_AZKAR: readonly Zekr[] = ${JSON.stringify(items, null, 2)};`)
   .join('\n\n');
 
 const out = `// GENERATED by scripts/build-azkar.mjs. Do not edit by hand.
+// Qur'an text: Quranpedia.net Hafs mushaf, Uthmani text (https://quranpedia.net, free to use in apps).
 import type { Zekr } from './types';
 
 /** Bumped when entries are added, removed or reordered: saved progress is index-aligned. */
@@ -75,3 +239,13 @@ ${body}
 const target = resolve(dirname(fileURLToPath(import.meta.url)), '../src/features/azkar/data/azkar.generated.ts');
 writeFileSync(target, out);
 console.log(`wrote ${target}: ${sets.map((s) => `${s.id} ${s.items.length}`).join(', ')}`);
+for (const { id, items } of sets) {
+  if (id === 'morning' || id === 'evening') continue;
+  console.log(`-- ${id}`);
+  for (const z of items) {
+    const tag = [z.kind, z.stages && 'stages ' + z.stages.map((s) => s.count).join('/'), z.prayers && 'prayers ' + z.prayers.join(',')]
+      .filter(Boolean)
+      .join(' ');
+    console.log(`${z.id} ×${String(z.count).padEnd(3)} ${tag.padEnd(24)} ${z.text.replace(/\n/g, ' / ').slice(0, 70)}`);
+  }
+}
