@@ -66,8 +66,6 @@ export interface Sky {
   muted: string;
   /** Light text on a dark sky: the status bar goes light too. */
   dark: boolean;
-  /** The band's progress line, when a sky wants one of its own; otherwise it is drawn in `text`. */
-  line?: string;
 }
 
 /** A sky's colour at some opacity, for the band's track and chip borders. */
@@ -76,15 +74,14 @@ export function skyAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
-// The dial's skies keep the accent line they shipped with.
-const night: Sky = { ...dialSky.evening, dark: true, line: dialSky.dusk };
-const day: Sky = { ...dialSky.morning, dark: false, line: dialSky.dusk };
+const night: Sky = { ...dialSky.evening, dark: true };
+const day: Sky = { ...dialSky.morning, dark: false };
 
 /**
  * The reader's sky per set, and per prayer for the after-prayer set: the hour
  * the azkar belong to, painted whatever the app theme, like the dial's. The
- * band's line, track and chip borders are drawn in each sky's own text colour,
- * which is already chosen to read on it; a sky may name a `line` of its own.
+ * band's track and chip borders are drawn in each sky's own text colour, which
+ * is already chosen to read on it; the progress itself is the accent, as the beads are.
  */
 export const readerSky = {
   morning: day,
@@ -98,8 +95,8 @@ export const readerSky = {
     // Late afternoon: the same daylight, warmer and lower.
     asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: light.ts, muted: '#8a6a3f', dark: false } as Sky,
     maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
-    // The hour after dusk: night nearly black above, the last ember of Maghrib's glow, gone to ash, at the horizon.
-    isha: { top: '#04110f', bot: '#5e4742', text: dark.tp, sub: dark.ts, muted: '#b89a8e', dark: true } as Sky,
+    // The hour after dusk: the evening's night above, the horizon only slightly warmed and greyed to ash.
+    isha: { top: '#041a16', bot: '#3f4a44', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   },
 } as const;
 
