@@ -138,6 +138,8 @@ export default function AzkarReaderScreen() {
   const stageEnd = useSharedValue(zekr?.count ?? 0);
   const locked = useSharedValue(false);
   const glow = useSharedValue(0);
+  // A prayer switch in flight: the strip is fading out, or back in.
+  const switching = useSharedValue(false);
   useEffect(() => {
     const z = index < n ? pages[index].zekr : null;
     const s = z ? stageAt(z, said) : null;
@@ -240,33 +242,55 @@ export default function AzkarReaderScreen() {
     onCount(index, itemIndex, zekr.count, true, false);
   };
 
-  // Another prayer's session: its own counts, opening on its first zekr still owed.
+  // Another prayer's session: its own counts, opening on its first zekr still owed. The pages
+  // change under the pager, which is a jump like any other: the strip fades out, the session and
+  // the centre change while it is dark, and it fades back in once the new columns are in place.
+  const { op } = pager.values;
+  const applyPrayer = useCallback(
+    (k: FardKey) => {
+      const key = prayerSessionKey(clock.dayKey, k);
+      const next = pagesOf('prayer', k);
+      const first = firstIncompleteOf('prayer', key, next.map((p) => p.index));
+      const z = first < next.length ? next[first].zekr : null;
+      const saidNext = z ? Math.min(countsOf('prayer', key)[next[first].index] ?? 0, z.count) : 0;
+      const s = z ? stageAt(z, saidNext) : null;
+      count.set(saidNext);
+      owner.set(first);
+      target.set(z?.count ?? 0);
+      offset.set(s?.start ?? 0);
+      stageEnd.set(s ? s.start + s.size : 0);
+      locked.set(z?.kind === 'surahs');
+      pager.values.center.set(first);
+      pager.values.tx.set(0);
+      setPrayer(k);
+      setShowVirtue(false);
+      setJustDone(null);
+      setHeld(null);
+      setIndex(first);
+    },
+    [clock.dayKey, count, locked, offset, owner, pager.values, stageEnd, target],
+  );
   const choosePrayer = (k: FardKey) => {
-    if (k === prayer) return;
-    const key = prayerSessionKey(clock.dayKey, k);
-    const next = pagesOf('prayer', k);
-    const first = firstIncompleteOf('prayer', key, next.map((p) => p.index));
-    // Seed the UI thread now: the new page renders before the effect runs, and its strand would
-    // show the old session's count for that frame.
-    const z = first < next.length ? next[first].zekr : null;
-    const saidNext = z ? Math.min(countsOf('prayer', key)[next[first].index] ?? 0, z.count) : 0;
-    const s = z ? stageAt(z, saidNext) : null;
-    count.set(saidNext);
-    owner.set(first);
-    target.set(z?.count ?? 0);
-    offset.set(s?.start ?? 0);
-    stageEnd.set(s ? s.start + s.size : 0);
-    locked.set(z?.kind === 'surahs');
-    // The pager's columns are re-slotted for the new page on render, but its centre moves in its own
-    // effect a frame later; until then the old centre slot would show a neighbouring page.
-    pager.values.center.set(first);
-    pager.values.tx.set(0);
-    setPrayer(k);
-    setShowVirtue(false);
-    setJustDone(null);
-    setHeld(null);
-    setIndex(first);
+    if (k === prayer || switching.get()) return;
+    if (reduced) {
+      applyPrayer(k);
+      return;
+    }
+    switching.set(true);
+    op.set(
+      withTiming(0, { duration: 120 }, (finished) => {
+        'worklet';
+        if (finished) scheduleOnRN(applyPrayer, k);
+        else switching.set(false);
+      }),
+    );
   };
+  // The new session's columns are in place: bring the strip back.
+  useEffect(() => {
+    if (!switching.get()) return;
+    switching.set(false);
+    op.set(reduced ? 1 : withTiming(1, { duration: 160 }));
+  }, [sessionKey, op, reduced, switching]);
 
   // Enter: the sheet starts on the dial's ground and rises. Exit reverses it, then pops.
   const ground = Number(params.ground);

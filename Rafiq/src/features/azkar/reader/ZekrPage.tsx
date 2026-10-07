@@ -96,7 +96,8 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
         <View style={styles.foot} />
       </ScrollView>
       <View style={styles.counter}>
-        <BeadStrand width={width} total={total} page={page} owner={owner} count={count} offset={offset} said={saidInStage} glow={glow} />
+        {/* Keyed by the zekr: a re-slotted column must not inherit another zekr's bead positions. */}
+        <BeadStrand key={zekr.id} width={width} total={total} page={page} owner={owner} count={count} offset={offset} said={saidInStage} glow={glow} />
         <Text size={17} weight="bold" align="center" style={styles.count}>
           {`${toArabicIndic(saidInStage)} من ${toArabicIndic(total)}`}
           {staged ? (
