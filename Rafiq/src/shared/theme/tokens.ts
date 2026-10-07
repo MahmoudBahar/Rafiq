@@ -86,7 +86,8 @@ const day: Sky = { ...dialSky.morning, dark: false };
 export const readerSky = {
   morning: day,
   evening: night,
-  waking: { top: '#071d22', bot: '#2b5f58', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  // The last of the night, with the first grey light at the horizon: the hour before Fajr's dawn.
+  waking: { top: '#08202a', bot: '#5c7a75', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   // Deep night, lifting into a cool moonlit teal above the sheet: its old foot was the dark theme's own bg.
   sleep: { top: '#02100e', bot: '#1c434a', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   prayer: {
