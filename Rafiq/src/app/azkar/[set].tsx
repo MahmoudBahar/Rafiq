@@ -332,6 +332,9 @@ export default function AzkarReaderScreen() {
   const skyOp = useSharedValue(1);
   const overDrawer = setId !== 'morning' && setId !== 'evening';
   const skyFoot = overDrawer ? bandH / (bandH + SHEET_RADIUS) : 1;
+  // A dial set's sky reaches the dial's horizon, like the dial's own; below it the tab's ground band
+  // shows through, so the dropping sheet uncovers ground, not a light sky.
+  const skyH = overDrawer ? bandH + SHEET_RADIUS : Number.isFinite(ground) && ground > bandH ? ground : null;
   useEffect(() => {
     if (reduced) return;
     sheetY.set(withSpring(0, RISE));
@@ -400,15 +403,14 @@ export default function AzkarReaderScreen() {
   const a11yLabel = zekr ? `${zekr.text}. ${toArabicIndic(said)} من ${toArabicIndic(zekr.count)}. اضغط للعدّ` : undefined;
 
   return (
-    <Animated.View style={[styles.screen, pageStyle]}>
+    {/* Composited as one while fading out: Android would otherwise fade each layer on its own, and the
+        sky under the sheet would show through it. */}
+    <Animated.View style={[styles.screen, pageStyle]} needsOffscreenAlphaCompositing>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
-      {/* A dial set's sky fills the screen, as the dial's does behind the dropping sheet. The others'
-          ramp over the band alone, so the whole sky shows above the sheet and its foot meets the
-          edge; it runs on under the sheet's rounded corners, which are cut out against it. */}
-      <Animated.View
-        style={[overDrawer ? [styles.skyBand, { height: bandH + SHEET_RADIUS }] : StyleSheet.absoluteFill, skyStyle]}
-        pointerEvents="none"
-      >
+      {/* A dial set's sky runs down to the dial's horizon, as the dial's does behind the dropping
+          sheet. The others' ramp over the band alone, so the whole sky shows above the sheet and its
+          foot meets the edge; it runs on under the sheet's rounded corners, cut out against it. */}
+      <Animated.View style={[skyH === null ? StyleSheet.absoluteFill : [styles.skyBand, { height: skyH }], skyStyle]} pointerEvents="none">
         <GradientBackground colors={[skies.base.top, skies.base.bot]} foot={skyFoot} />
         <Animated.View style={[StyleSheet.absoluteFill, overStyle]}>
           <GradientBackground colors={[skies.over.top, skies.over.bot]} foot={skyFoot} />
