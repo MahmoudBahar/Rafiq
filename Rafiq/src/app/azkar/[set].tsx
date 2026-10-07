@@ -42,6 +42,7 @@ const BAND_H = 104;
 /** The prayer chips add a row to the band. */
 const CHIPS_H = 44;
 const EXIT_MS = 300;
+const SHEET_RADIUS = 32;
 /** A prayer switch: the new sky fades in over the one being left. */
 const SKY_MS = 320;
 const RISE = { damping: 18, stiffness: 170, mass: 0.9 };
@@ -330,6 +331,7 @@ export default function AzkarReaderScreen() {
   // drawer sits over the dimmed tab instead, and a light sky left standing there flashed white.
   const skyOp = useSharedValue(1);
   const overDrawer = setId !== 'morning' && setId !== 'evening';
+  const skyFoot = overDrawer ? bandH / (bandH + SHEET_RADIUS) : 1;
   useEffect(() => {
     if (reduced) return;
     sheetY.set(withSpring(0, RISE));
@@ -397,11 +399,15 @@ export default function AzkarReaderScreen() {
     <Animated.View style={[styles.screen, pageStyle]}>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
       {/* A dial set's sky fills the screen, as the dial's does behind the dropping sheet. The others'
-          span the band alone, so the whole ramp shows above the sheet and its foot meets the edge. */}
-      <Animated.View style={[overDrawer ? [styles.skyBand, { height: bandH }] : StyleSheet.absoluteFill, skyStyle]} pointerEvents="none">
-        <GradientBackground colors={[skies.base.top, skies.base.bot]} />
+          ramp over the band alone, so the whole sky shows above the sheet and its foot meets the
+          edge; it runs on under the sheet's rounded corners, which are cut out against it. */}
+      <Animated.View
+        style={[overDrawer ? [styles.skyBand, { height: bandH + SHEET_RADIUS }] : StyleSheet.absoluteFill, skyStyle]}
+        pointerEvents="none"
+      >
+        <GradientBackground colors={[skies.base.top, skies.base.bot]} foot={skyFoot} />
         <Animated.View style={[StyleSheet.absoluteFill, overStyle]}>
-          <GradientBackground colors={[skies.over.top, skies.over.bot]} />
+          <GradientBackground colors={[skies.over.top, skies.over.bot]} foot={skyFoot} />
         </Animated.View>
       </Animated.View>
 
@@ -576,8 +582,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopStartRadius: 32,
-    borderTopEndRadius: 32,
+    borderTopStartRadius: SHEET_RADIUS,
+    borderTopEndRadius: SHEET_RADIUS,
     overflow: 'hidden',
   },
   pages: { flex: 1, paddingTop: 52 },
