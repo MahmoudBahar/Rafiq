@@ -58,6 +58,37 @@ export const dialSky = {
   moon: dark.hero,
 } as const;
 
+export interface Sky {
+  top: string;
+  bot: string;
+  text: string;
+  sub: string;
+  muted: string;
+  /** Light text on a dark sky: the status bar goes light too. */
+  dark: boolean;
+}
+
+const night: Sky = { ...dialSky.evening, dark: true };
+const day: Sky = { ...dialSky.morning, dark: false };
+
+/**
+ * The reader's sky per set, and per prayer for the after-prayer set: the hour
+ * the azkar belong to, painted whatever the app theme, like the dial's.
+ */
+export const readerSky = {
+  morning: day,
+  evening: night,
+  waking: { top: '#071d22', bot: '#2b5f58', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  sleep: { top: '#02110f', bot: '#0a2b26', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  prayer: {
+    fajr: { top: '#1d4a4f', bot: '#c99f74', text: dark.tp, sub: light.skytop, muted: dark.ts, dark: true } as Sky,
+    dhuhr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
+    asr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
+    maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
+    isha: night,
+  },
+} as const;
+
 export const fonts = {
   display: 'ScheherazadeNew_400Regular',
   displayBold: 'ScheherazadeNew_700Bold',

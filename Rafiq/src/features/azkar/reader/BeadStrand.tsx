@@ -53,7 +53,9 @@ interface BeadStrandProps {
   owner: SharedValue<number>;
   /** Repetitions of the page in view, written on the UI thread so a bead moves with the tap. */
   count: SharedValue<number>;
-  /** This page's saved count: what a neighbouring page shows, and where beads start. */
+  /** Where the strand's own count starts: the beginning of the current stage of a compound entry. */
+  offset: SharedValue<number>;
+  /** This page's saved count within the strand: what a neighbouring page shows, and where beads start. */
   said: number;
   /** 0 → 1 → 0 when the zekr completes. */
   glow: SharedValue<number>;
@@ -71,7 +73,7 @@ interface BeadStrandProps {
  * and so does a page for the frame in which the live count is still its
  * predecessor's.
  */
-export function BeadStrand({ width, total, page, owner, count, said, glow }: BeadStrandProps) {
+export function BeadStrand({ width, total, page, owner, count, offset, said, glow }: BeadStrandProps) {
   const { c } = useTheme();
   const n = beadsPerRound(total);
   const span = width - PAD * 2;
@@ -110,6 +112,7 @@ export function BeadStrand({ width, total, page, owner, count, said, glow }: Bea
           page={page}
           owner={owner}
           count={count}
+          offset={offset}
           said={said}
           glow={glow}
           size={size}
@@ -131,6 +134,7 @@ interface BeadProps {
   page: number;
   owner: SharedValue<number>;
   count: SharedValue<number>;
+  offset: SharedValue<number>;
   said: number;
   glow: SharedValue<number>;
   size: number;
@@ -143,10 +147,10 @@ interface BeadProps {
   lit: string;
 }
 
-function Bead({ index, n, page, owner, count, said, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
+function Bead({ index, n, page, owner, count, offset, said, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
   const pos = useSharedValue(across(said, n) > index ? 1 : 0);
   useAnimatedReaction(
-    () => across(owner.get() === page ? count.get() : said, n) > index,
+    () => across(owner.get() === page ? count.get() - offset.get() : said, n) > index,
     (over, was) => {
       if (was === null || over === was) return;
       pos.set(over ? withSpring(1, CROSS) : withDelay(index * RETURN_STAGGER_MS, withSpring(0, RETURN)));

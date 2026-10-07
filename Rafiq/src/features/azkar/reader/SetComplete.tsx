@@ -8,6 +8,7 @@ import { PressScale } from '@/shared/ui/PressScale';
 import { Display, Text } from '@/shared/ui/Text';
 
 interface SetCompleteProps {
+  /** What was completed, as it reads after «أتممت». */
   title: string;
   done: number;
   total: number;
@@ -29,7 +30,7 @@ export function SetComplete({ title, done, total, onBack, onResume }: SetComplet
         </Display>
         <Text size={14} color={c.ts} align="center" style={styles.wide}>
           {complete
-            ? `أتممت ${title} لهذا اليوم`
+            ? `أتممت ${title}`
             : `أتممت ${toArabicIndic(done)} من ${toArabicIndic(total)}، وبقي ما تخطّيته`}
         </Text>
       </Animated.View>

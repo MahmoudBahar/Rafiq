@@ -4,10 +4,14 @@ import { kv } from '@/shared/storage/kv';
 import { AZKAR_DATA_VERSION, AZKAR_SETS, type AzkarSetId } from './data';
 
 /**
- * Today's repetition counts per set. They live beside the settings blob, not
- * in it: that blob is rewritten whole on every change, and a hundred-count
+ * A session's repetition counts per set. They live beside the settings blob,
+ * not in it: that blob is rewritten whole on every change, and a hundred-count
  * tasbih would rewrite it a hundred times. Here taps only touch memory and
  * the write trails behind them.
+ *
+ * A session is named by an opaque key: the azkar day for most sets, the
+ * calendar day for waking, and `day|prayer` for the after-prayer set, whose
+ * counts always cover all eight entries even when a prayer shows six.
  */
 
 interface Saved {
@@ -97,18 +101,36 @@ function subscribe(listener: () => void) {
 }
 
 export interface AzkarProgress {
+  /** One count per entry of the set, whatever `indices` shows. */
   counts: readonly number[];
-  /** Azkar whose count is complete. */
+  /** Pages whose count is complete. */
   done: number;
+  /** Pages shown. */
   total: number;
-  /** First zekr still owed, or `total` when the set is complete. */
+  /** First page still owed, or `total` when every page is complete. */
   firstIncomplete: number;
   complete: boolean;
+  /** `index` is the entry's position in the set, not the page. */
   setCount: (index: number, count: number) => void;
   reset: () => void;
 }
 
-export function useAzkarProgress(set: AzkarSetId, dayKey: string): AzkarProgress {
+const allOf = (set: AzkarSetId) => AZKAR_SETS[set].items.map((_, i) => i);
+
+/** First page still owed, from what is saved right now: for jumping when the session changes under the reader. */
+export function firstIncompleteOf(set: AzkarSetId, dayKey: string, indices: readonly number[] = allOf(set)): number {
+  const { counts } = read(set, dayKey);
+  const items = AZKAR_SETS[set].items;
+  const at = indices.findIndex((i) => counts[i] < items[i].count);
+  return at < 0 ? indices.length : at;
+}
+
+/**
+ * The session's counts, with the totals taken over `indices`: the entries the
+ * session shows, in page order (the after-prayer set shows a different subset
+ * per prayer). Defaults to every entry.
+ */
+export function useAzkarProgress(set: AzkarSetId, dayKey: string, indices?: readonly number[]): AzkarProgress {
   const snapshot = useCallback(() => read(set, dayKey), [set, dayKey]);
   const saved = useSyncExternalStore(subscribe, snapshot, snapshot);
 
@@ -129,13 +151,14 @@ export function useAzkarProgress(set: AzkarSetId, dayKey: string): AzkarProgress
 
   return useMemo(() => {
     const items = AZKAR_SETS[set].items;
-    const total = items.length;
+    const shown = indices ?? items.map((_, i) => i);
+    const total = shown.length;
     let done = 0;
     let firstIncomplete = total;
-    items.forEach((z, i) => {
-      if (saved.counts[i] >= z.count) done++;
-      else if (firstIncomplete === total) firstIncomplete = i;
+    shown.forEach((i, page) => {
+      if (saved.counts[i] >= items[i].count) done++;
+      else if (firstIncomplete === total) firstIncomplete = page;
     });
     return { counts: saved.counts, done, total, firstIncomplete, complete: done === total, setCount, reset };
-  }, [set, saved, setCount, reset]);
+  }, [set, saved, indices, setCount, reset]);
 }

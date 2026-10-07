@@ -17,8 +17,7 @@ export const AZKAR_SETS: Record<AzkarSetId, AzkarSet> = {
 export const NEW_SET_ORDER: readonly AzkarSetId[] = ['waking', 'prayer', 'sleep'];
 
 export const isDialSide = (s: string | undefined): s is DialSide => s === 'morning' || s === 'evening';
-// The reader still opens the dial's two sets only; the others follow once it can show them.
-export const isAzkarSetId = (s: string | undefined): s is AzkarSetId => isDialSide(s);
+export const isAzkarSetId = (s: string | undefined): s is AzkarSetId => s !== undefined && s in AZKAR_SETS;
 
 /**
  * The entries said after `prayer`, each with its index in the set's full list:

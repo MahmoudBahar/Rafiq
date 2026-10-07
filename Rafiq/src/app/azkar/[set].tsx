@@ -14,65 +14,107 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
-import { AZKAR_SETS, isDialSide, type DialSide } from '@/features/azkar/data';
-import { flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
+import { AZKAR_SETS, isAzkarSetId, itemsForPrayer, type AzkarSetId, type Zekr } from '@/features/azkar/data';
+import { stageAt, stageEnds, type StagePos } from '@/features/azkar/engine/stages';
+import { prayerSessionKey } from '@/features/azkar/engine/window';
+import { firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
+import { PrayerChips } from '@/features/azkar/reader/PrayerChips';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
+import { SurahPage } from '@/features/azkar/reader/SurahPage';
 import { ZekrPage } from '@/features/azkar/reader/ZekrPage';
-import { useAzkarClock } from '@/features/azkar/time';
+import { useAzkarClock, type AzkarClock } from '@/features/azkar/time';
 import { DayCarousel } from '@/features/prayer/DayCarousel';
+import { FARD_PRAYERS } from '@/features/prayer/engine';
 import { COL_PAD, useDayCarousel } from '@/features/prayer/useDayCarousel';
+import { isFardKey, type FardKey } from '@/shared/lib/adjustments';
 import { toArabicIndic } from '@/shared/lib/arabic';
-import { bead, success } from '@/shared/lib/haptics';
+import { bead, detent, success } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
-import { dialSky, radius } from '@/shared/theme/tokens';
+import { dialSky, radius, readerSky, type Sky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronBackIcon } from '@/shared/ui/Icons';
 import { Display, Text } from '@/shared/ui/Text';
 
 const BAND_H = 104;
+/** The prayer chips add a row to the band. */
+const CHIPS_H = 44;
 const EXIT_MS = 300;
 const RISE = { damping: 18, stiffness: 170, mass: 0.9 };
 /** Sheet offset when the page was not opened from the dial (a deep link). */
 const FALLBACK_RISE = 40;
 const ADVANCE_MS = 650;
 const ADVANCE_REDUCED_MS = 250;
+/** A stage of a compound entry done: the strand rests before it re-threads for the next phrase. */
+const RETHREAD_MS = 520;
+const RETHREAD_REDUCED_MS = 120;
+
+interface Page {
+  zekr: Zekr;
+  /** The entry's position in its set: what the saved counts are keyed by. */
+  index: number;
+}
+
+const skyOf = (set: AzkarSetId, prayer: FardKey): Sky => (set === 'prayer' ? readerSky.prayer[prayer] : readerSky[set]);
+
+/** The session a reader is filed under: the azkar day, the calendar day for waking, or one prayer of the day. */
+function sessionKeyOf(set: AzkarSetId, prayer: FardKey, clock: AzkarClock): string {
+  if (set === 'prayer') return prayerSessionKey(clock.dayKey, prayer);
+  if (set === 'waking') return clock.wakingKey;
+  return clock.dayKey;
+}
+
+function pagesOf(set: AzkarSetId, prayer: FardKey): Page[] {
+  if (set === 'prayer') return itemsForPrayer(prayer).map((p) => ({ zekr: p.zekr, index: p.index }));
+  return AZKAR_SETS[set].items.map((zekr, index) => ({ zekr, index }));
+}
 
 /**
  * The azkar reader. It opens over the dial as a transparent page whose sky is
- * the dial's own, and whose sheet starts exactly on the dial's ground and
+ * the hour's own, and whose sheet starts exactly on the dial's ground and
  * rises: the ground comes up to become the page. Leaving plays it backwards.
  *
  * One zekr per page. A tap anywhere on the sheet counts a repetition (the
  * count lives on the UI thread, so the bead moves with the finger and React
  * hears about it afterwards); a vertical drag scrolls a long text; a
- * horizontal one turns the page.
+ * horizontal one turns the page. The after-prayer set is read for one prayer
+ * at a time, chosen in the band; a compound entry counts stage by stage on one
+ * page; a surah entry is read and marked done by its button.
  */
 export default function AzkarReaderScreen() {
-  const params = useLocalSearchParams<{ set?: string; ground?: string }>();
+  const params = useLocalSearchParams<{ set?: string; ground?: string; prayer?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { c } = useTheme();
   const { reduced } = useMotion();
 
-  const valid = isDialSide(params.set);
-  const setId: DialSide = isDialSide(params.set) ? params.set : 'morning';
-  const { items, title } = AZKAR_SETS[setId];
-  const sky = dialSky[setId];
-  const n = items.length;
-  const { dayKey } = useAzkarClock();
-  const progress = useAzkarProgress(setId, dayKey);
+  const valid = isAzkarSetId(params.set);
+  const setId: AzkarSetId = isAzkarSetId(params.set) ? params.set : 'morning';
+  const clock = useAzkarClock();
+  const [prayer, setPrayer] = useState<FardKey>(() => (isFardKey(params.prayer ?? '') ? (params.prayer as FardKey) : clock.latest.key));
+  const title = AZKAR_SETS[setId].title;
+  const sky = skyOf(setId, prayer);
+  const pages = useMemo(() => pagesOf(setId, prayer), [setId, prayer]);
+  const indices = useMemo(() => pages.map((p) => p.index), [pages]);
+  const n = pages.length;
+  const sessionKey = sessionKeyOf(setId, prayer, clock);
+  const progress = useAzkarProgress(setId, sessionKey, indices);
   const { counts, setCount } = progress;
+  const pageCounts = useMemo(() => pages.map((p) => counts[p.index] ?? 0), [pages, counts]);
 
   // Page `n` is the closing page. The reader opens on the first zekr still owed.
   const [index, setIndex] = useState(() => Math.min(progress.firstIncomplete, n));
   const [showVirtue, setShowVirtue] = useState(false);
-  const zekr = index < n ? items[index] : null;
-  const total = zekr?.count ?? 0;
-  const said = index < n ? Math.min(counts[index] ?? 0, total) : 0;
+  const page = index < n ? pages[index] : null;
+  const zekr = page?.zekr ?? null;
+  const said = page ? Math.min(counts[page.index] ?? 0, page.zekr.count) : 0;
+  // A stage that has just completed is held for a pause before the next phrase is threaded: the
+  // finished strand stays up, then the stage follows the count again.
+  const [held, setHeld] = useState<{ page: number; stage: StagePos } | null>(null);
+  const stage: StagePos | null = zekr ? (held && held.page === index ? held.stage : stageAt(zekr, said)) : null;
 
   // The page whose zekr has just been completed and is waiting out its glow before turning. It is
   // forgotten on every page turn: left standing, coming back to a finished zekr turned it away again.
@@ -81,6 +123,7 @@ export default function AzkarReaderScreen() {
     setIndex((i) => i + delta);
     setShowVirtue(false);
     setJustDone(null);
+    setHeld(null);
   }, []);
   const bounds = useMemo(() => ({ min: 0, max: n }), [n]);
   const pager = useDayCarousel(index, onCommit, bounds);
@@ -89,17 +132,25 @@ export default function AzkarReaderScreen() {
   const count = useSharedValue(said);
   // The page `count` speaks for. Each page's strand follows `count` only while it is that page.
   const owner = useSharedValue(index);
-  const target = useSharedValue(total);
+  const target = useSharedValue(zekr?.count ?? 0);
+  // The current stage of a compound entry: where its strand starts counting, and where it ends.
+  const offset = useSharedValue(0);
+  const stageEnd = useSharedValue(zekr?.count ?? 0);
   const locked = useSharedValue(false);
   const glow = useSharedValue(0);
   useEffect(() => {
+    const z = index < n ? pages[index].zekr : null;
+    const s = z ? stageAt(z, said) : null;
     count.set(said);
     owner.set(index);
-    target.set(total);
-    locked.set(false);
-    // Seeded when the page changes only: between taps the UI thread is ahead of React.
+    target.set(z?.count ?? 0);
+    offset.set(s?.start ?? 0);
+    stageEnd.set(s ? s.start + s.size : 0);
+    // A surah page is read, not tapped; its button completes it.
+    locked.set(z?.kind === 'surahs');
+    // Seeded when the page or the session changes only: between taps the UI thread is ahead of React.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index]);
+  }, [index, sessionKey]);
 
   useEffect(() => flushAzkarProgress, []);
 
@@ -111,21 +162,51 @@ export default function AzkarReaderScreen() {
     return () => clearTimeout(timer);
   }, [justDone, index, go, reduced]);
 
-  const onCount = useCallback(
-    (i: number, next: number, done: boolean) => {
-      setCount(i, next);
-      if (!done) {
-        bead();
-        return;
-      }
+  const finish = useCallback(
+    (i: number) => {
       success();
       flushAzkarProgress();
       if (!reduced) glow.set(withSequence(withTiming(1, { duration: 180 }), withTiming(0, { duration: 340 })));
       setJustDone(i);
     },
-    [glow, reduced, setCount],
+    [glow, reduced],
   );
 
+  /** A tap landed: `next` is the entry's new cumulative count. */
+  const onCount = useCallback(
+    (i: number, itemIndex: number, next: number, done: boolean, stageDone: boolean) => {
+      setCount(itemIndex, next);
+      if (done) {
+        finish(i);
+        return;
+      }
+      if (!stageDone) {
+        bead();
+        return;
+      }
+      // A phrase of a compound entry is complete: let its full strand rest, then thread the next.
+      detent();
+      flushAzkarProgress();
+      const z = pages[i].zekr;
+      const ends = stageEnds(z);
+      const s = stageAt(z, next);
+      setHeld({ page: i, stage: stageAt(z, next - 1) });
+      setTimeout(
+        () => {
+          // The page may have been turned meanwhile; its own seeding then owns these values.
+          if (owner.get() !== i) return;
+          offset.set(s.start);
+          stageEnd.set(ends[s.index]);
+          setHeld(null);
+          locked.set(false);
+        },
+        reduced ? RETHREAD_REDUCED_MS : RETHREAD_MS,
+      );
+    },
+    [finish, locked, offset, owner, pages, reduced, setCount, stageEnd],
+  );
+
+  const itemIndex = page?.index ?? -1;
   const tap = useMemo(
     () =>
       Gesture.Tap()
@@ -137,21 +218,42 @@ export default function AzkarReaderScreen() {
           if (next > target.get()) return;
           count.set(next);
           const done = next === target.get();
-          if (done) locked.set(true);
-          scheduleOnRN(onCount, index, next, done);
+          const stageDone = next === stageEnd.get();
+          if (done || stageDone) locked.set(true);
+          scheduleOnRN(onCount, index, itemIndex, next, done, stageDone);
         }),
-    [count, index, locked, onCount, target],
+    [count, index, itemIndex, locked, onCount, stageEnd, target],
   );
   // TalkBack and VoiceOver activate through this instead of the gesture.
   const countFromA11y = () => {
-    if (!zekr || said >= total) return;
-    count.set(said + 1);
-    onCount(index, said + 1, said + 1 === total);
+    if (!zekr || zekr.kind === 'surahs' || said >= zekr.count || locked.get()) return;
+    const next = said + 1;
+    const stageDone = next === stageEnd.get();
+    if (next === zekr.count || stageDone) locked.set(true);
+    count.set(next);
+    onCount(index, itemIndex, next, next === zekr.count, stageDone);
+  };
+  const readSurah = () => {
+    if (!zekr || said >= zekr.count) return;
+    count.set(zekr.count);
+    locked.set(true);
+    onCount(index, itemIndex, zekr.count, true, false);
+  };
+
+  // Another prayer's session: its own counts, opening on its first zekr still owed.
+  const choosePrayer = (k: FardKey) => {
+    if (k === prayer) return;
+    setPrayer(k);
+    setShowVirtue(false);
+    setJustDone(null);
+    setHeld(null);
+    const next = pagesOf('prayer', k);
+    setIndex(firstIncompleteOf('prayer', prayerSessionKey(clock.dayKey, k), next.map((p) => p.index)));
   };
 
   // Enter: the sheet starts on the dial's ground and rises. Exit reverses it, then pops.
   const ground = Number(params.ground);
-  const bandH = insets.top + BAND_H;
+  const bandH = insets.top + BAND_H + (setId === 'prayer' ? CHIPS_H : 0);
   const rise = Number.isFinite(ground) && ground > bandH ? ground - bandH : FALLBACK_RISE;
   const sheetY = useSharedValue(reduced ? 0 : rise);
   const bodyOp = useSharedValue(reduced ? 1 : 0);
@@ -198,10 +300,13 @@ export default function AzkarReaderScreen() {
   if (!valid) return null;
 
   const position = index < n ? `${toArabicIndic(index + 1)} من ${toArabicIndic(n)}` : 'تمّت';
+  const completedTitle =
+    setId === 'prayer' ? `أذكار ما بعد ${FARD_PRAYERS.find((p) => p.key === prayer)?.name ?? ''}` : `${title} لهذا اليوم`;
+  const a11yLabel = zekr ? `${zekr.text}. ${toArabicIndic(said)} من ${toArabicIndic(zekr.count)}. اضغط للعدّ` : undefined;
 
   return (
     <Animated.View style={[styles.screen, pageStyle]}>
-      <StatusBar style={setId === 'morning' ? 'dark' : 'light'} />
+      <StatusBar style={sky.dark ? 'light' : 'dark'} />
       <GradientBackground colors={[sky.top, sky.bot]} />
 
       <Animated.View style={[styles.band, { paddingTop: insets.top + 12, height: bandH }, bodyStyle]}>
@@ -222,7 +327,15 @@ export default function AzkarReaderScreen() {
             {position}
           </Text>
         </View>
-        <StoryProgress items={items} counts={counts} index={index} said={said} done={dialSky.dusk} track="rgba(128,128,128,0.32)" />
+        {setId === 'prayer' ? <PrayerChips value={prayer} latest={clock.latest.key} sky={sky} onChange={choosePrayer} /> : null}
+        <StoryProgress
+          items={pages.map((p) => p.zekr)}
+          counts={pageCounts}
+          index={index}
+          said={said}
+          done={dialSky.dusk}
+          track="rgba(128,128,128,0.32)"
+        />
       </Animated.View>
 
       <Animated.View style={[styles.sheet, { top: bandH, backgroundColor: c.bg }, sheetStyle]}>
@@ -232,11 +345,9 @@ export default function AzkarReaderScreen() {
               <GestureDetector gesture={tap}>
                 <View
                   style={[styles.fill, { paddingBottom: insets.bottom + 10 }]}
-                  accessible={zekr !== null}
+                  accessible={zekr !== null && zekr.kind !== 'surahs'}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    zekr ? `${zekr.text}. ${toArabicIndic(said)} من ${toArabicIndic(total)}. اضغط للعدّ` : undefined
-                  }
+                  accessibilityLabel={a11yLabel}
                   accessibilityActions={[{ name: 'activate' }]}
                   onAccessibilityAction={countFromA11y}
                 >
@@ -248,20 +359,24 @@ export default function AzkarReaderScreen() {
                       renderDay={(i) =>
                         i < 0 || i > n ? null : i === n ? (
                           <SetComplete
-                            title={title}
+                            title={completedTitle}
                             done={progress.done}
                             total={n}
                             onBack={exit}
                             onResume={() => go(progress.firstIncomplete - n)}
                           />
+                        ) : pages[i].zekr.kind === 'surahs' ? (
+                          <SurahPage zekr={pages[i].zekr} done={pageCounts[i] >= pages[i].zekr.count} onDone={readSurah} />
                         ) : (
                           <ZekrPage
-                            zekr={items[i]}
+                            zekr={pages[i].zekr}
                             page={i}
                             owner={owner}
                             count={count}
+                            offset={offset}
                             glow={glow}
-                            said={Math.min(counts[i] ?? 0, items[i].count)}
+                            said={Math.min(pageCounts[i], pages[i].zekr.count)}
+                            stage={i === index ? stage : null}
                             width={width - COL_PAD * 2}
                             showVirtue={showVirtue && i === index}
                           />
@@ -299,7 +414,7 @@ export default function AzkarReaderScreen() {
                     style={({ pressed }) => [styles.chip, { borderColor: c.selbr }, pressed && styles.pressed]}
                   >
                     <Text size={12} weight="medium" color={c.ts}>
-                      {said >= total ? 'التالي' : 'تخطَّ'}
+                      {said >= zekr.count ? 'التالي' : 'تخطَّ'}
                     </Text>
                   </Pressable>
                 </View>
