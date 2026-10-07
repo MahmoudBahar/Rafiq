@@ -100,7 +100,7 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
   return (
     <GestureDetector gesture={pan}>
       <Animated.View
-        style={[styles.band, { top: horizon, height: travel + DRAWER_LIP + 200, backgroundColor: c.bg, shadowColor: c.tp }, band, lift]}
+        style={[styles.band, { top: horizon, height: travel + DRAWER_LIP + 200, backgroundColor: c.bg, shadowColor: c.shadow }, band, lift]}
         accessibilityRole="adjustable"
         accessibilityLabel="أذكار اليوم الأخرى"
         accessibilityValue={{ text: open ? 'مفتوح' : 'مغلق' }}
