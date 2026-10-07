@@ -21,9 +21,6 @@ export function SurahPage({ zekr, done, onDone }: SurahPageProps) {
   const { c } = useTheme();
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text size={12} color={c.tm} align="center" style={styles.wide}>
-        يُقرأ عند النوم
-      </Text>
       {(zekr.surahs ?? []).map((s) => (
         <View key={s.name} style={styles.surah}>
           <Display size={22} color={c.tm} align="center" style={styles.wide}>

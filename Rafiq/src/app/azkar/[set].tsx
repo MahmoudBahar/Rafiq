@@ -300,6 +300,20 @@ export default function AzkarReaderScreen() {
 
   const pageStyle = useAnimatedStyle(() => ({ opacity: pageOp.get() }));
   const skyStyle = useAnimatedStyle(() => ({ opacity: skyOp.get() }));
+  // The الفضل pill belongs to the page in view: as a swipe passes the middle of the slide it fades
+  // towards the page coming in, which may or may not have a virtue to show.
+  const virtueOn = useMemo(() => pages.map((p) => (p.zekr.virtue ? 1 : 0)), [pages]);
+  const { center, tx, dir, width: pageW } = pager.values;
+  const virtueStyle = useAnimatedStyle(() => {
+    const at = center.get();
+    const t = tx.get();
+    const toward = t * dir > 0 ? 1 : -1;
+    const cur = virtueOn[at] ?? 0;
+    const next = virtueOn[at + toward] ?? 0;
+    const slid = Math.min(1, Math.abs(t) / pageW);
+    const f = Math.min(1, Math.max(0, (slid - 0.3) / 0.4));
+    return { opacity: cur + (next - cur) * f };
+  }, [virtueOn, center, tx, dir, pageW]);
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.get() }] }));
 
@@ -427,22 +441,25 @@ export default function AzkarReaderScreen() {
                   </Pressable>
                 </View>
               ) : null}
-              {zekr?.virtue ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: showVirtue }}
-                  onPress={() => setShowVirtue((v) => !v)}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.virtue,
-                    { borderColor: c.selbr, backgroundColor: showVirtue ? c.selbg : c.bg },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text size={12} weight="medium" color={c.ts}>
-                    الفضل
-                  </Text>
-                </Pressable>
+              {virtueOn.some(Boolean) ? (
+                <Animated.View style={[styles.virtueSlot, virtueStyle]} pointerEvents={zekr?.virtue ? 'box-none' : 'none'}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showVirtue }}
+                    accessibilityElementsHidden={!zekr?.virtue}
+                    onPress={() => setShowVirtue((v) => !v)}
+                    hitSlop={10}
+                    style={({ pressed }) => [
+                      styles.virtue,
+                      { borderColor: c.selbr, backgroundColor: showVirtue ? c.selbg : c.bg },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text size={12} weight="medium" color={c.ts}>
+                      الفضل
+                    </Text>
+                  </Pressable>
+                </Animated.View>
               ) : null}
             </View>
           </GestureDetector>
@@ -486,10 +503,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chip: { borderWidth: 1, borderRadius: radius.pill, paddingVertical: 6, paddingHorizontal: 14 },
+  virtueSlot: { position: 'absolute', top: 14, left: 0, right: 0, alignItems: 'center' },
   virtue: {
-    position: 'absolute',
-    top: 14,
-    alignSelf: 'center',
     borderWidth: 1,
     borderRadius: radius.pill,
     paddingVertical: 6,
