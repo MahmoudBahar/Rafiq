@@ -81,8 +81,7 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
     backgroundColor: interpolateColor(breath.get(), [0, 1], [c.selbr, c.accent]),
     transform: [{ scaleX: 1 + 0.5 * breath.get() }],
   }));
-  // Two bars fold up into a chevron as the band rises. Each turns about its inner end, so the two
-  // ends stay on one point and their round caps make the tip.
+  // Two bars fold up into a chevron as the band rises.
   const barL = useAnimatedStyle(() => ({ opacity: k.get(), transform: [{ rotate: `${30 * k.get()}deg` }] }));
   const barR = useAnimatedStyle(() => ({ opacity: k.get(), transform: [{ rotate: `${-30 * k.get()}deg` }] }));
 
@@ -188,9 +187,9 @@ const styles = StyleSheet.create({
   hint: { alignSelf: 'stretch', marginTop: 12 },
   handleHit: { alignSelf: 'center', width: 44, height: 22, marginTop: 4, alignItems: 'center', justifyContent: 'center' },
   pill: { width: 44, height: 5, borderRadius: 3 },
-  bar: { position: 'absolute', top: 6, width: 14, height: 3, borderRadius: 2 },
-  barLeft: { left: 8, transformOrigin: 'right center' },
-  barRight: { left: 22, transformOrigin: 'left center' },
+  bar: { position: 'absolute', top: 9, width: 14, height: 3, borderRadius: 2 },
+  barLeft: { left: 9 },
+  barRight: { right: 9 },
   peek: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
   texts: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
