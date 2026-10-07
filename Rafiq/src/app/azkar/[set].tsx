@@ -33,7 +33,7 @@ import { toArabicIndic } from '@/shared/lib/arabic';
 import { bead, detent, success } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
-import { radius, readerSky, type Sky } from '@/shared/theme/tokens';
+import { dialSky, radius, readerSky, type Sky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { AnimatedDisplay, AnimatedText, Text } from '@/shared/ui/Text';
@@ -436,7 +436,14 @@ export default function AzkarReaderScreen() {
           </AnimatedText>
         </View>
         {setId === 'prayer' ? <PrayerChips value={prayer} latest={clock.latest.key} ink={ink} onChange={choosePrayer} /> : null}
-        <StoryProgress items={pages.map((p) => p.zekr)} counts={pageCounts} index={index} said={said} ink={ink} />
+        <StoryProgress
+          items={pages.map((p) => p.zekr)}
+          counts={pageCounts}
+          index={index}
+          said={said}
+          done={dialSky.dusk}
+          track="rgba(128,128,128,0.32)"
+        />
       </Animated.View>
 
       <Animated.View style={[styles.sheet, { top: bandH, backgroundColor: c.bg }, sheetStyle]}>
