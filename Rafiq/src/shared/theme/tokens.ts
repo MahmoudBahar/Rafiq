@@ -97,8 +97,8 @@ export const readerSky = {
     // Late afternoon: the same daylight, warmer and lower.
     asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: light.ts, muted: '#8a6a3f', dark: false } as Sky,
     maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
-    // Night proper: black lifting just into teal above the sheet, which then reads as the lighter surface.
-    isha: { top: '#000000', bot: '#0f2823', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true, line: dark.accent } as Sky,
+    // The hour after dusk: night nearly black above, the last ember of Maghrib's glow, gone to ash, at the horizon.
+    isha: { top: '#04110f', bot: '#5e4742', text: dark.tp, sub: dark.ts, muted: '#b89a8e', dark: true } as Sky,
   },
 } as const;
 

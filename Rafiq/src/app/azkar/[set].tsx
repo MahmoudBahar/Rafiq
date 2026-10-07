@@ -18,6 +18,7 @@ import { AZKAR_SETS, isAzkarSetId, itemsForPrayer, type AzkarSetId, type Zekr } 
 import { stageAt, stageEnds, type StagePos } from '@/features/azkar/engine/stages';
 import { prayerSessionKey } from '@/features/azkar/engine/window';
 import { countsOf, firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
+import { InkChevron, useInk, type SkyMix } from '@/features/azkar/reader/ink';
 import { PrayerChips } from '@/features/azkar/reader/PrayerChips';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
@@ -32,11 +33,10 @@ import { toArabicIndic } from '@/shared/lib/arabic';
 import { bead, detent, success } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
-import { radius, readerSky, skyAlpha, type Sky } from '@/shared/theme/tokens';
+import { radius, readerSky, type Sky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
-import { ChevronBackIcon } from '@/shared/ui/Icons';
-import { Display, Text } from '@/shared/ui/Text';
+import { AnimatedDisplay, AnimatedText, Text } from '@/shared/ui/Text';
 
 const BAND_H = 104;
 /** The prayer chips add a row to the band. */
@@ -386,6 +386,10 @@ export default function AzkarReaderScreen() {
   }, [virtueOn, center, tx, dir, pageW]);
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
   const overStyle = useAnimatedStyle(() => ({ opacity: overOp.get() }));
+  // The band's ink moves between the two skies with the same mix as the gradient on top.
+  const ink: SkyMix = useMemo(() => ({ mix: overOp, from: skies.base, to: skies.over }), [overOp, skies]);
+  const titleInk = useInk(ink, (s) => s.text);
+  const positionInk = useInk(ink, (s) => s.sub);
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.get() }] }));
 
   if (!valid) return null;
@@ -411,44 +415,26 @@ export default function AzkarReaderScreen() {
         </Animated.View>
       </Animated.View>
 
-      {/* The band's ink is drawn twice like the sky, in the old colours under and the new on top, so
-          the title and chips crossfade with it. Settled, both layers are the same. */}
-      <Animated.View style={[styles.band, { height: bandH }, bodyStyle]}>
-        {([skies.base, skies.over] as const).map((inkSky, layer) => (
-          <Animated.View
-            key={layer}
-            style={[styles.ink, { paddingTop: insets.top + 12 }, layer === 1 ? overStyle : null]}
-            accessibilityElementsHidden={layer === 0}
-            importantForAccessibility={layer === 0 ? 'no-hide-descendants' : 'auto'}
+      <Animated.View style={[styles.band, { paddingTop: insets.top + 12, height: bandH }, bodyStyle]}>
+        <View style={styles.bandRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+            onPress={exit}
+            hitSlop={8}
+            style={({ pressed }) => [styles.back, pressed && { transform: [{ scale: 1.06 }] }]}
           >
-            <View style={styles.bandRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="رجوع"
-                onPress={exit}
-                hitSlop={8}
-                style={({ pressed }) => [styles.back, pressed && { transform: [{ scale: 1.06 }] }]}
-              >
-                <ChevronBackIcon size={16} color={inkSky.text} />
-              </Pressable>
-              <Display size={26} color={inkSky.text} style={styles.title}>
-                {title}
-              </Display>
-              <Text size={12.5} weight="medium" color={inkSky.sub} style={styles.position}>
-                {position}
-              </Text>
-            </View>
-            {setId === 'prayer' ? <PrayerChips value={prayer} latest={clock.latest.key} sky={inkSky} onChange={choosePrayer} /> : null}
-            <StoryProgress
-              items={pages.map((p) => p.zekr)}
-              counts={pageCounts}
-              index={index}
-              said={said}
-              done={inkSky.line ?? inkSky.text}
-              track={skyAlpha(inkSky.text, 0.25)}
-            />
-          </Animated.View>
-        ))}
+            <InkChevron ink={ink} size={16} />
+          </Pressable>
+          <AnimatedDisplay size={26} style={[styles.title, titleInk]}>
+            {title}
+          </AnimatedDisplay>
+          <AnimatedText size={12.5} weight="medium" style={[styles.position, positionInk]}>
+            {position}
+          </AnimatedText>
+        </View>
+        {setId === 'prayer' ? <PrayerChips value={prayer} latest={clock.latest.key} ink={ink} onChange={choosePrayer} /> : null}
+        <StoryProgress items={pages.map((p) => p.zekr)} counts={pageCounts} index={index} said={said} ink={ink} />
       </Animated.View>
 
       <Animated.View style={[styles.sheet, { top: bandH, backgroundColor: c.bg }, sheetStyle]}>
@@ -563,9 +549,8 @@ export default function AzkarReaderScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   fill: { flex: 1 },
-  band: {},
+  band: { paddingHorizontal: 20, gap: 14 },
   skyBand: { position: 'absolute', top: 0, left: 0, right: 0 },
-  ink: { ...StyleSheet.absoluteFill, paddingHorizontal: 20, gap: 14 },
   bandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: {
     width: 40,
