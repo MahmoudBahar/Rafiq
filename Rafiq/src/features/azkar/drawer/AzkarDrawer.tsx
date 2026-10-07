@@ -197,12 +197,12 @@ const styles = StyleSheet.create({
   hint: { alignSelf: 'stretch', marginTop: 12 },
   handleHit: { alignSelf: 'center', width: 44, height: 22, marginTop: 4, alignItems: 'center', justifyContent: 'center' },
   handle: { width: 44, height: 22 },
-  // Rounded on the outside only, so the two read as one pill while flat; they overlap by four
-  // points about the middle so no seam or notch shows, and both pivot on that middle. Physical sides: RN
+  // Rounded on the outside only, so the two read as one pill while flat; they overlap by two
+  // points under the middle so no seam shows, and both pivot on that middle. Physical sides: RN
   // would swap `left` and `right` under RTL, and the halves must keep to their own sides.
-  half: { position: 'absolute', top: 8.5, width: 24, height: 5 },
+  half: { position: 'absolute', top: 8.5, width: 23, height: 5 },
   halfLeft: { ...physicalLeft(0), ...roundPhysical('left'), transformOrigin: '22px 50%' },
-  halfRight: { ...physicalLeft(20), ...roundPhysical('right'), transformOrigin: '2px 50%' },
+  halfRight: { ...physicalLeft(21), ...roundPhysical('right'), transformOrigin: '1px 50%' },
   peek: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
   texts: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
