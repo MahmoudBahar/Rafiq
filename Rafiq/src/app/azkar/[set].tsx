@@ -403,8 +403,8 @@ export default function AzkarReaderScreen() {
   const a11yLabel = zekr ? `${zekr.text}. ${toArabicIndic(said)} من ${toArabicIndic(zekr.count)}. اضغط للعدّ` : undefined;
 
   return (
-    {/* Composited as one while fading out: Android would otherwise fade each layer on its own, and the
-        sky under the sheet would show through it. */}
+    // Composited as one while fading out: Android would otherwise fade each layer on its own, and the
+    // sky under the sheet would show through it.
     <Animated.View style={[styles.screen, pageStyle]} needsOffscreenAlphaCompositing>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
       {/* A dial set's sky runs down to the dial's horizon, as the dial's does behind the dropping
