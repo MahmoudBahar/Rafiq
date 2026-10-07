@@ -136,7 +136,7 @@ const TASBIH = /^(سُبْحَانَ اللَّهِ)،?\s+(وَالْحَمْد�
  * (keeping a leading isti'adha line); `stages` splits a compound entry;
  * `tail` strips a condition written after the words; `prayers` limits an
  * after-prayer entry to certain prayers; `expand` turns one source entry into
- * several. Anything not listed is the cleaned source text, said once. Output
+ * several, each part able to `pick` its own words out of the cleaned text. Anything not listed is the cleaned source text, said once. Output
  * ids are renumbered after expansion.
  */
 const RECIPES = {
@@ -156,12 +156,10 @@ const RECIPES = {
   s01: { expand: QULS(3) },
   s02: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
   s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
-  s08: { stages: (t) => split(t, TASBIH, [33, 33, 34]) },
-  s12: {
-    surahs: [32, 67].map((n) => ({ name: surahName(n), text: wholeSurah(n) })),
-    text: 'سورة السجدة وسورة الملك',
-    reference: 'السجدة · الملك',
-  },
+  // Before sleep the three tasbihs are three pages, the last said thirty-four times.
+  s08: { expand: [33, 33, 34].map((count, i) => ({ count, pick: (t) => split(t, TASBIH, [33, 33, 34])[i].text })) },
+  // The two surahs read before sleep, a page each.
+  s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: surahName(n), text: wholeSurah(n) }], text: surahName(n), reference: surahName(n) })) },
 
   p01: { stages: (t) => split(t, /^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
   p02: { stages: (t) => split(t, /^(لاَ إِلَهَ إِلاَّ اللَّهُ.*?قَدِيرٌ)،?\s+(اللَّهُمَّ لاَ مَانِعَ.*)$/s, [3, 1]) },
@@ -195,6 +193,7 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
       zekr.text = withLeadLine(r.zekr.normalize('NFC'), recipe.quran);
       zekr.kind = 'quran';
     }
+    if (recipe.pick) zekr.text = recipe.pick(zekr.text);
     if (recipe.stages) {
       zekr.stages = recipe.stages(zekr.text);
       zekr.count = zekr.stages.reduce((n, s) => n + s.count, 0);
