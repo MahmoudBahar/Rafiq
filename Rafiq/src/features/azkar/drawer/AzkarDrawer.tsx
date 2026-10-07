@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { I18nManager, Pressable, StyleSheet, View } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import Animated, {
   FadeInUp,
@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useMotion } from '@/shared/lib/motion';
+import { physicalLeft } from '@/shared/lib/rtl';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { PressScale } from '@/shared/ui/PressScale';
@@ -76,14 +77,16 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
   useEffect(() => {
     breath.set(breathing && !reduced ? withRepeat(withTiming(1, { duration: BREATH_MS }), -1, true) : withTiming(0, { duration: 200 }));
   }, [breath, breathing, reduced]);
-  const pill = useAnimatedStyle(() => ({
-    opacity: 1 - k.get(),
-    backgroundColor: interpolateColor(breath.get(), [0, 1], [c.selbr, c.accent]),
-    transform: [{ scaleX: 1 + 0.5 * breath.get() }],
-  }));
-  // Two bars fold up into a chevron as the band rises.
-  const barL = useAnimatedStyle(() => ({ opacity: k.get(), transform: [{ rotate: `${30 * k.get()}deg` }] }));
-  const barR = useAnimatedStyle(() => ({ opacity: k.get(), transform: [{ rotate: `${-30 * k.get()}deg` }] }));
+  // The handle is one pill in two halves: flat and grey while the band is down, each half turning
+  // about the middle into a chevron, in the accent, as it rises. The breathing scales the pair.
+  const handle = useAnimatedStyle(() => ({ transform: [{ scaleX: 1 + 0.5 * breath.get() * (1 - k.get()) }] }));
+  const halfColor = () => {
+    'worklet';
+    const rest = interpolateColor(breath.get(), [0, 1], [c.selbr, c.accent]);
+    return interpolateColor(k.get(), [0, 1], [rest, c.accent]);
+  };
+  const barL = useAnimatedStyle(() => ({ backgroundColor: halfColor(), transform: [{ rotate: `${-30 * k.get()}deg` }] }));
+  const barR = useAnimatedStyle(() => ({ backgroundColor: halfColor(), transform: [{ rotate: `${30 * k.get()}deg` }] }));
 
   return (
     <GestureDetector gesture={pan}>
@@ -99,9 +102,10 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
           {hint}
         </Text>
         <Pressable accessibilityRole="button" accessibilityLabel={open ? 'إغلاق' : 'المزيد من الأذكار'} onPress={onToggle} hitSlop={14} style={styles.handleHit}>
-          <Animated.View style={[styles.pill, pill]} />
-          <Animated.View style={[styles.bar, styles.barLeft, { backgroundColor: c.accent }, barL]} />
-          <Animated.View style={[styles.bar, styles.barRight, { backgroundColor: c.accent }, barR]} />
+          <Animated.View style={[styles.handle, handle]}>
+            <Animated.View style={[styles.half, styles.halfLeft, barL]} />
+            <Animated.View style={[styles.half, styles.halfRight, barR]} />
+          </Animated.View>
         </Pressable>
 
         <Animated.View style={[styles.peek, peekStyle]} pointerEvents={open ? 'none' : 'box-none'}>
@@ -173,6 +177,12 @@ function Ember({ color }: { color: string }) {
   return <Animated.View style={[styles.ember, { backgroundColor: color }, style]} />;
 }
 
+/** Round a view's corners on one physical side; RN swaps the left and right radii under RTL. */
+function roundPhysical(side: 'left' | 'right') {
+  const left = (side === 'left') !== I18nManager.isRTL;
+  return left ? { borderTopLeftRadius: 3, borderBottomLeftRadius: 3 } : { borderTopRightRadius: 3, borderBottomRightRadius: 3 };
+}
+
 const styles = StyleSheet.create({
   band: {
     position: 'absolute',
@@ -186,10 +196,13 @@ const styles = StyleSheet.create({
   },
   hint: { alignSelf: 'stretch', marginTop: 12 },
   handleHit: { alignSelf: 'center', width: 44, height: 22, marginTop: 4, alignItems: 'center', justifyContent: 'center' },
-  pill: { width: 44, height: 5, borderRadius: 3 },
-  bar: { position: 'absolute', top: 9, width: 14, height: 3, borderRadius: 2 },
-  barLeft: { left: 9 },
-  barRight: { right: 9 },
+  handle: { width: 44, height: 22 },
+  // Rounded on the outside only, so the two read as one pill while flat; they overlap by four
+  // points about the middle so no seam or notch shows, and both pivot on that middle. Physical sides: RN
+  // would swap `left` and `right` under RTL, and the halves must keep to their own sides.
+  half: { position: 'absolute', top: 8.5, width: 24, height: 5 },
+  halfLeft: { ...physicalLeft(0), ...roundPhysical('left'), transformOrigin: '22px 50%' },
+  halfRight: { ...physicalLeft(20), ...roundPhysical('right'), transformOrigin: '2px 50%' },
   peek: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
   texts: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
