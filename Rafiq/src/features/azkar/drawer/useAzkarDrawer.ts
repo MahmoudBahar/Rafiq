@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Gesture } from 'react-native-gesture-handler';
 import {
   Easing,
+  useAnimatedReaction,
   useDerivedValue,
   useSharedValue,
   withSequence,
@@ -51,6 +52,15 @@ export function useAzkarDrawer(travel: number) {
     return t > 0 ? Math.min(1, Math.max(0, -y.get() / t)) : 0;
   });
 
+  // Felt as the band crosses the half-way point, in either direction, whether dragged or sprung.
+  useAnimatedReaction(
+    () => k.get() > 0.5,
+    (over, was) => {
+      if (was === null || over === was) return;
+      scheduleOnRN(detent);
+    },
+  );
+
   const settle = useMemo(
     () => (target: number, velocity: number) => {
       'worklet';
@@ -78,10 +88,7 @@ export function useAzkarDrawer(travel: number) {
           touching.set(false);
           const t = travelSv.get();
           const projected = y.get() + e.velocityY * PROJECT_S;
-          const wasOpen = -startY.get() > t / 2;
-          const toOpen = projected < -t / 2;
-          if (toOpen !== wasOpen) scheduleOnRN(detent);
-          settle(toOpen ? -t : 0, e.velocityY);
+          settle(projected < -t / 2 ? -t : 0, e.velocityY);
         }),
     [settle, startY, touching, travelSv, y],
   );
@@ -92,7 +99,6 @@ export function useAzkarDrawer(travel: number) {
       const t = travelSv.get();
       settle(-y.get() > t / 2 ? 0 : -t, 0);
     });
-    detent();
   }, [settle, travelSv, y]);
 
   const close = useCallback(() => {
