@@ -42,6 +42,8 @@ const BAND_H = 104;
 /** The prayer chips add a row to the band. */
 const CHIPS_H = 44;
 const EXIT_MS = 300;
+/** The page's own fade in: the stack brings it on without a transition. */
+const ENTER_FADE_MS = 160;
 const RISE = { damping: 18, stiffness: 170, mass: 0.9 };
 /** Sheet offset when the page was not opened from the dial (a deep link). */
 const FALLBACK_RISE = 40;
@@ -257,9 +259,10 @@ export default function AzkarReaderScreen() {
   const rise = Number.isFinite(ground) && ground > bandH ? ground - bandH : FALLBACK_RISE;
   const sheetY = useSharedValue(reduced ? 0 : rise);
   const bodyOp = useSharedValue(reduced ? 1 : 0);
-  const pageOp = useSharedValue(1);
+  const pageOp = useSharedValue(reduced ? 1 : 0);
   useEffect(() => {
     if (reduced) return;
+    pageOp.set(withTiming(1, { duration: ENTER_FADE_MS }));
     sheetY.set(withSpring(0, RISE));
     bodyOp.set(withDelay(140, withTiming(1, { duration: 260 })));
     // Runs once: the entrance.
