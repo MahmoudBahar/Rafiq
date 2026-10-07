@@ -20,7 +20,7 @@ import type { SetStanding } from '../engine/lead';
 import type { DrawerValues } from './useAzkarDrawer';
 
 /** The band's closed height above the tab bar: hint, handle and the peek row. */
-export const DRAWER_LIP = 118;
+export const DRAWER_LIP = 134;
 /** The band's top when open, below the status bar. */
 export const DRAWER_OPEN_TOP = 110;
 const ROW_STAGGER_MS = 70;
