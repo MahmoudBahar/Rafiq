@@ -101,10 +101,13 @@ function cleanZekr(text) {
   return clean(t);
 }
 
+/** The isti'adha the morning and evening sets put before آية الكرسي; the other passages take it too. */
+const ISTIADHA = 'أَعُوذُ بِاللهِ مِنْ الشَّيْطَانِ الرَّجِيمِ';
+
 /** Keeps the isti'adha line the source puts before a passage, replacing the passage itself. */
-function withLeadLine(original, quranText) {
+function withLeadLine(original, quranText, force = false) {
   const first = original.split('\n')[0];
-  const lead = /أَعُوذُ بِاللهِ/.test(first) ? clean(first) : null;
+  const lead = /أَعُوذُ بِاللهِ/.test(first) ? clean(first) : force ? ISTIADHA : null;
   return lead ? `${lead}\n${quranText}` : quranText;
 }
 
@@ -133,7 +136,7 @@ const TASBIH = /^(سُبْحَانَ اللَّهِ)،?\s+(وَالْحَمْد�
 /**
  * Per-entry recipes, keyed by the entry's position in the source (set prefix
  * plus 1-based index). `quran` replaces the text with a mushaf passage
- * (keeping a leading isti'adha line); `stages` splits a compound entry;
+ * (keeping a leading isti'adha line, or adding one with `istiadha`); `stages` splits a compound entry;
  * `tail` strips a condition written after the words; `prayers` limits an
  * after-prayer entry to certain prayers; `expand` turns one source entry into
  * several, each part able to `pick` its own words out of the cleaned text. Anything not listed is the cleaned source text, said once. Output
@@ -151,10 +154,10 @@ const RECIPES = {
   e04: { quran: wholeSurah(113) },
   e05: { quran: wholeSurah(114) },
 
-  w04: { quran: passage(3, 190, 200), reference: 'آل عمران ١٩٠–٢٠٠' },
+  w04: { quran: passage(3, 190, 200), istiadha: true, reference: 'آل عمران ١٩٠–٢٠٠' },
 
   s01: { expand: QULS(3) },
-  s02: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
+  s02: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
   s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
   // Before sleep the three tasbihs are three pages, the last said thirty-four times; on their own
   // pages the second and third drop the و that joined them in the source.
@@ -169,7 +172,7 @@ const RECIPES = {
       split(t, /^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]),
   },
   p05: { expand: QULS(1) },
-  p06: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
+  p06: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
   p07: { tail: /\s*عَشْرَ مَرّاتٍ بَعْدَ صَلاةِ الْمَغْرِبِ وَالصُّبْحِ\.?$/, count: 10, prayers: ['fajr', 'maghrib'] },
   p08: { tail: /\s*بَعْدَ السّلامِ مِنْ صَلاَةِ الفَجْرِ\.?$/, prayers: ['fajr'] },
 };
@@ -191,7 +194,7 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
     if (countsInFile && !COUNTS.has(r.count)) throw new Error(`${category} #${i + 1}: unexpected count ${r.count}`);
     if (!zekr.text) throw new Error(`${category} #${i + 1}: empty text`);
     if (recipe.quran) {
-      zekr.text = withLeadLine(r.zekr.normalize('NFC'), recipe.quran);
+      zekr.text = withLeadLine(r.zekr.normalize('NFC'), recipe.quran, recipe.istiadha === true);
       zekr.kind = 'quran';
     }
     if (recipe.pick) zekr.text = recipe.pick(zekr.text);
