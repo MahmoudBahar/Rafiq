@@ -420,7 +420,7 @@ export default function AzkarReaderScreen() {
                     hitSlop={10}
                     style={({ pressed }) => [
                       styles.chip,
-                      { borderColor: c.selbr },
+                      { borderColor: c.selbr, backgroundColor: c.bg },
                       index === 0 && styles.disabled,
                       pressed && styles.pressed,
                     ]}
@@ -433,7 +433,7 @@ export default function AzkarReaderScreen() {
                     accessibilityRole="button"
                     onPress={() => go(1)}
                     hitSlop={10}
-                    style={({ pressed }) => [styles.chip, { borderColor: c.selbr }, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.chip, { borderColor: c.selbr, backgroundColor: c.bg }, pressed && styles.pressed]}
                   >
                     <Text size={12} weight="medium" color={c.ts}>
                       {said >= zekr.count ? 'التالي' : 'تخطَّ'}
