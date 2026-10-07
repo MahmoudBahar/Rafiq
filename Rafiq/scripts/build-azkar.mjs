@@ -133,6 +133,9 @@ const COUNTS = new Set([1, 3, 4, 7, 10, 100]);
 
 const TASBIH = /^(سُبْحَانَ اللَّهِ)،?\s+(وَالْحَمْدُ لِلَّهِ)،?\s+(وَاللَّهُ أَكْبَرُ)$/;
 
+/** One page per phrase of a compound entry, each with its count; a phrase loses the و that joined it to the one before. */
+const pages = (re, counts) => counts.map((count, i) => ({ count, pick: (t) => split(t, re, counts)[i].text.replace(/^وَ/, '') }));
+
 /**
  * Per-entry recipes, keyed by the entry's position in the source (set prefix
  * plus 1-based index). `quran` replaces the text with a mushaf passage
@@ -161,16 +164,14 @@ const RECIPES = {
   s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
   // Before sleep the three tasbihs are three pages, the last said thirty-four times; on their own
   // pages the second and third drop the و that joined them in the source.
-  s08: { expand: [33, 33, 34].map((count, i) => ({ count, pick: (t) => split(t, TASBIH, [33, 33, 34])[i].text.replace(/^وَ/, '') })) },
+  s08: { expand: pages(TASBIH, [33, 33, 34]) },
   // The two surahs read before sleep, a page each.
   s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: surahName(n), text: wholeSurah(n) }], text: surahName(n), reference: surahName(n) })) },
 
-  p01: { stages: (t) => split(t, /^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
-  p02: { stages: (t) => split(t, /^(لاَ إِلَهَ إِلاَّ اللَّهُ.*?قَدِيرٌ)،?\s+(اللَّهُمَّ لاَ مَانِعَ.*)$/s, [3, 1]) },
-  p04: {
-    stages: (t) =>
-      split(t, /^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]),
-  },
+  // After a prayer every phrase with its own count is its own page.
+  p01: { expand: pages(/^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
+  p02: { expand: pages(/^(لاَ إِلَهَ إِلاَّ اللَّهُ.*?قَدِيرٌ)،?\s+(اللَّهُمَّ لاَ مَانِعَ.*)$/s, [3, 1]) },
+  p04: { expand: pages(/^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]) },
   p05: { expand: QULS(1) },
   p06: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
   p07: { tail: /\s*عَشْرَ مَرّاتٍ بَعْدَ صَلاةِ الْمَغْرِبِ وَالصُّبْحِ\.?$/, count: 10, prayers: ['fajr', 'maghrib'] },
