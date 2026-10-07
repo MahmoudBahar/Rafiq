@@ -156,8 +156,9 @@ const RECIPES = {
   s01: { expand: QULS(3) },
   s02: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
   s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
-  // Before sleep the three tasbihs are three pages, the last said thirty-four times.
-  s08: { expand: [33, 33, 34].map((count, i) => ({ count, pick: (t) => split(t, TASBIH, [33, 33, 34])[i].text })) },
+  // Before sleep the three tasbihs are three pages, the last said thirty-four times; on their own
+  // pages the second and third drop the و that joined them in the source.
+  s08: { expand: [33, 33, 34].map((count, i) => ({ count, pick: (t) => split(t, TASBIH, [33, 33, 34])[i].text.replace(/^وَ/, '') })) },
   // The two surahs read before sleep, a page each.
   s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: surahName(n), text: wholeSurah(n) }], text: surahName(n), reference: surahName(n) })) },
 

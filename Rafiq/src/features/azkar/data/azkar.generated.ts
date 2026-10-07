@@ -679,14 +679,14 @@ export const SLEEP_AZKAR: readonly Zekr[] = [
   },
   {
     "id": "s11",
-    "text": "وَالْحَمْدُ لِلَّهِ",
+    "text": "الْحَمْدُ لِلَّهِ",
     "count": 33,
     "virtue": null,
     "reference": null
   },
   {
     "id": "s12",
-    "text": "وَاللَّهُ أَكْبَرُ",
+    "text": "اللَّهُ أَكْبَرُ",
     "count": 34,
     "virtue": null,
     "reference": null
