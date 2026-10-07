@@ -90,7 +90,8 @@ export const readerSky = {
   morning: day,
   evening: night,
   waking: { top: '#071d22', bot: '#2b5f58', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
-  sleep: { top: '#02110f', bot: '#0a2b26', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  // Deep night, lifting into a cool moonlit teal above the sheet: its old foot was the dark theme's own bg.
+  sleep: { top: '#02100e', bot: '#1c434a', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   prayer: {
     fajr: { top: '#1d4a4f', bot: '#c99f74', text: dark.tp, sub: light.skytop, muted: dark.ts, dark: true } as Sky,
     dhuhr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
