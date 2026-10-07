@@ -16,9 +16,19 @@ const FARD_NAMES: Record<FardKey, string> = { fajr: 'الفجر', dhuhr: 'الظ
 export const drawerTitle = (set: AzkarSetId, title: string, prayer: FardKey): string =>
   set === 'prayer' ? `بعد ${FARD_NAMES[prayer]}` : title.replace('أذكار ', '');
 
-/** «أتممتها، تقبّل اللّٰه» / «٢ من ٦» / «٤ ذكرًا», with the minutes left in front while the set leads. */
+/** A count of azkar with the noun in the form Arabic gives it: «ذكر واحد»، «ذكران»، «٤ أذكار»، «٣١ ذكرًا»، «١٠٠ ذكر». */
+export function zekrCount(n: number): string {
+  if (n === 1) return 'ذكر واحد';
+  if (n === 2) return 'ذكران';
+  const rest = n % 100;
+  if (rest >= 3 && rest <= 10) return `${toArabicIndic(n)} أذكار`;
+  if (rest >= 11) return `${toArabicIndic(n)} ذكرًا`;
+  return `${toArabicIndic(n)} ذكر`;
+}
+
+/** «أتممتها، تقبّل اللّٰه» / «٢ من ٦» / «٤ أذكار», with the minutes left in front while the set leads. */
 export function drawerStatus(s: SetStanding, minutesLeft: number | null): string {
-  const base = s.complete ? 'أتممتها، تقبّل اللّٰه' : s.started ? `${toArabicIndic(s.done)} من ${toArabicIndic(s.total)}` : `${toArabicIndic(s.total)} ذكرًا`;
+  const base = s.complete ? 'أتممتها، تقبّل اللّٰه' : s.started ? `${toArabicIndic(s.done)} من ${toArabicIndic(s.total)}` : zekrCount(s.total);
   return minutesLeft !== null && !s.complete ? `بقي ${toArabicIndic(minutesLeft)} دقيقة · ${base}` : base;
 }
 
