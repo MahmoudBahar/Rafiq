@@ -396,7 +396,9 @@ export default function AzkarReaderScreen() {
   return (
     <Animated.View style={[styles.screen, pageStyle]}>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
-      <Animated.View style={[StyleSheet.absoluteFill, skyStyle]} pointerEvents="none">
+      {/* A dial set's sky fills the screen, as the dial's does behind the dropping sheet. The others'
+          span the band alone, so the whole ramp shows above the sheet and its foot meets the edge. */}
+      <Animated.View style={[overDrawer ? [styles.skyBand, { height: bandH }] : StyleSheet.absoluteFill, skyStyle]} pointerEvents="none">
         <GradientBackground colors={[skies.base.top, skies.base.bot]} />
         <Animated.View style={[StyleSheet.absoluteFill, overStyle]}>
           <GradientBackground colors={[skies.over.top, skies.over.bot]} />
@@ -556,6 +558,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   fill: { flex: 1 },
   band: {},
+  skyBand: { position: 'absolute', top: 0, left: 0, right: 0 },
   ink: { ...StyleSheet.absoluteFill, paddingHorizontal: 20, gap: 14 },
   bandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: {
