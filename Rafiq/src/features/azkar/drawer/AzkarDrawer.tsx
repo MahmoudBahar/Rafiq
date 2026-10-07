@@ -26,6 +26,8 @@ export const DRAWER_LIP = 134;
 export const DRAWER_OPEN_TOP = 110;
 const ROW_STAGGER_MS = 70;
 const BREATH_MS = 1200;
+/** How far each half of the handle moves away from the middle when the band is up, past their flat overlap. */
+const BREAK = 2;
 
 export interface DrawerRow {
   set: AzkarSetId;
@@ -85,8 +87,15 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
     const rest = interpolateColor(breath.get(), [0, 1], [c.selbr, c.accent]);
     return interpolateColor(k.get(), [0, 1], [rest, c.accent]);
   };
-  const barL = useAnimatedStyle(() => ({ backgroundColor: halfColor(), transform: [{ rotate: `${-30 * k.get()}deg` }] }));
-  const barR = useAnimatedStyle(() => ({ backgroundColor: halfColor(), transform: [{ rotate: `${30 * k.get()}deg` }] }));
+  // As they fold, the halves also part a little, so the bend shows as a bar broken in two.
+  const barL = useAnimatedStyle(() => ({
+    backgroundColor: halfColor(),
+    transform: [{ translateX: -BREAK * k.get() }, { rotate: `${-30 * k.get()}deg` }],
+  }));
+  const barR = useAnimatedStyle(() => ({
+    backgroundColor: halfColor(),
+    transform: [{ translateX: BREAK * k.get() }, { rotate: `${30 * k.get()}deg` }],
+  }));
 
   return (
     <GestureDetector gesture={pan}>
