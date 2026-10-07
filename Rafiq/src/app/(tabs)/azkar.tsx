@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +17,6 @@ import { drawerAction, drawerStatus, drawerTitle, leadSet, type SetStanding } fr
 import { prayerSessionKey } from '@/features/azkar/engine/window';
 import { useAzkarProgress, type AzkarProgress } from '@/features/azkar/progress';
 import { useAzkarClock } from '@/features/azkar/time';
-import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { useSettings } from '@/shared/storage/settings';
 import { dialSky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -77,7 +76,17 @@ export default function AzkarScreen() {
 
   const drawer = useAzkarDrawer(travel);
   const { k } = drawer.values;
-  usePreventBack(drawer.open && focused, drawer.close);
+  // Android back closes the drawer first. A tab is never "removed", so this is a plain back listener
+  // rather than `usePreventBack`, which guards a screen's own pop.
+  const { open: drawerOpen, close: closeDrawer } = drawer;
+  useEffect(() => {
+    if (!drawerOpen || !focused) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeDrawer();
+      return true;
+    });
+    return () => sub.remove();
+  }, [drawerOpen, focused, closeDrawer]);
 
   // The cues: a nudge once a day, and a breathing handle until the drawer has been opened once.
   const { nudge } = drawer;
