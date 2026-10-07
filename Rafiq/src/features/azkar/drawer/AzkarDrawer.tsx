@@ -85,17 +85,8 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
     const rest = interpolateColor(breath.get(), [0, 1], [c.selbr, c.accent]);
     return interpolateColor(k.get(), [0, 1], [rest, c.accent]);
   };
-  // The inner ends are square while flat (one pill) and round once folded (two bars meeting at the tip).
-  const barL = useAnimatedStyle(() => ({
-    backgroundColor: halfColor(),
-    ...roundPhysical('right', 3 * k.get()),
-    transform: [{ rotate: `${-30 * k.get()}deg` }],
-  }));
-  const barR = useAnimatedStyle(() => ({
-    backgroundColor: halfColor(),
-    ...roundPhysical('left', 3 * k.get()),
-    transform: [{ rotate: `${30 * k.get()}deg` }],
-  }));
+  const barL = useAnimatedStyle(() => ({ backgroundColor: halfColor(), transform: [{ rotate: `${-30 * k.get()}deg` }] }));
+  const barR = useAnimatedStyle(() => ({ backgroundColor: halfColor(), transform: [{ rotate: `${30 * k.get()}deg` }] }));
 
   return (
     <GestureDetector gesture={pan}>
@@ -187,10 +178,9 @@ function Ember({ color }: { color: string }) {
 }
 
 /** Round a view's corners on one physical side; RN swaps the left and right radii under RTL. */
-function roundPhysical(side: 'left' | 'right', r = 3) {
-  'worklet';
+function roundPhysical(side: 'left' | 'right') {
   const left = (side === 'left') !== I18nManager.isRTL;
-  return left ? { borderTopLeftRadius: r, borderBottomLeftRadius: r } : { borderTopRightRadius: r, borderBottomRightRadius: r };
+  return left ? { borderTopLeftRadius: 3, borderBottomLeftRadius: 3 } : { borderTopRightRadius: 3, borderBottomRightRadius: 3 };
 }
 
 const styles = StyleSheet.create({
