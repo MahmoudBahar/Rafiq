@@ -13,6 +13,7 @@ import Animated, {
 import { useMotion } from '@/shared/lib/motion';
 import { radius } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
+import { ChevronDownIcon } from '@/shared/ui/Icons';
 import { PressScale } from '@/shared/ui/PressScale';
 import { Display, Text } from '@/shared/ui/Text';
 import type { AzkarSetId } from '../data';
@@ -81,8 +82,7 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
     backgroundColor: interpolateColor(breath.get(), [0, 1], [c.selbr, c.accent]),
     transform: [{ scaleX: 1 + 0.5 * breath.get() }],
   }));
-  const barL = useAnimatedStyle(() => ({ opacity: k.get(), transform: [{ rotate: `${30 * k.get()}deg` }] }));
-  const barR = useAnimatedStyle(() => ({ opacity: k.get(), transform: [{ rotate: `${-30 * k.get()}deg` }] }));
+  const chevron = useAnimatedStyle(() => ({ opacity: k.get() }));
 
   return (
     <GestureDetector gesture={pan}>
@@ -99,8 +99,9 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
         </Text>
         <Pressable accessibilityRole="button" accessibilityLabel={open ? 'إغلاق' : 'المزيد من الأذكار'} onPress={onToggle} hitSlop={14} style={styles.handleHit}>
           <Animated.View style={[styles.pill, pill]} />
-          <Animated.View style={[styles.bar, styles.barLeft, { backgroundColor: c.accent }, barL]} />
-          <Animated.View style={[styles.bar, styles.barRight, { backgroundColor: c.accent }, barR]} />
+          <Animated.View style={[styles.chevron, chevron]}>
+            <ChevronDownIcon size={20} color={c.accent} />
+          </Animated.View>
         </Pressable>
 
         <Animated.View style={[styles.peek, peekStyle]} pointerEvents={open ? 'none' : 'box-none'}>
@@ -186,9 +187,7 @@ const styles = StyleSheet.create({
   hint: { alignSelf: 'stretch', marginTop: 12 },
   handleHit: { alignSelf: 'center', width: 44, height: 22, marginTop: 4, alignItems: 'center', justifyContent: 'center' },
   pill: { width: 44, height: 5, borderRadius: 3 },
-  bar: { position: 'absolute', top: 9, width: 14, height: 3, borderRadius: 2 },
-  barLeft: { left: 9 },
-  barRight: { right: 9 },
+  chevron: { position: 'absolute', top: 1, transform: [{ rotate: '180deg' }] },
   peek: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
   texts: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

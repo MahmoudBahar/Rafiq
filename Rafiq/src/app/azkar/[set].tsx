@@ -258,6 +258,10 @@ export default function AzkarReaderScreen() {
   const sheetY = useSharedValue(reduced ? 0 : rise);
   const bodyOp = useSharedValue(reduced ? 1 : 0);
   const pageOp = useSharedValue(1);
+  // The sky stays while the sheet drops into the dial, whose sky it matches. A set opened from the
+  // drawer sits over the dimmed tab instead, and a light sky left standing there flashed white.
+  const skyOp = useSharedValue(1);
+  const overDrawer = setId !== 'morning' && setId !== 'evening';
   useEffect(() => {
     if (reduced) return;
     sheetY.set(withSpring(0, RISE));
@@ -279,6 +283,7 @@ export default function AzkarReaderScreen() {
       return;
     }
     bodyOp.set(withTiming(0, { duration: EXIT_MS * 0.6, easing: Easing.in(Easing.quad) }));
+    if (overDrawer) skyOp.set(withTiming(0, { duration: EXIT_MS * 0.6, easing: Easing.in(Easing.quad) }));
     pageOp.set(withDelay(EXIT_MS * 0.5, withTiming(0, { duration: EXIT_MS * 0.5 })));
     sheetY.set(
       withTiming(rise, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
@@ -286,7 +291,7 @@ export default function AzkarReaderScreen() {
         if (finished) scheduleOnRN(back);
       }),
     );
-  }, [back, bodyOp, pageOp, reduced, rise, sheetY]);
+  }, [back, bodyOp, overDrawer, pageOp, reduced, rise, sheetY, skyOp]);
   usePreventBack(!returning, exit);
 
   useEffect(() => {
@@ -294,6 +299,7 @@ export default function AzkarReaderScreen() {
   }, [valid, router]);
 
   const pageStyle = useAnimatedStyle(() => ({ opacity: pageOp.get() }));
+  const skyStyle = useAnimatedStyle(() => ({ opacity: skyOp.get() }));
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.get() }] }));
 
@@ -307,7 +313,9 @@ export default function AzkarReaderScreen() {
   return (
     <Animated.View style={[styles.screen, pageStyle]}>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
-      <GradientBackground colors={[sky.top, sky.bot]} />
+      <Animated.View style={[StyleSheet.absoluteFill, skyStyle]} pointerEvents="none">
+        <GradientBackground colors={[sky.top, sky.bot]} />
+      </Animated.View>
 
       <Animated.View style={[styles.band, { paddingTop: insets.top + 12, height: bandH }, bodyStyle]}>
         <View style={styles.bandRow}>
