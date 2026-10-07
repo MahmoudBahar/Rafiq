@@ -86,7 +86,8 @@ export const readerSky = {
     // Late afternoon: the same daylight, warmer and lower.
     asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: light.ts, muted: '#8a6a3f', dark: false } as Sky,
     maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
-    isha: night,
+    // Night proper: a deep blue, apart from the teal night the theme's own sheet is cut from.
+    isha: { top: '#0b1733', bot: '#243d6b', text: dark.tp, sub: dark.ts, muted: '#8fa3c8', dark: true } as Sky,
   },
 } as const;
 
