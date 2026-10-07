@@ -17,7 +17,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { AZKAR_SETS, isAzkarSetId, itemsForPrayer, type AzkarSetId, type Zekr } from '@/features/azkar/data';
 import { stageAt, stageEnds, type StagePos } from '@/features/azkar/engine/stages';
 import { prayerSessionKey } from '@/features/azkar/engine/window';
-import { firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
+import { countsOf, firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
 import { PrayerChips } from '@/features/azkar/reader/PrayerChips';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
@@ -243,12 +243,25 @@ export default function AzkarReaderScreen() {
   // Another prayer's session: its own counts, opening on its first zekr still owed.
   const choosePrayer = (k: FardKey) => {
     if (k === prayer) return;
+    const key = prayerSessionKey(clock.dayKey, k);
+    const next = pagesOf('prayer', k);
+    const first = firstIncompleteOf('prayer', key, next.map((p) => p.index));
+    // Seed the UI thread now: the new page renders before the effect runs, and its strand would
+    // show the old session's count for that frame.
+    const z = first < next.length ? next[first].zekr : null;
+    const saidNext = z ? Math.min(countsOf('prayer', key)[next[first].index] ?? 0, z.count) : 0;
+    const s = z ? stageAt(z, saidNext) : null;
+    count.set(saidNext);
+    owner.set(first);
+    target.set(z?.count ?? 0);
+    offset.set(s?.start ?? 0);
+    stageEnd.set(s ? s.start + s.size : 0);
+    locked.set(z?.kind === 'surahs');
     setPrayer(k);
     setShowVirtue(false);
     setJustDone(null);
     setHeld(null);
-    const next = pagesOf('prayer', k);
-    setIndex(firstIncompleteOf('prayer', prayerSessionKey(clock.dayKey, k), next.map((p) => p.index)));
+    setIndex(first);
   };
 
   // Enter: the sheet starts on the dial's ground and rises. Exit reverses it, then pops.

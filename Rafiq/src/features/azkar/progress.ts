@@ -123,6 +123,11 @@ export interface AzkarProgress {
 
 const allOf = (set: AzkarSetId) => AZKAR_SETS[set].items.map((_, i) => i);
 
+/** What is saved right now for a session, without subscribing: for seeding when the session changes under the reader. */
+export function countsOf(set: AzkarSetId, dayKey: string): readonly number[] {
+  return read(set, dayKey).counts;
+}
+
 /** First page still owed, from what is saved right now: for jumping when the session changes under the reader. */
 export function firstIncompleteOf(set: AzkarSetId, dayKey: string, indices: readonly number[] = allOf(set)): number {
   const { counts } = read(set, dayKey);
