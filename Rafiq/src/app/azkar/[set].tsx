@@ -257,6 +257,10 @@ export default function AzkarReaderScreen() {
     offset.set(s?.start ?? 0);
     stageEnd.set(s ? s.start + s.size : 0);
     locked.set(z?.kind === 'surahs');
+    // The pager's columns are re-slotted for the new page on render, but its centre moves in its own
+    // effect a frame later; until then the old centre slot would show a neighbouring page.
+    pager.values.center.set(first);
+    pager.values.tx.set(0);
     setPrayer(k);
     setShowVirtue(false);
     setJustDone(null);
