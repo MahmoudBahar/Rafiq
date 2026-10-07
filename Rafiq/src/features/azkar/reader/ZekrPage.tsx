@@ -57,8 +57,10 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
   return (
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* The page is centred, so the virtue box opening or closing moves the text: let it glide. */}
-        <Animated.View layout={glide} style={styles.text}>
+        {/* The page is centred, so the virtue box opening or closing moves the text: let it glide. Keyed by
+            the zekr: the pager re-slots a column with the next zekr, and the glide must not carry the old
+            text's place over to the new one. */}
+        <Animated.View key={zekr.id} layout={glide} style={styles.text}>
           {staged ? (
             <Display size={size} lineHeight={Math.round(size * 1.85)} align="center" style={styles.wide}>
               {stages.map((s, i) => (
