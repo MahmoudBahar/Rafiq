@@ -4,6 +4,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import type { Zekr } from '../data';
 
 const GAP = 2;
+/** A hairline around every segment, so the accent still reads where a sky's horizon is the accent (Maghrib). */
+const FRAME = 'rgba(0,0,0,0.28)';
 
 interface StoryProgressProps {
   /** The pages, in reading order. */
@@ -18,8 +20,9 @@ interface StoryProgressProps {
 }
 
 /**
- * One segment per zekr, in reading order. Finished segments are static; only
- * the current one moves, its fill sliding in from the reading-start side under
+ * One segment per zekr, in reading order, each in a dark hairline frame that
+ * keeps the accent apart from a horizon of the same colour. Finished segments
+ * are static; only the current one moves, its fill sliding in from the reading-start side under
  * a clip, so a tap costs one transform. The fill follows React's count, not the
  * reader's UI-thread one: that one still holds the previous page's count for a
  * frame after a page turn, which showed the new segment as full.
@@ -40,8 +43,10 @@ export function StoryProgress({ items, counts, index, said, done, track }: Story
       {items.map((z, i) => {
         const complete = counts[i] >= z.count;
         return (
-          <View key={z.id} style={[styles.segment, { backgroundColor: complete ? done : track }]}>
-            {i === index && !complete ? <Fill key={z.id} target={target} width={segW} color={done} /> : null}
+          <View key={z.id} style={styles.frame}>
+            <View style={[styles.segment, { backgroundColor: complete ? done : track }]}>
+              {i === index && !complete ? <Fill key={z.id} target={target} width={segW - 2} color={done} /> : null}
+            </View>
           </View>
         );
       })}
@@ -62,6 +67,7 @@ function Fill({ target, width, color }: { target: number; width: number; color: 
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: GAP, alignSelf: 'stretch' },
-  segment: { flex: 1, height: 3, borderRadius: 2, overflow: 'hidden' },
+  frame: { flex: 1, padding: 1, borderRadius: 3, backgroundColor: FRAME },
+  segment: { height: 3, borderRadius: 2, overflow: 'hidden' },
   fill: { ...StyleSheet.absoluteFill },
 });
