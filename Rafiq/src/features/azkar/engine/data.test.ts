@@ -10,7 +10,7 @@ describe('generated azkar data', () => {
     expect(AZKAR_SETS.evening.items).toHaveLength(30);
     expect(AZKAR_SETS.waking.items).toHaveLength(4);
     expect(AZKAR_SETS.prayer.items).toHaveLength(10);
-    expect(AZKAR_SETS.sleep.items).toHaveLength(15);
+    expect(AZKAR_SETS.sleep.items).toHaveLength(18);
   });
 
   it('numbers ids in order with the set prefix', () => {
@@ -55,7 +55,7 @@ describe('generated azkar data', () => {
         }
         if (z.kind === 'quran') expect(z.text).toContain(AYAH_MARK);
         if (z.kind === 'surahs') {
-          expect(z.surahs).toHaveLength(2);
+          expect(z.surahs).toHaveLength(1);
           for (const s of z.surahs ?? []) expect(s.text.split(AYAH_MARK)).toHaveLength(31);
         }
       }
@@ -66,6 +66,12 @@ describe('generated azkar data', () => {
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.count)).toEqual([3, 3, 3]);
     expect(AZKAR_SETS.prayer.items.slice(4, 7).map((z) => z.count)).toEqual([1, 1, 1]);
+  });
+
+  it('splits the sleep tasbih into three pages, the last said thirty-four times', () => {
+    expect(AZKAR_SETS.sleep.items.slice(9, 12).map((z) => z.count)).toEqual([33, 33, 34]);
+    expect(AZKAR_SETS.sleep.items.slice(9, 12).every((z) => !z.stages)).toBe(true);
+    expect(AZKAR_SETS.sleep.items.filter((z) => z.kind === 'surahs').map((z) => z.text)).toEqual(['سورة السجدة', 'سورة الملك']);
   });
 
   it('keeps the hamza seats on tatweel in the mushaf text', () => {
