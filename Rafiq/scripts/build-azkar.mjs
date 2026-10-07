@@ -51,8 +51,8 @@ function passage(surah, from, to, { basmala = false } = {}) {
 }
 
 const wholeSurah = (surah) => passage(surah, 1, SURAHS.get(surah).ayahs.length, { basmala: true });
-/** The three Quls, each with its basmala, as one page. */
-const QULS = [112, 113, 114].map(wholeSurah).join('\n\n');
+/** The three Quls as three entries, each its own page and count, as the morning set has them. */
+const QULS = (count) => [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: surahName(n) }));
 const KURSI = passage(2, 255, 255);
 const BAQARA_END = passage(2, 285, 286);
 
@@ -131,11 +131,13 @@ const COUNTS = new Set([1, 3, 4, 7, 10, 100]);
 const TASBIH = /^(سُبْحَانَ اللَّهِ)،?\s+(وَالْحَمْدُ لِلَّهِ)،?\s+(وَاللَّهُ أَكْبَرُ)$/;
 
 /**
- * Per-entry recipes, keyed by id. `quran` replaces the text with a mushaf
- * passage (keeping a leading isti'adha line); `stages` splits a compound entry;
+ * Per-entry recipes, keyed by the entry's position in the source (set prefix
+ * plus 1-based index). `quran` replaces the text with a mushaf passage
+ * (keeping a leading isti'adha line); `stages` splits a compound entry;
  * `tail` strips a condition written after the words; `prayers` limits an
- * after-prayer entry to certain prayers. Anything not listed is the cleaned
- * source text, said once.
+ * after-prayer entry to certain prayers; `expand` turns one source entry into
+ * several. Anything not listed is the cleaned source text, said once. Output
+ * ids are renumbered after expansion.
  */
 const RECIPES = {
   // shipped sets: only the Qur'an passages change, counts and virtues stay
@@ -151,7 +153,7 @@ const RECIPES = {
 
   w04: { quran: passage(3, 190, 200), reference: 'آل عمران ١٩٠–٢٠٠' },
 
-  s01: { quran: QULS, count: 3, reference: 'الإخلاص والمعوذتان' },
+  s01: { expand: QULS(3) },
   s02: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
   s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
   s08: { stages: (t) => split(t, TASBIH, [33, 33, 34]) },
@@ -167,7 +169,7 @@ const RECIPES = {
     stages: (t) =>
       split(t, /^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]),
   },
-  p05: { quran: QULS, reference: 'الإخلاص والمعوذتان' },
+  p05: { expand: QULS(1) },
   p06: { quran: KURSI, reference: 'آية الكرسي · البقرة ٢٥٥' },
   p07: { tail: /\s*عَشْرَ مَرّاتٍ بَعْدَ صَلاةِ الْمَغْرِبِ وَالصُّبْحِ\.?$/, count: 10, prayers: ['fajr', 'maghrib'] },
   p08: { tail: /\s*بَعْدَ السّلامِ مِنْ صَلاَةِ الفَجْرِ\.?$/, prayers: ['fajr'] },
@@ -178,12 +180,10 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
   if (rows.length !== expected) {
     throw new Error(`${category}: expected ${expected} entries, found ${rows.length}`);
   }
-  const items = rows.map((r, i) => {
-    const zid = `${prefix}${String(i + 1).padStart(2, '0')}`;
-    const recipe = RECIPES[zid] ?? {};
+  const build = (r, i, recipe) => {
     const raw = recipe.tail ? r.zekr.replace(recipe.tail, '') : r.zekr;
     const zekr = {
-      id: zid,
+      id: '',
       text: countsInFile ? clean(raw) : cleanZekr(raw),
       count: countsInFile ? r.count : (recipe.count ?? 1),
       virtue: clean(r.description ?? ''),
@@ -207,6 +207,14 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
     }
     if (recipe.prayers) zekr.prayers = recipe.prayers;
     return zekr;
+  };
+  const items = rows.flatMap((r, i) => {
+    const key = `${prefix}${String(i + 1).padStart(2, '0')}`;
+    const recipe = RECIPES[key] ?? {};
+    return recipe.expand ? recipe.expand.map((part) => build(r, i, { ...recipe, ...part })) : [build(r, i, recipe)];
+  });
+  items.forEach((z, i) => {
+    z.id = `${prefix}${String(i + 1).padStart(2, '0')}`;
   });
   return { id, items };
 });
