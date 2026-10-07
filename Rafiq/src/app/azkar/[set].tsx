@@ -42,6 +42,8 @@ const BAND_H = 104;
 /** The prayer chips add a row to the band. */
 const CHIPS_H = 44;
 const EXIT_MS = 300;
+/** A prayer switch: the new sky fades in over the one being left. */
+const SKY_MS = 320;
 const RISE = { damping: 18, stiffness: 170, mass: 0.9 };
 /** Sheet offset when the page was not opened from the dial (a deep link). */
 const FALLBACK_RISE = 40;
@@ -246,9 +248,23 @@ export default function AzkarReaderScreen() {
   // change under the pager, which is a jump like any other: the strip fades out, the session and
   // the centre change while it is dark, and it fades back in once the new columns are in place.
   const { op } = pager.values;
+  // Two gradients that stay mounted (a fresh one draws nothing for a few frames): the new sky
+  // fades in on `over` while `base` keeps the old one, and `base` takes the new colours once
+  // the fade is done, under an opaque `over`, so the next switch can drop `over` unseen.
+  const [skies, setSkies] = useState<{ base: Sky; over: Sky }>(() => ({ base: sky, over: sky }));
+  const overOp = useSharedValue(0);
+  // The band's ink dips with the strip, so the title and chips change colour while dim.
+  const inkOp = useSharedValue(1);
   const applyPrayer = useCallback(
     (k: FardKey) => {
       const key = prayerSessionKey(clock.dayKey, k);
+      const nextSky = skyOf('prayer', k);
+      if (reduced) {
+        setSkies({ base: nextSky, over: nextSky });
+      } else {
+        overOp.set(0);
+        setSkies((s) => ({ base: s.over, over: nextSky }));
+      }
       const next = pagesOf('prayer', k);
       const first = firstIncompleteOf('prayer', key, next.map((p) => p.index));
       const z = first < next.length ? next[first].zekr : null;
@@ -268,7 +284,7 @@ export default function AzkarReaderScreen() {
       setHeld(null);
       setIndex(first);
     },
-    [clock.dayKey, count, locked, offset, owner, pager.values, stageEnd, target],
+    [clock.dayKey, count, locked, offset, overOp, owner, pager.values, reduced, stageEnd, target],
   );
   const choosePrayer = (k: FardKey) => {
     if (k === prayer || switching.get()) return;
@@ -277,6 +293,7 @@ export default function AzkarReaderScreen() {
       return;
     }
     switching.set(true);
+    inkOp.set(withTiming(0, { duration: 120 }));
     op.set(
       withTiming(0, { duration: 120 }, (finished) => {
         'worklet';
@@ -285,12 +302,27 @@ export default function AzkarReaderScreen() {
       }),
     );
   };
-  // The new session's columns are in place: bring the strip back.
+  // The new session's columns are in place: bring the strip and the ink back, and fade the new
+  // sky in. The switch stays in flight until the sky has settled, so the base never shows stale.
+  const settleSky = useCallback(() => setSkies((s) => ({ base: s.over, over: s.over })), []);
   useEffect(() => {
     if (!switching.get()) return;
-    switching.set(false);
-    op.set(reduced ? 1 : withTiming(1, { duration: 160 }));
-  }, [sessionKey, op, reduced, switching]);
+    if (reduced) {
+      switching.set(false);
+      op.set(1);
+      inkOp.set(1);
+      return;
+    }
+    op.set(withTiming(1, { duration: 160 }));
+    inkOp.set(withTiming(1, { duration: 160 }));
+    overOp.set(
+      withTiming(1, { duration: SKY_MS }, (finished) => {
+        'worklet';
+        switching.set(false);
+        if (finished) scheduleOnRN(settleSky);
+      }),
+    );
+  }, [sessionKey, op, reduced, switching, inkOp, overOp, settleSky]);
 
   // Enter: the sheet starts on the dial's ground and rises. Exit reverses it, then pops.
   const ground = Number(params.ground);
@@ -356,6 +388,8 @@ export default function AzkarReaderScreen() {
     return { opacity: cur + (next - cur) * f };
   }, [virtueOn, center, tx, dir, pageW]);
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
+  const bandStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() * inkOp.get() }));
+  const overStyle = useAnimatedStyle(() => ({ opacity: overOp.get() }));
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.get() }] }));
 
   if (!valid) return null;
@@ -369,10 +403,13 @@ export default function AzkarReaderScreen() {
     <Animated.View style={[styles.screen, pageStyle]}>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
       <Animated.View style={[StyleSheet.absoluteFill, skyStyle]} pointerEvents="none">
-        <GradientBackground colors={[sky.top, sky.bot]} />
+        <GradientBackground colors={[skies.base.top, skies.base.bot]} />
+        <Animated.View style={[StyleSheet.absoluteFill, overStyle]}>
+          <GradientBackground colors={[skies.over.top, skies.over.bot]} />
+        </Animated.View>
       </Animated.View>
 
-      <Animated.View style={[styles.band, { paddingTop: insets.top + 12, height: bandH }, bodyStyle]}>
+      <Animated.View style={[styles.band, { paddingTop: insets.top + 12, height: bandH }, bandStyle]}>
         <View style={styles.bandRow}>
           <Pressable
             accessibilityRole="button"
