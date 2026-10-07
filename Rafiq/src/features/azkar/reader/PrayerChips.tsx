@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { FARD_PRAYERS } from '@/features/prayer/engine';
 import type { FardKey } from '@/shared/lib/adjustments';
-import { radius, type Sky } from '@/shared/theme/tokens';
+import { radius, skyAlpha, type Sky } from '@/shared/theme/tokens';
 import { Text } from '@/shared/ui/Text';
 
 interface PrayerChipsProps {
@@ -18,6 +18,7 @@ interface PrayerChipsProps {
  * the eye lands on it after switching away.
  */
 export function PrayerChips({ value, latest, sky, onChange }: PrayerChipsProps) {
+  const border = skyAlpha(sky.text, 0.35);
   return (
     <View style={styles.row} accessibilityRole="radiogroup">
       {FARD_PRAYERS.map((p) => {
@@ -32,14 +33,14 @@ export function PrayerChips({ value, latest, sky, onChange }: PrayerChipsProps) 
             hitSlop={6}
             style={({ pressed }) => [
               styles.chip,
-              selected ? { backgroundColor: sky.text, borderColor: sky.text } : { borderColor: 'rgba(128,128,128,0.35)' },
+              selected ? { backgroundColor: sky.text, borderColor: sky.text } : { borderColor: border },
               pressed && styles.pressed,
             ]}
           >
             <Text size={11.5} weight="semi" color={selected ? sky.top : sky.sub}>
               {p.name}
             </Text>
-            {p.key === latest ? <View style={[styles.dot, { backgroundColor: selected ? sky.top : sky.muted }]} /> : null}
+            {p.key === latest ? <View style={[styles.dot, { backgroundColor: selected ? sky.top : sky.sub }]} /> : null}
           </Pressable>
         );
       })}

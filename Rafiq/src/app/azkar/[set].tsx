@@ -32,7 +32,7 @@ import { toArabicIndic } from '@/shared/lib/arabic';
 import { bead, detent, success } from '@/shared/lib/haptics';
 import { useMotion } from '@/shared/lib/motion';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
-import { dialSky, radius, readerSky, type Sky } from '@/shared/theme/tokens';
+import { radius, readerSky, skyAlpha, type Sky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
 import { ChevronBackIcon } from '@/shared/ui/Icons';
@@ -444,8 +444,8 @@ export default function AzkarReaderScreen() {
               counts={pageCounts}
               index={index}
               said={said}
-              done={dialSky.dusk}
-              track="rgba(128,128,128,0.32)"
+              done={inkSky.line ?? inkSky.text}
+              track={skyAlpha(inkSky.text, 0.25)}
             />
           </Animated.View>
         ))}
