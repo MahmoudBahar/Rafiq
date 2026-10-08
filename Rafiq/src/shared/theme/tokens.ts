@@ -86,15 +86,15 @@ const day: Sky = { ...dialSky.morning, dark: false };
 export const readerSky = {
   morning: day,
   evening: night,
-  // The last of the night, with the first grey light at the horizon: the hour before Fajr's dawn.
-  waking: { top: '#08202a', bot: '#5c7a75', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  // Waking: sand above, warming to the accent's terracotta below.
+  waking: { top: '#d8caa8', bot: '#c97b5a', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
   // Deep night, lifting into a cool moonlit teal above the sheet: its old foot was the dark theme's own bg.
   sleep: { top: '#02100e', bot: '#1c434a', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   prayer: {
-    fajr: { top: '#1d4a4f', bot: '#c99f74', text: dark.tp, sub: light.skytop, muted: dark.ts, dark: true } as Sky,
+    fajr: { top: '#1d4a4f', bot: '#c99f74', text: dark.tp, sub: light.bg, muted: dark.ts, dark: true } as Sky,
     dhuhr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
     // Late afternoon: the same daylight, warmer and lower.
-    asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: light.ts, muted: '#8a6a3f', dark: false } as Sky,
+    asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: '#463f33', muted: '#8a6a3f', dark: false } as Sky,
     maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
     // The hour after dusk: the evening's night above, the horizon only slightly warmed and greyed to ash.
     isha: { top: '#041a16', bot: '#3f4a44', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
