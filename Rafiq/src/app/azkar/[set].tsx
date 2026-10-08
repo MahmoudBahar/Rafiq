@@ -331,10 +331,6 @@ export default function AzkarReaderScreen() {
   // drawer sits over the dimmed tab instead, and a light sky left standing there flashed white.
   const skyOp = useSharedValue(1);
   const overDrawer = setId !== 'morning' && setId !== 'evening';
-  const skyFoot = overDrawer ? bandH / (bandH + SHEET_RADIUS) : 1;
-  // A dial set's sky reaches the dial's horizon, like the dial's own; below it the tab's ground band
-  // shows through, so the dropping sheet uncovers ground, not a light sky.
-  const skyH = overDrawer ? bandH + SHEET_RADIUS : Number.isFinite(ground) && ground > bandH ? ground : null;
   useEffect(() => {
     if (reduced) return;
     sheetY.set(withSpring(0, RISE));
@@ -407,13 +403,12 @@ export default function AzkarReaderScreen() {
     // sky under the sheet would show through it.
     <Animated.View style={[styles.screen, pageStyle]} needsOffscreenAlphaCompositing>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
-      {/* A dial set's sky runs down to the dial's horizon, as the dial's does behind the dropping
-          sheet. The others' ramp over the band alone, so the whole sky shows above the sheet and its
-          foot meets the edge; it runs on under the sheet's rounded corners, cut out against it. */}
-      <Animated.View style={[skyH === null ? StyleSheet.absoluteFill : [styles.skyBand, { height: skyH }], skyStyle]} pointerEvents="none">
-        <GradientBackground colors={[skies.base.top, skies.base.bot]} foot={skyFoot} />
+      {/* The sky fills the screen, as it shipped: the band shows its upper part and the sheet covers
+          the rest of the ramp. */}
+      <Animated.View style={[StyleSheet.absoluteFill, skyStyle]} pointerEvents="none">
+        <GradientBackground colors={[skies.base.top, skies.base.bot]} />
         <Animated.View style={[StyleSheet.absoluteFill, overStyle]}>
-          <GradientBackground colors={[skies.over.top, skies.over.bot]} foot={skyFoot} />
+          <GradientBackground colors={[skies.over.top, skies.over.bot]} />
         </Animated.View>
       </Animated.View>
 
@@ -559,7 +554,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   fill: { flex: 1 },
   band: { paddingHorizontal: 20, gap: 14 },
-  skyBand: { position: 'absolute', top: 0, left: 0, right: 0 },
   bandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: {
     width: 40,
