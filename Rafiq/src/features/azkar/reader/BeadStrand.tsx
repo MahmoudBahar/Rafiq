@@ -53,7 +53,9 @@ interface BeadStrandProps {
   owner: SharedValue<number>;
   /** Repetitions of the page in view, written on the UI thread so a bead moves with the tap. */
   count: SharedValue<number>;
-  /** This page's saved count: what a neighbouring page shows, and where beads start. */
+  /** Where the strand's own count starts: the beginning of the current stage of a compound entry. */
+  offset: SharedValue<number>;
+  /** This page's saved count within the strand: what a neighbouring page shows, and where beads start. */
   said: number;
   /** 0 → 1 → 0 when the zekr completes. */
   glow: SharedValue<number>;
@@ -71,7 +73,7 @@ interface BeadStrandProps {
  * and so does a page for the frame in which the live count is still its
  * predecessor's.
  */
-export function BeadStrand({ width, total, page, owner, count, said, glow }: BeadStrandProps) {
+export function BeadStrand({ width, total, page, owner, count, offset, said, glow }: BeadStrandProps) {
   const { c } = useTheme();
   const n = beadsPerRound(total);
   const span = width - PAD * 2;
@@ -107,15 +109,18 @@ export function BeadStrand({ width, total, page, owner, count, said, glow }: Bea
           key={i}
           index={i}
           n={n}
+          total={total}
           page={page}
           owner={owner}
           count={count}
+          offset={offset}
           said={said}
           glow={glow}
           size={size}
           width={width}
           rtl={rtl}
-          sRest={s0 + (n - 1 - i) * step}
+          s0={s0}
+          step={step}
           sDone={1 - s0 - i * step}
           idle={c.selbr}
           lit={c.accent}
@@ -128,25 +133,30 @@ export function BeadStrand({ width, total, page, owner, count, said, glow }: Bea
 interface BeadProps {
   index: number;
   n: number;
+  /** The entry's whole count: a last round shorter than `n` shows only the beads it has. */
+  total: number;
   page: number;
   owner: SharedValue<number>;
   count: SharedValue<number>;
+  offset: SharedValue<number>;
   said: number;
   glow: SharedValue<number>;
   size: number;
   width: number;
   rtl: boolean;
-  /** Where the bead waits and where it ends up, as positions along the thread. */
-  sRest: number;
+  /** The first bead's half-width and the pitch, as fractions of the thread: where the beads wait. */
+  s0: number;
+  step: number;
+  /** Where the bead ends up, as a position along the thread. */
   sDone: number;
   idle: string;
   lit: string;
 }
 
-function Bead({ index, n, page, owner, count, said, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
+function Bead({ index, n, total, page, owner, count, offset, said, glow, size, width, rtl, s0, step, sDone, idle, lit }: BeadProps) {
   const pos = useSharedValue(across(said, n) > index ? 1 : 0);
   useAnimatedReaction(
-    () => across(owner.get() === page ? count.get() : said, n) > index,
+    () => across(owner.get() === page ? count.get() - offset.get() : said, n) > index,
     (over, was) => {
       if (was === null || over === was) return;
       pos.set(over ? withSpring(1, CROSS) : withDelay(index * RETURN_STAGGER_MS, withSpring(0, RETURN)));
@@ -154,9 +164,17 @@ function Bead({ index, n, page, owner, count, said, glow, size, width, rtl, sRes
   );
   const style = useAnimatedStyle(() => {
     const p = pos.get();
+    // The round in progress, from the live count: a full round stays full until the next tap.
+    const live = owner.get() === page ? count.get() - offset.get() : said;
+    const roundStart = live <= 0 ? 0 : Math.floor((live - 1) / n) * n;
+    // The beads of this round wait packed from the reading-start end: a short last round rests
+    // at the beginning of the thread, not where its beads would sit in a full one.
+    const inRound = Math.min(n, total - roundStart);
+    const sRest = s0 + (inRound - 1 - index) * step;
     // Travel is along the thread itself; the spring's overshoot stays on it too.
     const s = Math.min(1, Math.max(0, sRest + (sDone - sRest) * p));
     return {
+      opacity: index < inRound ? 1 : 0,
       backgroundColor: interpolateColor(p, [0, 1], [idle, lit]),
       transform: [
         { translateX: curveX(s, width, rtl) - size / 2 },

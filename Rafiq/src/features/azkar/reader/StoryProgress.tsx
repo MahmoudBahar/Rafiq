@@ -6,7 +6,9 @@ import type { Zekr } from '../data';
 const GAP = 2;
 
 interface StoryProgressProps {
+  /** The pages, in reading order. */
   items: readonly Zekr[];
+  /** Saved count per page, aligned with `items`. */
   counts: readonly number[];
   index: number;
   /** Repetitions said of the current zekr. */

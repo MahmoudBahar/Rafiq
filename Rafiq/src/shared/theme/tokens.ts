@@ -58,6 +58,49 @@ export const dialSky = {
   moon: dark.hero,
 } as const;
 
+export interface Sky {
+  top: string;
+  bot: string;
+  text: string;
+  sub: string;
+  muted: string;
+  /** Light text on a dark sky: the status bar goes light too. */
+  dark: boolean;
+}
+
+/** A sky's colour at some opacity, for the band's track and chip borders. */
+export function skyAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1, 7), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+const night: Sky = { ...dialSky.evening, dark: true };
+const day: Sky = { ...dialSky.morning, dark: false };
+
+/**
+ * The reader's sky per set, and per prayer for the after-prayer set: the hour
+ * the azkar belong to, painted whatever the app theme, like the dial's. The
+ * band's track and chip borders are drawn in each sky's own text colour, which
+ * is already chosen to read on it; the progress itself is the accent, as the beads are.
+ */
+export const readerSky = {
+  morning: day,
+  evening: night,
+  // Waking: sand above, warming to the accent's terracotta below.
+  waking: { top: '#d8caa8', bot: '#c97b5a', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
+  // Deep night, lifting into a cool moonlit teal above the sheet: its old foot was the dark theme's own bg.
+  sleep: { top: '#02100e', bot: '#1c434a', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  prayer: {
+    fajr: { top: '#1d4a4f', bot: '#c99f74', text: dark.tp, sub: light.bg, muted: dark.ts, dark: true } as Sky,
+    dhuhr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
+    // Late afternoon: the same daylight, warmer and lower.
+    asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: '#463f33', muted: '#8a6a3f', dark: false } as Sky,
+    maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
+    // The hour after dusk: the evening's night above, the horizon only slightly warmed and greyed to ash.
+    isha: { top: '#041a16', bot: '#3f4a44', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  },
+} as const;
+
 export const fonts = {
   display: 'ScheherazadeNew_400Regular',
   displayBold: 'ScheherazadeNew_700Bold',
