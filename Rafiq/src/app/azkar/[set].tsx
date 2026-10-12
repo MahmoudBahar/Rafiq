@@ -18,7 +18,7 @@ import { AZKAR_SETS, isAzkarSetId, itemsForPrayer, type AzkarSetId, type Zekr } 
 import { stageAt, stageEnds, type StagePos } from '@/features/azkar/engine/stages';
 import { prayerSessionKey } from '@/features/azkar/engine/window';
 import { countsOf, firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
-import { useInk, type SkyMix } from '@/features/azkar/reader/ink';
+import { InkChevron, useInk, type SkyMix } from '@/features/azkar/reader/ink';
 import { PrayerChips } from '@/features/azkar/reader/PrayerChips';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
@@ -36,7 +36,6 @@ import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { dialSky, radius, readerSky, type Sky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
-import { ChevronBackIcon } from '@/shared/ui/Icons';
 import { AnimatedDisplay, AnimatedText, Text } from '@/shared/ui/Text';
 
 const BAND_H = 104;
@@ -420,13 +419,9 @@ export default function AzkarReaderScreen() {
             accessibilityLabel="رجوع"
             onPress={exit}
             hitSlop={8}
-            style={({ pressed }) => [
-              styles.back,
-              { backgroundColor: c.surface, borderColor: c.border },
-              pressed && { transform: [{ scale: 1.06 }] },
-            ]}
+            style={({ pressed }) => [styles.back, pressed && { transform: [{ scale: 1.06 }] }]}
           >
-            <ChevronBackIcon size={16} color={c.tp} />
+            <InkChevron ink={ink} size={16} />
           </Pressable>
           <AnimatedDisplay size={26} style={[styles.title, titleInk]}>
             {title}
@@ -560,14 +555,13 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   band: { paddingHorizontal: 20, gap: 14 },
   bandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  // The same opaque, ringed back button as the month table and settings, in the app's theme.
   back: {
     width: 40,
     height: 40,
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(128,128,128,0.16)',
   },
   title: { flex: 1 },
   position: { fontVariant: ['tabular-nums'] },
