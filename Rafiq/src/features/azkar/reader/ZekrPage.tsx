@@ -57,8 +57,10 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
   return (
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* The page is centred, so the virtue box opening or closing moves the text: let it glide. */}
-        <Animated.View layout={glide} style={styles.text}>
+        {/* The page is centred, so the virtue box opening or closing moves the text: let it glide. Keyed by
+            the zekr: the pager re-slots a column with the next zekr, and the glide must not carry the old
+            text's place over to the new one. */}
+        <Animated.View key={zekr.id} layout={glide} style={styles.text}>
           {staged ? (
             <Display size={size} lineHeight={Math.round(size * 1.85)} align="center" style={styles.wide}>
               {stages.map((s, i) => (
@@ -94,7 +96,8 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
         <View style={styles.foot} />
       </ScrollView>
       <View style={styles.counter}>
-        <BeadStrand width={width} total={total} page={page} owner={owner} count={count} offset={offset} said={saidInStage} glow={glow} />
+        {/* Keyed by the zekr: a re-slotted column must not inherit another zekr's bead positions. */}
+        <BeadStrand key={zekr.id} width={width} total={total} page={page} owner={owner} count={count} offset={offset} said={saidInStage} glow={glow} />
         <Text size={17} weight="bold" align="center" style={styles.count}>
           {`${toArabicIndic(saidInStage)} من ${toArabicIndic(total)}`}
           {staged ? (

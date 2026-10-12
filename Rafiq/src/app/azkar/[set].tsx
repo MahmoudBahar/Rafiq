@@ -17,7 +17,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { AZKAR_SETS, isAzkarSetId, itemsForPrayer, type AzkarSetId, type Zekr } from '@/features/azkar/data';
 import { stageAt, stageEnds, type StagePos } from '@/features/azkar/engine/stages';
 import { prayerSessionKey } from '@/features/azkar/engine/window';
-import { firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
+import { countsOf, firstIncompleteOf, flushAzkarProgress, useAzkarProgress } from '@/features/azkar/progress';
+import { InkChevron, useInk, type SkyMix } from '@/features/azkar/reader/ink';
 import { PrayerChips } from '@/features/azkar/reader/PrayerChips';
 import { SetComplete } from '@/features/azkar/reader/SetComplete';
 import { StoryProgress } from '@/features/azkar/reader/StoryProgress';
@@ -35,13 +36,15 @@ import { usePreventBack } from '@/shared/lib/usePreventBack';
 import { dialSky, radius, readerSky, type Sky } from '@/shared/theme/tokens';
 import { useTheme } from '@/shared/theme/useTheme';
 import { GradientBackground } from '@/shared/ui/GradientBackground';
-import { ChevronBackIcon } from '@/shared/ui/Icons';
-import { Display, Text } from '@/shared/ui/Text';
+import { AnimatedDisplay, AnimatedText, Text } from '@/shared/ui/Text';
 
 const BAND_H = 104;
 /** The prayer chips add a row to the band. */
 const CHIPS_H = 44;
 const EXIT_MS = 300;
+const SHEET_RADIUS = 32;
+/** A prayer switch: the new sky fades in over the one being left. */
+const SKY_MS = 320;
 const RISE = { damping: 18, stiffness: 170, mass: 0.9 };
 /** Sheet offset when the page was not opened from the dial (a deep link). */
 const FALLBACK_RISE = 40;
@@ -138,6 +141,8 @@ export default function AzkarReaderScreen() {
   const stageEnd = useSharedValue(zekr?.count ?? 0);
   const locked = useSharedValue(false);
   const glow = useSharedValue(0);
+  // A prayer switch in flight: the strip is fading out, or back in.
+  const switching = useSharedValue(false);
   useEffect(() => {
     const z = index < n ? pages[index].zekr : null;
     const s = z ? stageAt(z, said) : null;
@@ -240,16 +245,80 @@ export default function AzkarReaderScreen() {
     onCount(index, itemIndex, zekr.count, true, false);
   };
 
-  // Another prayer's session: its own counts, opening on its first zekr still owed.
+  // Another prayer's session: its own counts, opening on its first zekr still owed. The pages
+  // change under the pager, which is a jump like any other: the strip fades out, the session and
+  // the centre change while it is dark, and it fades back in once the new columns are in place.
+  const { op } = pager.values;
+  // Two gradients that stay mounted (a fresh one draws nothing for a few frames): the new sky
+  // fades in on `over` while `base` keeps the old one, and `base` takes the new colours once
+  // the fade is done, under an opaque `over`, so the next switch can drop `over` unseen.
+  const [skies, setSkies] = useState<{ base: Sky; over: Sky }>(() => ({ base: sky, over: sky }));
+  const overOp = useSharedValue(0);
+  const applyPrayer = useCallback(
+    (k: FardKey) => {
+      const key = prayerSessionKey(clock.dayKey, k);
+      const nextSky = skyOf('prayer', k);
+      if (reduced) {
+        setSkies({ base: nextSky, over: nextSky });
+      } else {
+        overOp.set(0);
+        setSkies((s) => ({ base: s.over, over: nextSky }));
+      }
+      const next = pagesOf('prayer', k);
+      const first = firstIncompleteOf('prayer', key, next.map((p) => p.index));
+      const z = first < next.length ? next[first].zekr : null;
+      const saidNext = z ? Math.min(countsOf('prayer', key)[next[first].index] ?? 0, z.count) : 0;
+      const s = z ? stageAt(z, saidNext) : null;
+      count.set(saidNext);
+      owner.set(first);
+      target.set(z?.count ?? 0);
+      offset.set(s?.start ?? 0);
+      stageEnd.set(s ? s.start + s.size : 0);
+      locked.set(z?.kind === 'surahs');
+      pager.values.center.set(first);
+      pager.values.tx.set(0);
+      setPrayer(k);
+      setShowVirtue(false);
+      setJustDone(null);
+      setHeld(null);
+      setIndex(first);
+    },
+    [clock.dayKey, count, locked, offset, overOp, owner, pager.values, reduced, stageEnd, target],
+  );
   const choosePrayer = (k: FardKey) => {
-    if (k === prayer) return;
-    setPrayer(k);
-    setShowVirtue(false);
-    setJustDone(null);
-    setHeld(null);
-    const next = pagesOf('prayer', k);
-    setIndex(firstIncompleteOf('prayer', prayerSessionKey(clock.dayKey, k), next.map((p) => p.index)));
+    if (k === prayer || switching.get()) return;
+    if (reduced) {
+      applyPrayer(k);
+      return;
+    }
+    switching.set(true);
+    op.set(
+      withTiming(0, { duration: 120 }, (finished) => {
+        'worklet';
+        if (finished) scheduleOnRN(applyPrayer, k);
+        else switching.set(false);
+      }),
+    );
   };
+  // The new session's columns are in place: bring the strip and the ink back, and fade the new
+  // sky in. The switch stays in flight until the sky has settled, so the base never shows stale.
+  const settleSky = useCallback(() => setSkies((s) => ({ base: s.over, over: s.over })), []);
+  useEffect(() => {
+    if (!switching.get()) return;
+    if (reduced) {
+      switching.set(false);
+      op.set(1);
+      return;
+    }
+    op.set(withTiming(1, { duration: 160 }));
+    overOp.set(
+      withTiming(1, { duration: SKY_MS }, (finished) => {
+        'worklet';
+        switching.set(false);
+        if (finished) scheduleOnRN(settleSky);
+      }),
+    );
+  }, [sessionKey, op, reduced, switching, overOp, settleSky]);
 
   // Enter: the sheet starts on the dial's ground and rises. Exit reverses it, then pops.
   const ground = Number(params.ground);
@@ -258,6 +327,14 @@ export default function AzkarReaderScreen() {
   const sheetY = useSharedValue(reduced ? 0 : rise);
   const bodyOp = useSharedValue(reduced ? 1 : 0);
   const pageOp = useSharedValue(1);
+  // The sky stays while the sheet drops into the dial, whose sky it matches. A set opened from the
+  // drawer sits over the dimmed tab instead, and a light sky left standing there flashed white.
+  const skyOp = useSharedValue(1);
+  const overDrawer = setId !== 'morning' && setId !== 'evening';
+  const skyFoot = overDrawer ? bandH / (bandH + SHEET_RADIUS) : 1;
+  // A dial set's sky reaches the dial's horizon, like the dial's own; below it the tab's ground band
+  // shows through, so the dropping sheet uncovers ground, not a light sky.
+  const skyH = overDrawer ? bandH + SHEET_RADIUS : Number.isFinite(ground) && ground > bandH ? ground : null;
   useEffect(() => {
     if (reduced) return;
     sheetY.set(withSpring(0, RISE));
@@ -279,6 +356,7 @@ export default function AzkarReaderScreen() {
       return;
     }
     bodyOp.set(withTiming(0, { duration: EXIT_MS * 0.6, easing: Easing.in(Easing.quad) }));
+    if (overDrawer) skyOp.set(withTiming(0, { duration: EXIT_MS * 0.6, easing: Easing.in(Easing.quad) }));
     pageOp.set(withDelay(EXIT_MS * 0.5, withTiming(0, { duration: EXIT_MS * 0.5 })));
     sheetY.set(
       withTiming(rise, { duration: EXIT_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
@@ -286,7 +364,7 @@ export default function AzkarReaderScreen() {
         if (finished) scheduleOnRN(back);
       }),
     );
-  }, [back, bodyOp, pageOp, reduced, rise, sheetY]);
+  }, [back, bodyOp, overDrawer, pageOp, reduced, rise, sheetY, skyOp]);
   usePreventBack(!returning, exit);
 
   useEffect(() => {
@@ -294,7 +372,27 @@ export default function AzkarReaderScreen() {
   }, [valid, router]);
 
   const pageStyle = useAnimatedStyle(() => ({ opacity: pageOp.get() }));
+  const skyStyle = useAnimatedStyle(() => ({ opacity: skyOp.get() }));
+  // The الفضل pill belongs to the page in view: as a swipe passes the middle of the slide it fades
+  // towards the page coming in, which may or may not have a virtue to show.
+  const virtueOn = useMemo(() => pages.map((p) => (p.zekr.virtue ? 1 : 0)), [pages]);
+  const { center, tx, dir, width: pageW } = pager.values;
+  const virtueStyle = useAnimatedStyle(() => {
+    const at = center.get();
+    const t = tx.get();
+    const toward = t * dir > 0 ? 1 : -1;
+    const cur = virtueOn[at] ?? 0;
+    const next = virtueOn[at + toward] ?? 0;
+    const slid = Math.min(1, Math.abs(t) / pageW);
+    const f = Math.min(1, Math.max(0, (slid - 0.3) / 0.4));
+    return { opacity: cur + (next - cur) * f };
+  }, [virtueOn, center, tx, dir, pageW]);
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
+  const overStyle = useAnimatedStyle(() => ({ opacity: overOp.get() }));
+  // The band's ink moves between the two skies with the same mix as the gradient on top.
+  const ink: SkyMix = useMemo(() => ({ mix: overOp, from: skies.base, to: skies.over }), [overOp, skies]);
+  const titleInk = useInk(ink, (s) => s.text);
+  const positionInk = useInk(ink, (s) => s.sub);
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.get() }] }));
 
   if (!valid) return null;
@@ -305,9 +403,19 @@ export default function AzkarReaderScreen() {
   const a11yLabel = zekr ? `${zekr.text}. ${toArabicIndic(said)} من ${toArabicIndic(zekr.count)}. اضغط للعدّ` : undefined;
 
   return (
-    <Animated.View style={[styles.screen, pageStyle]}>
+    // Composited as one while fading out: Android would otherwise fade each layer on its own, and the
+    // sky under the sheet would show through it.
+    <Animated.View style={[styles.screen, pageStyle]} needsOffscreenAlphaCompositing>
       <StatusBar style={sky.dark ? 'light' : 'dark'} />
-      <GradientBackground colors={[sky.top, sky.bot]} />
+      {/* A dial set's sky runs down to the dial's horizon, as the dial's does behind the dropping
+          sheet. The others' ramp over the band alone, so the whole sky shows above the sheet and its
+          foot meets the edge; it runs on under the sheet's rounded corners, cut out against it. */}
+      <Animated.View style={[skyH === null ? StyleSheet.absoluteFill : [styles.skyBand, { height: skyH }], skyStyle]} pointerEvents="none">
+        <GradientBackground colors={[skies.base.top, skies.base.bot]} foot={skyFoot} />
+        <Animated.View style={[StyleSheet.absoluteFill, overStyle]}>
+          <GradientBackground colors={[skies.over.top, skies.over.bot]} foot={skyFoot} />
+        </Animated.View>
+      </Animated.View>
 
       <Animated.View style={[styles.band, { paddingTop: insets.top + 12, height: bandH }, bodyStyle]}>
         <View style={styles.bandRow}>
@@ -318,16 +426,16 @@ export default function AzkarReaderScreen() {
             hitSlop={8}
             style={({ pressed }) => [styles.back, pressed && { transform: [{ scale: 1.06 }] }]}
           >
-            <ChevronBackIcon size={16} color={sky.text} />
+            <InkChevron ink={ink} size={16} />
           </Pressable>
-          <Display size={26} color={sky.text} style={styles.title}>
+          <AnimatedDisplay size={26} style={[styles.title, titleInk]}>
             {title}
-          </Display>
-          <Text size={12.5} weight="medium" color={sky.sub} style={styles.position}>
+          </AnimatedDisplay>
+          <AnimatedText size={12.5} weight="medium" style={[styles.position, positionInk]}>
             {position}
-          </Text>
+          </AnimatedText>
         </View>
-        {setId === 'prayer' ? <PrayerChips value={prayer} latest={clock.latest.key} sky={sky} onChange={choosePrayer} /> : null}
+        {setId === 'prayer' ? <PrayerChips value={prayer} latest={clock.latest.key} ink={ink} onChange={choosePrayer} /> : null}
         <StoryProgress
           items={pages.map((p) => p.zekr)}
           counts={pageCounts}
@@ -398,7 +506,7 @@ export default function AzkarReaderScreen() {
                     hitSlop={10}
                     style={({ pressed }) => [
                       styles.chip,
-                      { borderColor: c.selbr },
+                      { borderColor: c.selbr, backgroundColor: c.bg },
                       index === 0 && styles.disabled,
                       pressed && styles.pressed,
                     ]}
@@ -411,7 +519,7 @@ export default function AzkarReaderScreen() {
                     accessibilityRole="button"
                     onPress={() => go(1)}
                     hitSlop={10}
-                    style={({ pressed }) => [styles.chip, { borderColor: c.selbr }, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.chip, { borderColor: c.selbr, backgroundColor: c.bg }, pressed && styles.pressed]}
                   >
                     <Text size={12} weight="medium" color={c.ts}>
                       {said >= zekr.count ? 'التالي' : 'تخطَّ'}
@@ -419,22 +527,25 @@ export default function AzkarReaderScreen() {
                   </Pressable>
                 </View>
               ) : null}
-              {zekr?.virtue ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: showVirtue }}
-                  onPress={() => setShowVirtue((v) => !v)}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.virtue,
-                    { borderColor: c.selbr, backgroundColor: showVirtue ? c.selbg : c.bg },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text size={12} weight="medium" color={c.ts}>
-                    الفضل
-                  </Text>
-                </Pressable>
+              {virtueOn.some(Boolean) ? (
+                <Animated.View style={[styles.virtueSlot, virtueStyle]} pointerEvents={zekr?.virtue ? 'box-none' : 'none'}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showVirtue }}
+                    accessibilityElementsHidden={!zekr?.virtue}
+                    onPress={() => setShowVirtue((v) => !v)}
+                    hitSlop={10}
+                    style={({ pressed }) => [
+                      styles.virtue,
+                      { borderColor: c.selbr, backgroundColor: showVirtue ? c.selbg : c.bg },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text size={12} weight="medium" color={c.ts}>
+                      الفضل
+                    </Text>
+                  </Pressable>
+                </Animated.View>
               ) : null}
             </View>
           </GestureDetector>
@@ -448,6 +559,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   fill: { flex: 1 },
   band: { paddingHorizontal: 20, gap: 14 },
+  skyBand: { position: 'absolute', top: 0, left: 0, right: 0 },
   bandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: {
     width: 40,
@@ -464,8 +576,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopStartRadius: 32,
-    borderTopEndRadius: 32,
+    borderTopStartRadius: SHEET_RADIUS,
+    borderTopEndRadius: SHEET_RADIUS,
     overflow: 'hidden',
   },
   pages: { flex: 1, paddingTop: 52 },
@@ -478,10 +590,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chip: { borderWidth: 1, borderRadius: radius.pill, paddingVertical: 6, paddingHorizontal: 14 },
+  virtueSlot: { position: 'absolute', top: 14, left: 0, right: 0, alignItems: 'center' },
   virtue: {
-    position: 'absolute',
-    top: 14,
-    alignSelf: 'center',
     borderWidth: 1,
     borderRadius: radius.pill,
     paddingVertical: 6,

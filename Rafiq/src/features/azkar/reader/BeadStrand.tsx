@@ -109,6 +109,7 @@ export function BeadStrand({ width, total, page, owner, count, offset, said, glo
           key={i}
           index={i}
           n={n}
+          total={total}
           page={page}
           owner={owner}
           count={count}
@@ -118,7 +119,8 @@ export function BeadStrand({ width, total, page, owner, count, offset, said, glo
           size={size}
           width={width}
           rtl={rtl}
-          sRest={s0 + (n - 1 - i) * step}
+          s0={s0}
+          step={step}
           sDone={1 - s0 - i * step}
           idle={c.selbr}
           lit={c.accent}
@@ -131,6 +133,8 @@ export function BeadStrand({ width, total, page, owner, count, offset, said, glo
 interface BeadProps {
   index: number;
   n: number;
+  /** The entry's whole count: a last round shorter than `n` shows only the beads it has. */
+  total: number;
   page: number;
   owner: SharedValue<number>;
   count: SharedValue<number>;
@@ -140,14 +144,16 @@ interface BeadProps {
   size: number;
   width: number;
   rtl: boolean;
-  /** Where the bead waits and where it ends up, as positions along the thread. */
-  sRest: number;
+  /** The first bead's half-width and the pitch, as fractions of the thread: where the beads wait. */
+  s0: number;
+  step: number;
+  /** Where the bead ends up, as a position along the thread. */
   sDone: number;
   idle: string;
   lit: string;
 }
 
-function Bead({ index, n, page, owner, count, offset, said, glow, size, width, rtl, sRest, sDone, idle, lit }: BeadProps) {
+function Bead({ index, n, total, page, owner, count, offset, said, glow, size, width, rtl, s0, step, sDone, idle, lit }: BeadProps) {
   const pos = useSharedValue(across(said, n) > index ? 1 : 0);
   useAnimatedReaction(
     () => across(owner.get() === page ? count.get() - offset.get() : said, n) > index,
@@ -158,9 +164,17 @@ function Bead({ index, n, page, owner, count, offset, said, glow, size, width, r
   );
   const style = useAnimatedStyle(() => {
     const p = pos.get();
+    // The round in progress, from the live count: a full round stays full until the next tap.
+    const live = owner.get() === page ? count.get() - offset.get() : said;
+    const roundStart = live <= 0 ? 0 : Math.floor((live - 1) / n) * n;
+    // The beads of this round wait packed from the reading-start end: a short last round rests
+    // at the beginning of the thread, not where its beads would sit in a full one.
+    const inRound = Math.min(n, total - roundStart);
+    const sRest = s0 + (inRound - 1 - index) * step;
     // Travel is along the thread itself; the spring's overshoot stays on it too.
     const s = Math.min(1, Math.max(0, sRest + (sDone - sRest) * p));
     return {
+      opacity: index < inRound ? 1 : 0,
       backgroundColor: interpolateColor(p, [0, 1], [idle, lit]),
       transform: [
         { translateX: curveX(s, width, rtl) - size / 2 },

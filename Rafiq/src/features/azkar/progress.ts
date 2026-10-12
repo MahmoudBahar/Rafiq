@@ -20,7 +20,13 @@ interface Saved {
   counts: number[];
 }
 
-const KEY = (set: AzkarSetId) => `rafiq.azkar.progress.v1.${set}`;
+/**
+ * One slot per set, except the after-prayer set, which keeps one per prayer:
+ * its session key is `day|prayer`, and reading Asr's azkar must not discard
+ * Dhuhr's counts from an hour earlier.
+ */
+const KEY = (set: AzkarSetId, day: string) =>
+  set === 'prayer' ? `rafiq.azkar.progress.v1.${set}.${day.split('|')[1] ?? ''}` : `rafiq.azkar.progress.v1.${set}`;
 const WRITE_DELAY_MS = 600;
 
 // Keyed by set and day: around Fajr the tab (still on yesterday's key) and a freshly
@@ -29,8 +35,8 @@ const WRITE_DELAY_MS = 600;
 // the value that reached the delayed write.
 const cache = new Map<string, Saved>();
 const slot = (set: AzkarSetId, day: string) => `${set}|${day}`;
-/** The latest value owed to storage, per set. */
-const dirty = new Map<AzkarSetId, Saved>();
+/** The latest value owed to storage, per storage key. */
+const dirty = new Map<string, Saved>();
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let watching = false;
@@ -46,7 +52,7 @@ function read(set: AzkarSetId, day: string): Saved {
   if (hit) return hit;
   let next = blank(set, day);
   try {
-    const raw = kv.get(KEY(set));
+    const raw = kv.get(KEY(set, day));
     const parsed = raw ? (JSON.parse(raw) as Partial<Saved>) : null;
     const n = next.counts.length;
     if (
@@ -69,9 +75,9 @@ function read(set: AzkarSetId, day: string): Saved {
 export function flushAzkarProgress() {
   if (timer) clearTimeout(timer);
   timer = null;
-  for (const [set, value] of dirty) {
+  for (const [key, value] of dirty) {
     try {
-      kv.set(KEY(set), JSON.stringify(value));
+      kv.set(key, JSON.stringify(value));
     } catch {
       // persistence is best-effort
     }
@@ -81,7 +87,7 @@ export function flushAzkarProgress() {
 
 function commit(set: AzkarSetId, next: Saved) {
   cache.set(slot(set, next.day), next);
-  dirty.set(set, next);
+  dirty.set(KEY(set, next.day), next);
   listeners.forEach((l) => l());
   if (timer) clearTimeout(timer);
   timer = setTimeout(flushAzkarProgress, WRITE_DELAY_MS);
@@ -116,6 +122,11 @@ export interface AzkarProgress {
 }
 
 const allOf = (set: AzkarSetId) => AZKAR_SETS[set].items.map((_, i) => i);
+
+/** What is saved right now for a session, without subscribing: for seeding when the session changes under the reader. */
+export function countsOf(set: AzkarSetId, dayKey: string): readonly number[] {
+  return read(set, dayKey).counts;
+}
 
 /** First page still owed, from what is saved right now: for jumping when the session changes under the reader. */
 export function firstIncompleteOf(set: AzkarSetId, dayKey: string, indices: readonly number[] = allOf(set)): number {

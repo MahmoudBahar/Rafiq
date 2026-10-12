@@ -5,6 +5,7 @@ import { dialSky, radius } from '@/shared/theme/tokens';
 import { PressScale } from '@/shared/ui/PressScale';
 import { Display, Text } from '@/shared/ui/Text';
 import { AZKAR_SETS, type DialSide } from '../data';
+import { zekrCount } from '../engine/lead';
 import type { AzkarProgress } from '../progress';
 import type { DialValues } from './useDial';
 
@@ -57,7 +58,7 @@ function Layer({ set, progress, onStart }: LayerProps) {
     ? 'أتممتها اليوم، تقبّل اللّٰه'
     : started
       ? `${toArabicIndic(progress.done)} من ${toArabicIndic(progress.total)}`
-      : `${toArabicIndic(progress.total)} ذكرًا`;
+      : zekrCount(progress.total);
   return (
     <>
       {/* Full width and centred by textAlign: an intrinsic-width RTL label can clip on Android. */}

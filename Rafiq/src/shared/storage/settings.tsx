@@ -1,6 +1,7 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { sanitizeAdjustments, type Adjustments } from '@/shared/lib/adjustments';
 import { sanitizeIqama, type IqamaOffsets, IQAMA_DEFAULTS } from '@/shared/lib/iqama';
+import { PRAYER_AZKAR_DEFAULT, sanitizePrayerAzkar } from '@/shared/lib/prayerAzkar';
 import { kv } from './kv';
 
 export {
@@ -60,6 +61,12 @@ export interface Settings {
   swipeHintShown: number;
   /** How many launches showed the "tap the date" tip; 3 = never again. */
   dateHintShown: number;
+  /** Minutes after each adhan during which the after-prayer azkar lead the azkar page. */
+  prayerAzkarMinutes: number;
+  /** The azkar drawer has been opened at least once: its handle stops breathing. */
+  azkarDrawerOpened: boolean;
+  /** The calendar day (ISO) the azkar drawer last nudged on; it nudges once a day. */
+  azkarNudgeDay: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -76,6 +83,9 @@ export const DEFAULTS: Settings = {
   motion: 'system',
   swipeHintShown: 0,
   dateHintShown: 0,
+  prayerAzkarMinutes: PRAYER_AZKAR_DEFAULT,
+  azkarDrawerOpened: false,
+  azkarNudgeDay: '',
 };
 
 const KEY = 'rafiq.settings.v1';
@@ -93,6 +103,9 @@ function load(): Settings {
       // A method that has since left the list (Tehran, Jafari) falls back to the default.
       method: METHOD_IDS.includes(parsed.method as Method) ? (parsed.method as Method) : DEFAULTS.method,
       motion: MOTION_MODES.includes(parsed.motion as MotionMode) ? (parsed.motion as MotionMode) : 'system',
+      prayerAzkarMinutes: sanitizePrayerAzkar(parsed.prayerAzkarMinutes),
+      azkarDrawerOpened: parsed.azkarDrawerOpened === true,
+      azkarNudgeDay: typeof parsed.azkarNudgeDay === 'string' ? parsed.azkarNudgeDay : '',
     };
   } catch {
     return DEFAULTS;

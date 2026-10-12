@@ -4,7 +4,8 @@ import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { addDays, isoDate } from '@/shared/lib/gregorian';
 import { useWallClock } from '@/shared/lib/useWallClock';
 import type { DialSide } from './data';
-import { latestPrayer, wakingDayKey, type PrayerMoment } from './engine/window';
+import { useSettings } from '@/shared/storage/settings';
+import { afterPrayerWindow, latestPrayer, nextAdhanAfter, wakingDayKey, type PrayerMoment, type PrayerWindow } from './engine/window';
 
 /**
  * Which set belongs to this moment: the morning azkar from Fajr until Asr,
@@ -33,6 +34,8 @@ export interface AzkarClock {
   wakingKey: string;
   /** The last fard prayer whose adhan has passed. */
   latest: PrayerMoment;
+  /** Whether that prayer's azkar lead the page right now, per the user's minutes setting. */
+  window: PrayerWindow;
 }
 
 /**
@@ -44,6 +47,7 @@ export interface AzkarClock {
  */
 export function useAzkarClock(): AzkarClock {
   const cfg = usePrayerConfig();
+  const minutes = useSettings().settings.prayerAzkarMinutes;
   const [wakeAt, setWakeAt] = useState<number | undefined>(undefined);
   const now = useWallClock(60_000, wakeAt);
   const y = now.getFullYear();
@@ -55,7 +59,10 @@ export function useAzkarClock(): AzkarClock {
   const t = now.getTime();
   const fajr = day.byKey.fajr.getTime();
   const asr = day.byKey.asr.getTime();
-  const nextAt = t < fajr ? fajr : t < asr ? asr : new Date(y, mo, d + 1).getTime();
+  const latest = latestPrayer(day, yesterday, t);
+  const window = afterPrayerWindow(latest, t, minutes);
+  // The after-prayer window opens at each adhan and closes `minutes` later: both are turns too.
+  const nextAt = Math.min(t < fajr ? fajr : t < asr ? asr : new Date(y, mo, d + 1).getTime(), nextAdhanAfter(day, t), window.inWindow ? window.endsAt : Infinity);
   if (nextAt !== wakeAt) setWakeAt(nextAt); // derived state, adjusted during render
-  return { side: azkarSideAt(now, day), dayKey: azkarDayKey(now, day), wakingKey: wakingDayKey(now), latest: latestPrayer(day, yesterday, t) };
+  return { side: azkarSideAt(now, day), dayKey: azkarDayKey(now, day), wakingKey: wakingDayKey(now), latest, window };
 }

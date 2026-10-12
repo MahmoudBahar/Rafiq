@@ -68,24 +68,36 @@ export interface Sky {
   dark: boolean;
 }
 
+/** A sky's colour at some opacity, for the band's track and chip borders. */
+export function skyAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1, 7), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
 const night: Sky = { ...dialSky.evening, dark: true };
 const day: Sky = { ...dialSky.morning, dark: false };
 
 /**
  * The reader's sky per set, and per prayer for the after-prayer set: the hour
- * the azkar belong to, painted whatever the app theme, like the dial's.
+ * the azkar belong to, painted whatever the app theme, like the dial's. The
+ * band's track and chip borders are drawn in each sky's own text colour, which
+ * is already chosen to read on it; the progress itself is the accent, as the beads are.
  */
 export const readerSky = {
   morning: day,
   evening: night,
-  waking: { top: '#071d22', bot: '#2b5f58', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
-  sleep: { top: '#02110f', bot: '#0a2b26', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  // The last of the night, with the first grey light at the horizon: the hour before Fajr's dawn.
+  waking: { top: '#08202a', bot: '#5c7a75', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
+  // Deep night, lifting into a cool moonlit teal above the sheet: its old foot was the dark theme's own bg.
+  sleep: { top: '#02100e', bot: '#1c434a', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   prayer: {
     fajr: { top: '#1d4a4f', bot: '#c99f74', text: dark.tp, sub: light.skytop, muted: dark.ts, dark: true } as Sky,
     dhuhr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
-    asr: { top: '#f3e9d3', bot: '#dcbf93', text: light.tp, sub: light.ts, muted: light.tm, dark: false } as Sky,
+    // Late afternoon: the same daylight, warmer and lower.
+    asr: { top: '#e8cc9d', bot: '#cf9462', text: light.tp, sub: light.ts, muted: '#8a6a3f', dark: false } as Sky,
     maghrib: { top: '#3b4a4a', bot: '#c97b5a', text: dark.tp, sub: light.skytop, muted: light.skybot, dark: true } as Sky,
-    isha: night,
+    // The hour after dusk: the evening's night above, the horizon only slightly warmed and greyed to ash.
+    isha: { top: '#041a16', bot: '#3f4a44', text: dark.tp, sub: dark.ts, muted: dark.tm, dark: true } as Sky,
   },
 } as const;
 
