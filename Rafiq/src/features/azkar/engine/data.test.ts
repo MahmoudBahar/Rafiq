@@ -112,7 +112,10 @@ describe('generated azkar data', () => {
     const p = AZKAR_SETS.prayer.items;
     expect(p[0].reference).toBe('مُسْلِم');
     expect(p[2].reference).toBe('الْبُخَارِيِّ وَمُسْلِم');
-    expect(p.slice(8, 11).map((z) => z.reference)).toEqual(['سورة الإخلاص · التِّرْمِذِيِّ', 'سورة الفلق · التِّرْمِذِيِّ', 'سورة الناس · التِّرْمِذِيِّ']);
+    expect(p.slice(8, 11).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
+    expect(p.slice(4, 8).every((z) => z.virtue?.startsWith('قال النبي ﷺ: مَنْ سَبَّحَ اللَّهَ'))).toBe(true);
+    expect(p[12].virtue).toMatch(/^عن أبي أيوب الأنصاري/);
+    expect(p[13].reference).toBe('ابْنِ مَاجَهْ');
     expect(p[11].reference).toBe('آية الكرسى - سورة البقرة 255');
     expect(p[11].virtue).toMatch(/^مَنْ قَرَأَ آيَةَ الكُرْسِيِّ/);
     expect(p[14].text).toBe('اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ، وَشُكْرِكَ، وَحُسْنِ عِبَادَتِكَ');
