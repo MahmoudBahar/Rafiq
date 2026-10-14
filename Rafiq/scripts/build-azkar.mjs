@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const ar = (n) => String(n).replace(/\d/g, (d) => AR_DIGITS[d]);
 
@@ -79,8 +79,12 @@ function passage(surah, from, to, { basmala = false } = {}) {
 }
 
 const wholeSurah = (surah) => passage(surah, 1, SURAHS.get(surah).ayahs.length, { basmala: true });
-/** The three Quls as three entries, each its own page and count, as the morning set has them. */
-const QULS = (count) => [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: surahName(n) }));
+/**
+ * The three Quls as three entries, each its own page and count, as the morning set has them.
+ * Each page names its surah; a hadith source on the entry (التِّرْمِذِيِّ after a prayer) follows it.
+ */
+const QULS = (count) =>
+  [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: (source) => (source ? `${surahName(n)} · ${source}` : surahName(n)) }));
 const KURSI = passage(2, 255, 255);
 const BAQARA_END = passage(2, 285, 286);
 
@@ -154,7 +158,7 @@ const SETS = [
   { id: 'morning', prefix: 'm', category: 'أذكار الصباح', expected: 31, countsInFile: true },
   { id: 'evening', prefix: 'e', category: 'أذكار المساء', expected: 30, countsInFile: true },
   { id: 'waking', prefix: 'w', category: 'أذكار الاستيقاظ من النوم', expected: 4, countsInFile: false },
-  { id: 'prayer', prefix: 'p', category: 'الأذكار بعد السلام من الصلاة', expected: 8, countsInFile: false },
+  { id: 'prayer', prefix: 'p', category: 'الأذكار بعد السلام من الصلاة', expected: 9, countsInFile: false },
   { id: 'sleep', prefix: 's', category: 'أذكار النوم', expected: 13, countsInFile: false },
 ];
 const COUNTS = new Set([1, 3, 4, 7, 10, 100]);
@@ -167,7 +171,8 @@ const pages = (re, counts) => counts.map((count, i) => ({ count, pick: (t) => sp
 /**
  * Per-entry recipes, keyed by the entry's position in the source (set prefix
  * plus 1-based index). `quran` replaces the text with a mushaf passage
- * (keeping a leading isti'adha line, or adding one with `istiadha`); `stages` splits a compound entry;
+ * (keeping a leading isti'adha line, or adding one with `istiadha`); `reference` replaces the
+ * source's, or as a function builds on it; `stages` splits a compound entry;
  * `tail` strips a condition written after the words; `prayers` limits an
  * after-prayer entry to certain prayers; `expand` turns one source entry into
  * several, each part able to `pick` its own words out of the cleaned text. Anything not listed is the cleaned source text, said once. Output
@@ -201,7 +206,7 @@ const RECIPES = {
   p01: { expand: pages(/^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
   p04: { expand: pages(/^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]) },
   p05: { expand: QULS(1) },
-  p06: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
+  p06: { quran: KURSI, istiadha: true },
   p07: { tail: /\s*عَشْرَ مَرّاتٍ بَعْدَ صَلاةِ الْمَغْرِبِ وَالصُّبْحِ\.?$/, count: 10, prayers: ['fajr', 'maghrib'] },
   p08: { tail: /\s*بَعْدَ السّلامِ مِنْ صَلاَةِ الفَجْرِ\.?$/, prayers: ['fajr'] },
 };
@@ -221,7 +226,7 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
       text: countsInFile ? clean(raw) : cleanZekr(raw),
       count: countsInFile ? r.count : (recipe.count ?? 1),
       virtue: clean(r.description ?? ''),
-      reference: recipe.reference ?? clean(r.reference ?? ''),
+      reference: typeof recipe.reference === 'function' ? recipe.reference(clean(r.reference ?? '')) : (recipe.reference ?? clean(r.reference ?? '')),
     };
     if (countsInFile && !COUNTS.has(r.count)) throw new Error(`${category} #${i + 1}: unexpected count ${r.count}`);
     if (!zekr.text) throw new Error(`${category} #${i + 1}: empty text`);

@@ -9,7 +9,7 @@ describe('generated azkar data', () => {
     expect(AZKAR_SETS.morning.items).toHaveLength(31);
     expect(AZKAR_SETS.evening.items).toHaveLength(30);
     expect(AZKAR_SETS.waking.items).toHaveLength(4);
-    expect(AZKAR_SETS.prayer.items).toHaveLength(14);
+    expect(AZKAR_SETS.prayer.items).toHaveLength(15);
     expect(AZKAR_SETS.sleep.items).toHaveLength(18);
   });
 
@@ -38,10 +38,11 @@ describe('generated azkar data', () => {
         for (const p of z.prayers ?? []) expect(FARD_KEYS).toContain(p);
       }
     }
-    expect(itemsForPrayer('fajr')).toHaveLength(14);
-    expect(itemsForPrayer('maghrib')).toHaveLength(13);
-    expect(itemsForPrayer('dhuhr')).toHaveLength(12);
-    expect(itemsForPrayer('maghrib').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(itemsForPrayer('fajr')).toHaveLength(15);
+    expect(itemsForPrayer('maghrib')).toHaveLength(14);
+    expect(itemsForPrayer('dhuhr')).toHaveLength(13);
+    expect(itemsForPrayer('maghrib').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14]);
+    expect(itemsForPrayer('dhuhr').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14]);
   });
 
   it('ships clean text: no stray marks, ayah marks on every Qur\'an entry', () => {
@@ -105,6 +106,19 @@ describe('generated azkar data', () => {
     for (const z of AZKAR_SETS.prayer.items) expect(z.text).not.toMatch(/بَعْدَ (صَلاةِ|السّلامِ)/);
     expect(AZKAR_SETS.prayer.items[12].text).toMatch(/قَدِيرٌ$/);
     expect(AZKAR_SETS.prayer.items[12].prayers).toEqual(['fajr', 'maghrib']);
+  });
+
+  it('carries the after-prayer sources, the virtue of آية الكرسي, and the closing dua', () => {
+    const p = AZKAR_SETS.prayer.items;
+    expect(p[0].reference).toBe('مُسْلِم');
+    expect(p[2].reference).toBe('الْبُخَارِيِّ وَمُسْلِم');
+    expect(p.slice(8, 11).map((z) => z.reference)).toEqual(['سورة الإخلاص · التِّرْمِذِيِّ', 'سورة الفلق · التِّرْمِذِيِّ', 'سورة الناس · التِّرْمِذِيِّ']);
+    expect(p[11].reference).toBe('آية الكرسى - سورة البقرة 255');
+    expect(p[11].virtue).toMatch(/^مَنْ قَرَأَ آيَةَ الكُرْسِيِّ/);
+    expect(p[14].text).toBe('اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ، وَشُكْرِكَ، وَحُسْنِ عِبَادَتِكَ');
+    expect(p[14].count).toBe(1);
+    expect(p[14].reference).toBe('أَبُو دَاوُد');
+    expect(p[14].prayers).toBeUndefined();
   });
 
   it('keeps the hamza seats on tatweel in the mushaf text', () => {
