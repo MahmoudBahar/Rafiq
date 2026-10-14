@@ -19,6 +19,8 @@ export interface Zekr {
   count: number;
   /** The reward narrated for it, when the source gives one. */
   virtue: string | null;
+  /** Where the virtue's hadith is found; the words themselves are sourced by `reference`. */
+  virtueReference?: string;
   reference: string | null;
   /** `quran`: ayat with ۝ marks. `surahs`: the text is a label and `surahs` carries the reading. */
   kind?: 'quran' | 'surahs';

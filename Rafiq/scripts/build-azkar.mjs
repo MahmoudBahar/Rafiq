@@ -2,7 +2,8 @@
 //   node scripts/build-azkar.mjs ../azkar_obj.json ../mushafs-2.json
 //
 // Sources (both kept outside the repo):
-// - azkar_obj.json: a flat list of { category, count, description, reference, zekr }.
+// - azkar_obj.json: a flat list of { category, count, description, description_reference, reference, zekr }.
+//   `reference` sources the words; `description_reference` sources the virtue's hadith.
 //   The morning and evening sets carry numeric counts; the waking, after-prayer and
 //   sleep sets carry `count: ""` with the count written inside the text, so those are
 //   read from the text and from the per-entry recipes below.
@@ -230,6 +231,11 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
     };
     if (countsInFile && !COUNTS.has(r.count)) throw new Error(`${category} #${i + 1}: unexpected count ${r.count}`);
     if (!zekr.text) throw new Error(`${category} #${i + 1}: empty text`);
+    const virtueReference = clean(r.description_reference ?? '');
+    if (virtueReference) {
+      if (!zekr.virtue) throw new Error(`${category} #${i + 1}: a virtue source with no virtue`);
+      zekr.virtueReference = virtueReference;
+    }
     if (recipe.quran) {
       zekr.text = withLeadLine(r.zekr.normalize('NFC'), recipe.quran, recipe.istiadha === true);
       zekr.kind = 'quran';

@@ -91,6 +91,12 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
             <Text size={13.5} color={c.ts} lineHeight={24}>
               {toArabicIndic(zekr.virtue)}
             </Text>
+            {/* The hadith's own source, set like the zekr's reference line but from the start edge, as the card's last line. */}
+            {zekr.virtueReference ? (
+              <Text size={12} color={c.tm}>
+                {toArabicIndic(zekr.virtueReference)}
+              </Text>
+            ) : null}
           </Animated.View>
         ) : null}
         <View style={styles.foot} />

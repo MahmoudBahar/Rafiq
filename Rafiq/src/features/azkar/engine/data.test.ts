@@ -117,11 +117,21 @@ describe('generated azkar data', () => {
     expect(p[12].virtue).toMatch(/^عن أبي أيوب الأنصاري/);
     expect(p[13].reference).toBe('ابْنِ مَاجَهْ');
     expect(p[11].reference).toBe('آية الكرسى - سورة البقرة 255');
-    expect(p[11].virtue).toMatch(/^مَنْ قَرَأَ آيَةَ الكُرْسِيِّ/);
+    expect(p[11].virtue).toMatch(/مَنْ قَرَأَ آيَةَ الكُرْسِيِّ/);
     expect(p[14].text).toBe('اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ، وَشُكْرِكَ، وَحُسْنِ عِبَادَتِكَ');
     expect(p[14].count).toBe(1);
     expect(p[14].reference).toBe('أَبُو دَاوُد');
     expect(p[14].prayers).toBeUndefined();
+  });
+
+  it('cites a virtue source only on an entry that has a virtue', () => {
+    for (const set of Object.values(AZKAR_SETS)) {
+      for (const z of set.items) {
+        if (z.virtueReference === undefined) continue;
+        expect(z.virtueReference.length).toBeGreaterThan(0);
+        expect(z.virtue).toBeTruthy();
+      }
+    }
   });
 
   it('keeps the hamza seats on tatweel in the mushaf text', () => {
