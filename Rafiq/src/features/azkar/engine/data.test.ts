@@ -79,6 +79,32 @@ describe('generated azkar data', () => {
     expect(AZKAR_SETS.sleep.items.filter((z) => z.kind === 'surahs').map((z) => z.text)).toEqual(['سورة السجدة', 'سورة الملك']);
   });
 
+  it('ships the mushaf text in proper Unicode, not the KFGQPC legacy codepoints', () => {
+    // The Quranpedia text uses U+0657 / U+065E / U+0656 for the open tanween and U+0652 for the
+    // silent-letter zero; Scheherazade draws those by their real names (inverted damma, fatha with
+    // two dots, subscript alef, sukun). The generator remaps them to U+08F0–U+08F2 and U+06DF.
+    const quran: string[] = [];
+    for (const set of Object.values(AZKAR_SETS)) {
+      for (const z of set.items) {
+        const texts = [z.text, ...(z.surahs ?? []).map((s) => s.text), ...(z.stages ?? []).map((s) => s.text)];
+        for (const t of texts) expect(t).not.toMatch(/[ٖٗٞ]/);
+        // The isti'adha lead line is plain spelling with a standard sukun: only the mushaf part counts.
+        if (z.kind === 'quran') quran.push(z.text.includes('\n') ? z.text.slice(z.text.indexOf('\n') + 1) : z.text);
+        for (const s of z.surahs ?? []) quran.push(s.text);
+      }
+    }
+    expect(quran.length).toBeGreaterThan(0);
+    for (const t of quran) expect(t).not.toMatch(/ْ/);
+    expect(quran.some((t) => /[ࣰ-ࣲ]/.test(t))).toBe(true);
+    expect(quran.some((t) => /۟/.test(t))).toBe(true);
+  });
+
+  it('strips the condition tails from the after-prayer entries', () => {
+    for (const z of AZKAR_SETS.prayer.items) expect(z.text).not.toMatch(/بَعْدَ (صَلاةِ|السّلامِ)/);
+    expect(AZKAR_SETS.prayer.items[13].text).toMatch(/قَدِيرٌ$/);
+    expect(AZKAR_SETS.prayer.items[13].prayers).toEqual(['fajr', 'maghrib']);
+  });
+
   it('keeps the hamza seats on tatweel in the mushaf text', () => {
     // 2:255 has «يَــُٔودُهُ»: the hamza above a tatweel; stripping it would break the word.
     expect(AZKAR_SETS.sleep.items[3].text).toMatch(/ـ+ٔ/);

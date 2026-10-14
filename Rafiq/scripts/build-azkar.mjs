@@ -31,12 +31,40 @@ const mushaf = JSON.parse(readFileSync(resolve(mushafPath), 'utf8'));
 
 const SURAHS = new Map(mushaf.data.surahs.map((s) => [s.id, s]));
 
+/**
+ * The KFGQPC text encodes four marks with stand-in codepoints that their own
+ * fonts draw as the mushaf intends but every other font draws by the Unicode
+ * name: the open tanween (idgham/ikhfa) as U+0657 inverted damma, U+065E fatha
+ * with two dots and U+0656 subscript alef, and the small circle on a silent
+ * letter (قَالُواْ، أُوْلَٰئِكَ) as the ordinary sukun U+0652 (a sounded sukun
+ * is U+06E1). Scheherazade New has the proper glyphs, so the text is remapped.
+ */
+const LEGACY_MARKS = { '\u0657': '\u08F0', '\u065E': '\u08F1', '\u0656': '\u08F2', '\u0652': '\u06DF' };
+
+/**
+ * Everything a remapped ayah may contain: letters, alef wasla, the tatweel that
+ * seats a hamza, harakat, superscript alef, the open tanween, and the Uthmani
+ * recitation marks. Anything else is a codepoint this script has not vetted, so
+ * the build stops and names it rather than ship a glyph nobody has looked at.
+ */
+const ALLOWED = /^[\u0621-\u064A\u0671\u0640\u064B-\u0651\u0653-\u0655\u0670\u08F0-\u08F2\u06D6-\u06DC\u06DF\u06E0-\u06E2\u06E4-\u06ED ]*$/;
+
 /** One ayah's text, with the mushaf's own navigation mark (۞) and any BOM dropped. Tatweel stays: hamza sits on it. */
 function ayah(surah, n) {
   const s = SURAHS.get(surah);
   const a = s?.ayahs.find((x) => x.number === n);
   if (!a) throw new Error(`mushaf: ${surah}:${n} not found`);
-  return a.text.replace(/﻿/g, '').replace(/۞/g, '').replace(/[ \t]+/g, ' ').trim();
+  const text = a.text
+    .replace(/\ufeff/g, '')
+    .replace(/۞/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+    .replace(/[\u0652\u0656\u0657\u065E]/g, (m) => LEGACY_MARKS[m]);
+  if (!ALLOWED.test(text)) {
+    const bad = [...text].find((ch) => !ALLOWED.test(ch));
+    throw new Error(`mushaf ${surah}:${n}: unexpected U+${bad.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
+  }
+  return text;
 }
 
 const BASMALA = ayah(1, 1);
@@ -184,7 +212,10 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
     throw new Error(`${category}: expected ${expected} entries, found ${rows.length}`);
   }
   const build = (r, i, recipe) => {
-    const raw = recipe.tail ? r.zekr.replace(recipe.tail, '') : r.zekr;
+    // Tails are written in NFC; the source stores marks in other orders, so match on the normalised text.
+    const source = r.zekr.normalize('NFC');
+    const raw = recipe.tail ? source.replace(recipe.tail, '') : source;
+    if (recipe.tail && raw === source) throw new Error(`${category} #${i + 1}: tail did not match`);
     const zekr = {
       id: '',
       text: countsInFile ? clean(raw) : cleanZekr(raw),
