@@ -4,7 +4,7 @@ import { useTheme } from '@/shared/theme/useTheme';
 import { PressScale } from '@/shared/ui/PressScale';
 import { Display, Text } from '@/shared/ui/Text';
 import type { Zekr } from '../data';
-import { QuranText, READER_TEXT_SIZE } from './QuranText';
+import { QuranText } from './QuranText';
 
 interface SurahPageProps {
   zekr: Zekr;
@@ -23,10 +23,10 @@ export function SurahPage({ zekr, done, onDone }: SurahPageProps) {
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {(zekr.surahs ?? []).map((s) => (
         <View key={s.name} style={styles.surah}>
-          <Display size={READER_TEXT_SIZE} color={c.tm} align="center" style={styles.wide}>
+          <Display size={22} color={c.tm} align="center" style={styles.wide}>
             {s.name}
           </Display>
-          <QuranText text={s.text} />
+          <QuranText text={s.text} size={22} />
         </View>
       ))}
       <View style={styles.actions}>
