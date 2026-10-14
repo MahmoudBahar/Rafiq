@@ -8,10 +8,7 @@ import { Display, Text } from '@/shared/ui/Text';
 import type { Zekr } from '../data';
 import { stageAt, stagesOf, type StagePos } from '../engine/stages';
 import { BeadStrand, roundAt, roundsOf } from './BeadStrand';
-import { QuranText } from './QuranText';
-
-/** Short azkar are set large; a long passage steps down so less of it needs scrolling. */
-const sizeFor = (length: number) => (length <= 120 ? 30 : length <= 300 ? 26 : length <= 700 ? 23 : 20);
+import { QuranText, READER_LINE_HEIGHT, READER_TEXT_SIZE } from './QuranText';
 
 interface ZekrPageProps {
   zekr: Zekr;
@@ -33,9 +30,9 @@ interface ZekrPageProps {
 
 /**
  * One zekr: its text, and beneath it its own tasbih strand and counter, so the
- * whole page turns as one. The text is never truncated: it is centred when it
- * fits and scrolls when it does not (the longest passage, آل عمران ١٩٠–٢٠٠,
- * runs past eighteen hundred characters).
+ * whole page turns as one. The text is set at the one reader size and is never
+ * truncated or shrunk: it is centred when it fits and scrolls when it does not
+ * (the longest passage, آل عمران ١٩٠–٢٠٠, runs past eighteen hundred characters).
  *
  * A compound entry (سبحان الله ×33، والحمد لله ×33، والله أكبر ×34) is one
  * page too: its phrases are set as runs, the one being counted in the accent,
@@ -44,7 +41,6 @@ interface ZekrPageProps {
 export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: liveStage, width, showVirtue }: ZekrPageProps) {
   const { c } = useTheme();
   const m = useMotion();
-  const size = sizeFor(zekr.text.length);
   const stages = stagesOf(zekr);
   const stage = liveStage ?? stageAt(zekr, said);
   const staged = stages.length > 1;
@@ -62,18 +58,18 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
             text's place over to the new one. */}
         <Animated.View key={zekr.id} layout={glide} style={styles.text}>
           {staged ? (
-            <Display size={size} lineHeight={Math.round(size * 1.85)} align="center" style={styles.wide}>
+            <Display size={READER_TEXT_SIZE} lineHeight={READER_LINE_HEIGHT} align="center" style={styles.wide}>
               {stages.map((s, i) => (
-                <Display key={i} size={size} lineHeight={Math.round(size * 1.85)} color={stageTone(i)}>
+                <Display key={i} size={READER_TEXT_SIZE} lineHeight={READER_LINE_HEIGHT} color={stageTone(i)}>
                   {i > 0 ? '، ' : ''}
                   {s.text}
                 </Display>
               ))}
             </Display>
           ) : zekr.kind === 'quran' ? (
-            <QuranText text={zekr.text} size={size} />
+            <QuranText text={zekr.text} />
           ) : (
-            <Display size={size} lineHeight={Math.round(size * 1.85)} align="center" style={styles.wide}>
+            <Display size={READER_TEXT_SIZE} lineHeight={READER_LINE_HEIGHT} align="center" style={styles.wide}>
               {zekr.text}
             </Display>
           )}
