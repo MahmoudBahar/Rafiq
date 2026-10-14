@@ -9,7 +9,7 @@ describe('generated azkar data', () => {
     expect(AZKAR_SETS.morning.items).toHaveLength(31);
     expect(AZKAR_SETS.evening.items).toHaveLength(30);
     expect(AZKAR_SETS.waking.items).toHaveLength(4);
-    expect(AZKAR_SETS.prayer.items).toHaveLength(15);
+    expect(AZKAR_SETS.prayer.items).toHaveLength(14);
     expect(AZKAR_SETS.sleep.items).toHaveLength(18);
   });
 
@@ -38,10 +38,10 @@ describe('generated azkar data', () => {
         for (const p of z.prayers ?? []) expect(FARD_KEYS).toContain(p);
       }
     }
-    expect(itemsForPrayer('fajr')).toHaveLength(15);
-    expect(itemsForPrayer('maghrib')).toHaveLength(14);
-    expect(itemsForPrayer('dhuhr')).toHaveLength(13);
-    expect(itemsForPrayer('maghrib').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(itemsForPrayer('fajr')).toHaveLength(14);
+    expect(itemsForPrayer('maghrib')).toHaveLength(13);
+    expect(itemsForPrayer('dhuhr')).toHaveLength(12);
+    expect(itemsForPrayer('maghrib').map((x) => x.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 
   it('ships clean text: no stray marks, ayah marks on every Qur\'an entry', () => {
@@ -65,12 +65,14 @@ describe('generated azkar data', () => {
   it('gives each of the three Quls its own page, as the morning set does', () => {
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.count)).toEqual([3, 3, 3]);
-    expect(AZKAR_SETS.prayer.items.slice(9, 12).map((z) => z.count)).toEqual([1, 1, 1]);
+    expect(AZKAR_SETS.prayer.items.slice(8, 11).map((z) => z.count)).toEqual([1, 1, 1]);
   });
 
   it('gives every counted phrase after a prayer its own page', () => {
-    expect(AZKAR_SETS.prayer.items.slice(0, 9).map((z) => z.count)).toEqual([3, 1, 3, 1, 1, 33, 33, 33, 1]);
+    expect(AZKAR_SETS.prayer.items.slice(0, 8).map((z) => z.count)).toEqual([3, 1, 1, 1, 33, 33, 33, 1]);
     expect(AZKAR_SETS.prayer.items.every((z) => !z.stages)).toBe(true);
+    // The second entry has no count in the source: the tahlil and اللَّهُمَّ لاَ مَانِعَ are one zekr, said once.
+    expect(AZKAR_SETS.prayer.items[2].text).toMatch(/^لاَ إِلَهَ إِلاَّ اللَّهُ.*قَدِيرٌ، اللَّهُمَّ لاَ مَانِعَ.*الجَدُّ$/s);
   });
 
   it('splits the sleep tasbih into three pages, the last said thirty-four times', () => {
@@ -101,8 +103,8 @@ describe('generated azkar data', () => {
 
   it('strips the condition tails from the after-prayer entries', () => {
     for (const z of AZKAR_SETS.prayer.items) expect(z.text).not.toMatch(/بَعْدَ (صَلاةِ|السّلامِ)/);
-    expect(AZKAR_SETS.prayer.items[13].text).toMatch(/قَدِيرٌ$/);
-    expect(AZKAR_SETS.prayer.items[13].prayers).toEqual(['fajr', 'maghrib']);
+    expect(AZKAR_SETS.prayer.items[12].text).toMatch(/قَدِيرٌ$/);
+    expect(AZKAR_SETS.prayer.items[12].prayers).toEqual(['fajr', 'maghrib']);
   });
 
   it('keeps the hamza seats on tatweel in the mushaf text', () => {

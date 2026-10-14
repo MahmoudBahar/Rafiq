@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DATA_VERSION = 1;
+const DATA_VERSION = 2;
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const ar = (n) => String(n).replace(/\d/g, (d) => AR_DIGITS[d]);
 
@@ -196,9 +196,9 @@ const RECIPES = {
   // The two surahs read before sleep, a page each.
   s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: surahName(n), text: wholeSurah(n) }], text: surahName(n), reference: surahName(n) })) },
 
-  // After a prayer every phrase with its own count is its own page.
+  // After a prayer every phrase with its own count is its own page. The tahlil that opens the
+  // second entry carries no count in the source, so that entry stays whole and is said once.
   p01: { expand: pages(/^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
-  p02: { expand: pages(/^(لاَ إِلَهَ إِلاَّ اللَّهُ.*?قَدِيرٌ)،?\s+(اللَّهُمَّ لاَ مَانِعَ.*)$/s, [3, 1]) },
   p04: { expand: pages(/^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]) },
   p05: { expand: QULS(1) },
   p06: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
