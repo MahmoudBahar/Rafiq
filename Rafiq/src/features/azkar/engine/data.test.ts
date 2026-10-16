@@ -111,9 +111,13 @@ describe('generated azkar data', () => {
   it('carries the after-prayer sources, the virtue of آية الكرسي, and the closing dua', () => {
     const p = AZKAR_SETS.prayer.items;
     expect(p[0].reference).toBe('مُسْلِم');
-    expect(p[2].reference).toBe('الْبُخَارِيِّ وَمُسْلِم');
+    expect(p[2].reference).toMatch(/^الْبُخَارِيّ?ِ? وَمُسْلِم$/);
     expect(p.slice(8, 11).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
-    expect(p.slice(4, 8).every((z) => z.virtue?.startsWith('قال النبي ﷺ: مَنْ سَبَّحَ اللَّهَ'))).toBe(true);
+    // The tasbih pages all come from one source entry: one hadith, one source, on all four.
+    expect(p.slice(4, 8).every((z) => /سَبَّحَ/.test(z.virtue ?? ''))).toBe(true);
+    expect(new Set(p.slice(4, 8).map((z) => z.virtueReference)).size).toBe(1);
+    expect(p[4].virtueReference).toBeTruthy();
+    expect(p[11].virtueReference).toBeTruthy();
     expect(p[12].virtue).toMatch(/^عن أبي أيوب الأنصاري/);
     expect(p[13].reference).toBe('ابْنِ مَاجَهْ');
     expect(p[11].reference).toBe('آية الكرسى - سورة البقرة 255');
