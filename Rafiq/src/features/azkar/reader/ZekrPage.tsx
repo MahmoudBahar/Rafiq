@@ -91,12 +91,12 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
             <Text size={13.5} color={c.ts} lineHeight={24}>
               {toArabicIndic(zekr.virtue)}
             </Text>
-            {/* The hadith's own source closes the card: a hairline above it and رواه before the name, so a
-                bare collection name reads as a citation rather than a stray last word. */}
+            {/* The hadith's own source closes the card under a hairline, so the bare collection name reads
+                as a citation rather than a stray last word. */}
             {zekr.virtueReference ? (
               <View style={[styles.virtueSource, { borderTopColor: c.selbr }]}>
                 <Text size={12} color={c.tm}>
-                  {`رواه ${toArabicIndic(zekr.virtueReference)}`}
+                  {toArabicIndic(zekr.virtueReference)}
                 </Text>
               </View>
             ) : null}
