@@ -2,7 +2,8 @@
 //   node scripts/build-azkar.mjs ../azkar_obj.json ../mushafs-2.json
 //
 // Sources (both kept outside the repo):
-// - azkar_obj.json: a flat list of { category, count, description, reference, zekr }.
+// - azkar_obj.json: a flat list of { category, count, description, description_reference, reference, zekr }.
+//   `reference` sources the words; `description_reference` sources the virtue's hadith.
 //   The morning and evening sets carry numeric counts; the waking, after-prayer and
 //   sleep sets carry `count: ""` with the count written inside the text, so those are
 //   read from the text and from the per-entry recipes below.
@@ -15,7 +16,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DATA_VERSION = 1;
+const DATA_VERSION = 4;
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const ar = (n) => String(n).replace(/\d/g, (d) => AR_DIGITS[d]);
 
@@ -31,12 +32,40 @@ const mushaf = JSON.parse(readFileSync(resolve(mushafPath), 'utf8'));
 
 const SURAHS = new Map(mushaf.data.surahs.map((s) => [s.id, s]));
 
+/**
+ * The KFGQPC text encodes four marks with stand-in codepoints that their own
+ * fonts draw as the mushaf intends but every other font draws by the Unicode
+ * name: the open tanween (idgham/ikhfa) as U+0657 inverted damma, U+065E fatha
+ * with two dots and U+0656 subscript alef, and the small circle on a silent
+ * letter (قَالُواْ، أُوْلَٰئِكَ) as the ordinary sukun U+0652 (a sounded sukun
+ * is U+06E1). Scheherazade New has the proper glyphs, so the text is remapped.
+ */
+const LEGACY_MARKS = { '\u0657': '\u08F0', '\u065E': '\u08F1', '\u0656': '\u08F2', '\u0652': '\u06DF' };
+
+/**
+ * Everything a remapped ayah may contain: letters, alef wasla, the tatweel that
+ * seats a hamza, harakat, superscript alef, the open tanween, and the Uthmani
+ * recitation marks. Anything else is a codepoint this script has not vetted, so
+ * the build stops and names it rather than ship a glyph nobody has looked at.
+ */
+const ALLOWED = /^[\u0621-\u064A\u0671\u0640\u064B-\u0651\u0653-\u0655\u0670\u08F0-\u08F2\u06D6-\u06DC\u06DF\u06E0-\u06E2\u06E4-\u06ED ]*$/;
+
 /** One ayah's text, with the mushaf's own navigation mark (۞) and any BOM dropped. Tatweel stays: hamza sits on it. */
 function ayah(surah, n) {
   const s = SURAHS.get(surah);
   const a = s?.ayahs.find((x) => x.number === n);
   if (!a) throw new Error(`mushaf: ${surah}:${n} not found`);
-  return a.text.replace(/﻿/g, '').replace(/۞/g, '').replace(/[ \t]+/g, ' ').trim();
+  const text = a.text
+    .replace(/\ufeff/g, '')
+    .replace(/۞/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+    .replace(/[\u0652\u0656\u0657\u065E]/g, (m) => LEGACY_MARKS[m]);
+  if (!ALLOWED.test(text)) {
+    const bad = [...text].find((ch) => !ALLOWED.test(ch));
+    throw new Error(`mushaf ${surah}:${n}: unexpected U+${bad.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
+  }
+  return text;
 }
 
 const BASMALA = ayah(1, 1);
@@ -51,8 +80,12 @@ function passage(surah, from, to, { basmala = false } = {}) {
 }
 
 const wholeSurah = (surah) => passage(surah, 1, SURAHS.get(surah).ayahs.length, { basmala: true });
-/** The three Quls as three entries, each its own page and count, as the morning set has them. */
-const QULS = (count) => [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: surahName(n) }));
+/**
+ * The three Quls as three entries, each its own page and count, as the morning set has them.
+ * Each page names its surah; a hadith source on the entry (التِّرْمِذِيِّ after a prayer) follows it.
+ */
+const QULS = (count) =>
+  [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: (source) => (source ? `${surahName(n)} · ${source}` : surahName(n)) }));
 const KURSI = passage(2, 255, 255);
 const BAQARA_END = passage(2, 285, 286);
 
@@ -139,7 +172,8 @@ const pages = (re, counts) => counts.map((count, i) => ({ count, pick: (t) => sp
 /**
  * Per-entry recipes, keyed by the entry's position in the source (set prefix
  * plus 1-based index). `quran` replaces the text with a mushaf passage
- * (keeping a leading isti'adha line, or adding one with `istiadha`); `stages` splits a compound entry;
+ * (keeping a leading isti'adha line, or adding one with `istiadha`); `reference` replaces the
+ * source's, or as a function builds on it; `stages` splits a compound entry;
  * `tail` strips a condition written after the words; `prayers` limits an
  * after-prayer entry to certain prayers; `expand` turns one source entry into
  * several, each part able to `pick` its own words out of the cleaned text. Anything not listed is the cleaned source text, said once. Output
@@ -168,12 +202,12 @@ const RECIPES = {
   // The two surahs read before sleep, a page each.
   s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: surahName(n), text: wholeSurah(n) }], text: surahName(n), reference: surahName(n) })) },
 
-  // After a prayer every phrase with its own count is its own page.
+  // After a prayer every phrase with its own count is its own page. The tahlil that opens the
+  // second entry carries no count in the source, so that entry stays whole and is said once.
   p01: { expand: pages(/^(أَسْتَغْفِرُ اللَّهَ)\s+(اللَّهُمَّ أَنْتَ السَّلاَمُ.*)$/s, [3, 1]) },
-  p02: { expand: pages(/^(لاَ إِلَهَ إِلاَّ اللَّهُ.*?قَدِيرٌ)،?\s+(اللَّهُمَّ لاَ مَانِعَ.*)$/s, [3, 1]) },
   p04: { expand: pages(/^(سُبْحَانَ اللَّهِ)،\s+(وَالْحَمْدُ لِلَّهِ)،\s+(وَاللَّهُ أَكْبَرُ)\s+(لاَ إِلَهَ إِلاَّ اللَّهُ.*)$/s, [33, 33, 33, 1]) },
   p05: { expand: QULS(1) },
-  p06: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
+  p06: { quran: KURSI, istiadha: true },
   p07: { tail: /\s*عَشْرَ مَرّاتٍ بَعْدَ صَلاةِ الْمَغْرِبِ وَالصُّبْحِ\.?$/, count: 10, prayers: ['fajr', 'maghrib'] },
   p08: { tail: /\s*بَعْدَ السّلامِ مِنْ صَلاَةِ الفَجْرِ\.?$/, prayers: ['fajr'] },
 };
@@ -184,16 +218,24 @@ const sets = SETS.map(({ id, prefix, category, expected, countsInFile }) => {
     throw new Error(`${category}: expected ${expected} entries, found ${rows.length}`);
   }
   const build = (r, i, recipe) => {
-    const raw = recipe.tail ? r.zekr.replace(recipe.tail, '') : r.zekr;
+    // Tails are written in NFC; the source stores marks in other orders, so match on the normalised text.
+    const source = r.zekr.normalize('NFC');
+    const raw = recipe.tail ? source.replace(recipe.tail, '') : source;
+    if (recipe.tail && raw === source) throw new Error(`${category} #${i + 1}: tail did not match`);
     const zekr = {
       id: '',
       text: countsInFile ? clean(raw) : cleanZekr(raw),
       count: countsInFile ? r.count : (recipe.count ?? 1),
       virtue: clean(r.description ?? ''),
-      reference: recipe.reference ?? clean(r.reference ?? ''),
+      reference: typeof recipe.reference === 'function' ? recipe.reference(clean(r.reference ?? '')) : (recipe.reference ?? clean(r.reference ?? '')),
     };
     if (countsInFile && !COUNTS.has(r.count)) throw new Error(`${category} #${i + 1}: unexpected count ${r.count}`);
     if (!zekr.text) throw new Error(`${category} #${i + 1}: empty text`);
+    const virtueReference = clean(r.description_reference ?? '');
+    if (virtueReference) {
+      if (!zekr.virtue) throw new Error(`${category} #${i + 1}: a virtue source with no virtue`);
+      zekr.virtueReference = virtueReference;
+    }
     if (recipe.quran) {
       zekr.text = withLeadLine(r.zekr.normalize('NFC'), recipe.quran, recipe.istiadha === true);
       zekr.kind = 'quran';
