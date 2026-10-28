@@ -16,7 +16,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const ar = (n) => String(n).replace(/\d/g, (d) => AR_DIGITS[d]);
 
@@ -159,7 +159,7 @@ const SETS = [
   { id: 'morning', prefix: 'm', category: 'أذكار الصباح', expected: 31, countsInFile: true },
   { id: 'evening', prefix: 'e', category: 'أذكار المساء', expected: 30, countsInFile: true },
   { id: 'waking', prefix: 'w', category: 'أذكار الاستيقاظ من النوم', expected: 4, countsInFile: false },
-  { id: 'prayer', prefix: 'p', category: 'الأذكار بعد السلام من الصلاة', expected: 9, countsInFile: false },
+  { id: 'prayer', prefix: 'p', category: 'الأذكار بعد السلام من الصلاة', expected: 8, countsInFile: false },
   { id: 'sleep', prefix: 's', category: 'أذكار النوم', expected: 13, countsInFile: false },
 ];
 const COUNTS = new Set([1, 3, 4, 7, 10, 100]);
