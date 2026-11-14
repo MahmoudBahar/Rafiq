@@ -64,7 +64,7 @@ describe('generated azkar data', () => {
   });
 
   it('gives each of the three Quls its own page, as the morning set does', () => {
-    expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
+    expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.reference)).toEqual(['سُورَةُ الإِخْلَاصِ', 'سُورَةُ الفَلَقِ', 'سُورَةُ النَّاسِ']);
     expect(AZKAR_SETS.sleep.items.slice(0, 3).map((z) => z.count)).toEqual([3, 3, 3]);
     expect(AZKAR_SETS.prayer.items.slice(8, 11).map((z) => z.count)).toEqual([1, 1, 1]);
   });
@@ -79,7 +79,7 @@ describe('generated azkar data', () => {
   it('splits the sleep tasbih into three pages, the last said thirty-four times', () => {
     expect(AZKAR_SETS.sleep.items.slice(9, 12).map((z) => z.count)).toEqual([33, 33, 34]);
     expect(AZKAR_SETS.sleep.items.slice(9, 12).every((z) => !z.stages)).toBe(true);
-    expect(AZKAR_SETS.sleep.items.filter((z) => z.kind === 'surahs').map((z) => z.text)).toEqual(['سورة السجدة', 'سورة الملك']);
+    expect(AZKAR_SETS.sleep.items.filter((z) => z.kind === 'surahs').map((z) => z.text)).toEqual(['سُورَةُ السَّجْدَةِ', 'سُورَةُ المُلْكِ']);
   });
 
   it('ships the mushaf text in proper Unicode, not the KFGQPC legacy codepoints', () => {
@@ -112,12 +112,13 @@ describe('generated azkar data', () => {
     const p = AZKAR_SETS.prayer.items;
     expect(p[0].reference).toBe('مُسْلِم');
     expect(p[2].reference).toMatch(/^الْبُخَارِيّ?ِ? وَمُسْلِم$/);
-    expect(p.slice(8, 11).map((z) => z.reference)).toEqual(['سورة الإخلاص', 'سورة الفلق', 'سورة الناس']);
+    expect(p.slice(8, 11).map((z) => z.reference)).toEqual(['سُورَةُ الإِخْلَاصِ', 'سُورَةُ الفَلَقِ', 'سُورَةُ النَّاسِ']);
     // The tasbih pages all come from one source entry: one hadith on all four, and no separate source for it.
     expect(p.slice(4, 8).every((z) => /غُفِرَتْ خَطَايَاهُ/.test(z.virtue ?? ''))).toBe(true);
     expect(new Set(p.slice(4, 8).map((z) => z.virtue)).size).toBe(1);
     expect(p.slice(4, 8).every((z) => z.virtueReference === undefined)).toBe(true);
-    expect(p[11].reference).toBe('آية الكرسى - سورة البقرة 255');
+    // The file's own reference, shipped as written: match the surah, not the exact wording.
+    expect(p[11].reference?.replace(/[\u064B-\u0652]/g, '')).toMatch(/البقرة.*255/);
     expect(p[11].virtue).toBeFalsy();
     expect(p[12].reference).toBe('التِّرْمِذِيّ');
     expect(p[12].count).toBe(10);
@@ -139,5 +140,25 @@ describe('generated azkar data', () => {
   it('keeps the hamza seats on tatweel in the mushaf text', () => {
     // 2:255 has «يَــُٔودُهُ»: the hamza above a tatweel; stripping it would break the word.
     expect(AZKAR_SETS.sleep.items[3].text).toMatch(/ـ+ٔ/);
+  });
+
+  it('seats a superscript alef on a tatweel only where the letter joins forward', () => {
+    const kursi = AZKAR_SETS.sleep.items[3].text;
+    // «إِلَـٰهَ»: lam joins ha, so the joint is stretched under the mark.
+    expect(kursi).toContain('إِلَـٰهَ');
+    // «…مَـٰوَ ٰتِ» (ٱلسموات): meem joins waw; waw never joins forward, so its mark stands in the gap
+    // on a narrow no-break space instead.
+    expect(kursi).toContain('مَـٰوَ\u202Fٰتِ');
+    for (const set of Object.values(AZKAR_SETS)) {
+      for (const z of set.items) {
+        if (z.kind !== 'quran') continue;
+        expect(z.text, z.id).not.toMatch(/[اأإآٱدذرزوؤى][\u064B-\u0655]*ـٰ/);
+        expect(z.text, z.id).not.toMatch(/ـٰ[\u064B-\u0655\u06D6-\u06ED]*( |$)/m);
+        // No superscript alef is left stacked on a fatha-bearing letter that does not join forward…
+        expect(z.text, z.id).not.toMatch(/[اأإآٱدذرزوؤ]\u0651?\u064E\u0670/);
+        // …and the space is only ever that seat.
+        expect(z.text.replace(/\u064E\u202F\u0670/g, ''), z.id).not.toContain('\u202F');
+      }
+    }
   });
 });

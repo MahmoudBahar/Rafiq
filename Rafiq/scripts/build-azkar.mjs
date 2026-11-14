@@ -50,7 +50,30 @@ const LEGACY_MARKS = { '\u0657': '\u08F0', '\u065E': '\u08F1', '\u0656': '\u08F2
  */
 const ALLOWED = /^[\u0621-\u064A\u0671\u0640\u064B-\u0651\u0653-\u0655\u0670\u08F0-\u08F2\u06D6-\u06DC\u06DF\u06E0-\u06E2\u06E4-\u06ED ]*$/;
 
-/** One ayah's text, with the mushaf's own navigation mark (۞) and any BOM dropped. Tatweel stays: hamza sits on it. */
+/**
+ * The mushaf font lengthens the joint under a superscript alef (إِلَـٰهَ) by
+ * itself; Scheherazade New stacks the mark on the letter at its normal width.
+ * So the stretch is written into the text, as Tanzil's Uthmani text does: a
+ * tatweel before U+0670 when the letter carrying it joins the next letter of
+ * the word. On ى the superscript alef already sits on its own seat.
+ *
+ * Letters that never join forward (ا د ذ ر ز و) have no joint to stretch. After
+ * one that carries a fatha (ٱلسَّمَـٰوَٰتِ، ذَٰلِكَ) the mushaf stands the superscript
+ * alef in the gap before the next letter, where Scheherazade stacks it on the
+ * letter; a narrow no-break space (U+202F) before the mark gives it that place
+ * and keeps the word unbreakable. With no fatha (ٱلۡحَيَوٰةَ) the letter is itself
+ * the alef's seat and nothing is added.
+ *
+ * These two are the only places the shipped text differs from Quranpedia's codepoints.
+ */
+const JOINS_FORWARD = '\u0626\u0628\u062A-\u062E\u0633-\u063A\u0641-\u0647\u064A';
+const MARK = '\u064B-\u0655\u0670\u08F0-\u08F2\u06D6-\u06DC\u06DF-\u06ED';
+const DAGGER_ALEF = new RegExp(`([${JOINS_FORWARD}])((?!\u0670)[${MARK}])*\u0670(?=[${MARK}]*[\u0622-\u064A\u0671])`, 'g');
+const STANDING_ALEF = /([\u0622-\u0625\u0627\u062F-\u0632\u0648\u0671]\u0651?\u064E)\u0670/g;
+const seatDaggerAlef = (text) =>
+  text.replace(DAGGER_ALEF, (m) => `${m.slice(0, -1)}\u0640\u0670`).replace(STANDING_ALEF, '$1\u202F\u0670');
+
+/** One ayah's text, with the mushaf's own navigation mark (۞) and any BOM dropped. Its own tatweel stays: hamza sits on it. */
 function ayah(surah, n) {
   const s = SURAHS.get(surah);
   const a = s?.ayahs.find((x) => x.number === n);
@@ -65,11 +88,29 @@ function ayah(surah, n) {
     const bad = [...text].find((ch) => !ALLOWED.test(ch));
     throw new Error(`mushaf ${surah}:${n}: unexpected U+${bad.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
   }
-  return text;
+  return seatDaggerAlef(text);
 }
 
 const BASMALA = ayah(1, 1);
-const surahName = (surah) => SURAHS.get(surah).name;
+/**
+ * The surah's name, vocalised like the references in the azkar file: shown as
+ * a page's reference line and as the title of a surah page. Written here
+ * because the file has none for these entries and the mushaf's own names carry
+ * no harakat.
+ */
+const SURAH_NAMES = {
+  32: 'سُورَةُ السَّجْدَةِ',
+  67: 'سُورَةُ المُلْكِ',
+  112: 'سُورَةُ الإِخْلَاصِ',
+  113: 'سُورَةُ الفَلَقِ',
+  114: 'سُورَةُ النَّاسِ',
+};
+const vocalisedName = (surah) => {
+  const name = SURAH_NAMES[surah];
+  if (!name) throw new Error(`no vocalised name for surah ${surah}`);
+  return name;
+};
+const surahReference = (surah) => (source) => (source ? `${vocalisedName(surah)} · ${source}` : vocalisedName(surah));
 
 /** A run of ayat as one display string: each ayah followed by ۝ and its number; the basmala on its own line when asked. */
 function passage(surah, from, to, { basmala = false } = {}) {
@@ -85,7 +126,7 @@ const wholeSurah = (surah) => passage(surah, 1, SURAHS.get(surah).ayahs.length, 
  * Each page names its surah; a hadith source on the entry (التِّرْمِذِيِّ after a prayer) follows it.
  */
 const QULS = (count) =>
-  [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: (source) => (source ? `${surahName(n)} · ${source}` : surahName(n)) }));
+  [112, 113, 114].map((n) => ({ quran: wholeSurah(n), count, reference: surahReference(n) }));
 const KURSI = passage(2, 255, 255);
 const BAQARA_END = passage(2, 285, 286);
 
@@ -172,8 +213,9 @@ const pages = (re, counts) => counts.map((count, i) => ({ count, pick: (t) => sp
 /**
  * Per-entry recipes, keyed by the entry's position in the source (set prefix
  * plus 1-based index). `quran` replaces the text with a mushaf passage
- * (keeping a leading isti'adha line, or adding one with `istiadha`); `reference` replaces the
- * source's, or as a function builds on it; `stages` splits a compound entry;
+ * (keeping a leading isti'adha line, or adding one with `istiadha`); `reference` is only for an
+ * entry split into surah pages, and names the surah ahead of the file's own source; elsewhere the
+ * file's reference is shipped as it is; `stages` splits a compound entry;
  * `tail` strips a condition written after the words; `prayers` limits an
  * after-prayer entry to certain prayers; `expand` turns one source entry into
  * several, each part able to `pick` its own words out of the cleaned text. Anything not listed is the cleaned source text, said once. Output
@@ -191,16 +233,16 @@ const RECIPES = {
   e04: { quran: wholeSurah(113) },
   e05: { quran: wholeSurah(114) },
 
-  w04: { quran: passage(3, 190, 200), istiadha: true, reference: 'آل عمران ١٩٠–٢٠٠' },
+  w04: { quran: passage(3, 190, 200), istiadha: true },
 
   s01: { expand: QULS(3) },
-  s02: { quran: KURSI, istiadha: true, reference: 'آية الكرسي · البقرة ٢٥٥' },
-  s03: { quran: BAQARA_END, reference: 'البقرة ٢٨٥–٢٨٦' },
+  s02: { quran: KURSI, istiadha: true },
+  s03: { quran: BAQARA_END },
   // Before sleep the three tasbihs are three pages, the last said thirty-four times; on their own
   // pages the second and third drop the و that joined them in the source.
   s08: { expand: pages(TASBIH, [33, 33, 34]) },
   // The two surahs read before sleep, a page each.
-  s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: surahName(n), text: wholeSurah(n) }], text: surahName(n), reference: surahName(n) })) },
+  s12: { expand: [32, 67].map((n) => ({ surahs: [{ name: vocalisedName(n), text: wholeSurah(n) }], text: vocalisedName(n), reference: surahReference(n) })) },
 
   // After a prayer every phrase with its own count is its own page. The tahlil that opens the
   // second entry carries no count in the source, so that entry stays whole and is said once.
@@ -281,7 +323,9 @@ const body = sets
   .join('\n\n');
 
 const out = `// GENERATED by scripts/build-azkar.mjs. Do not edit by hand.
-// Qur'an text: Quranpedia.net Hafs mushaf, Uthmani text (https://quranpedia.net, free to use in apps).
+// Qur'an text: Quranpedia.net Hafs mushaf, Uthmani text (https://quranpedia.net, free to use in apps),
+// with a seat written for each superscript alef: a tatweel on a joined letter, a narrow no-break
+// space after a letter that does not join (see the generator).
 import type { Zekr } from './types';
 
 /** Bumped when entries are added, removed or reordered: saved progress is index-aligned. */
