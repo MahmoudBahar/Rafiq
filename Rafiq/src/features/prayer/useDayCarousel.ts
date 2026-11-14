@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { I18nManager, useWindowDimensions } from 'react-native';
-import { Gesture } from 'react-native-gesture-handler';
+import { usePanGesture } from 'react-native-gesture-handler';
 import {
   Easing,
   useAnimatedReaction,
@@ -139,30 +139,29 @@ export function useDayCarousel(offset: number, onCommit: (delta: number) => void
     };
   }, [busy, center, dir, max, min, onCommit, op, reduced, tx, width]);
 
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-14, 14])
-        .failOffsetY([-12, 12])
-        .onUpdate((e) => {
-          // A plain assignment also cancels a running nudge.
-          if (busy.get()) return;
-          const x = Math.max(-width, Math.min(width, e.translationX));
-          const target = center.get() + Math.sign(x) * dir;
-          tx.set(target < min || target > max ? x * EDGE_RUBBER : x);
-        })
-        .onEnd((e) => {
-          if (busy.get()) return;
-          const far = Math.abs(e.translationX) > width * COMMIT_FRACTION;
-          const fast = Math.abs(e.velocityX) > COMMIT_VELOCITY;
-          if (far || fast) {
-            commitPage(Math.sign(e.translationX || e.velocityX) * dir);
-          } else {
-            tx.set(withSpring(0, SPRING));
-          }
-        }),
-    [busy, center, commitPage, dir, max, min, tx, width],
-  );
+  const gesture = usePanGesture({
+    activeOffsetX: [-14, 14],
+    failOffsetY: [-12, 12],
+    onUpdate: (e) => {
+      'worklet';
+      // A plain assignment also cancels a running nudge.
+      if (busy.get()) return;
+      const x = Math.max(-width, Math.min(width, e.translationX));
+      const target = center.get() + Math.sign(x) * dir;
+      tx.set(target < min || target > max ? x * EDGE_RUBBER : x);
+    },
+    onDeactivate: (e) => {
+      'worklet';
+      if (busy.get()) return;
+      const far = Math.abs(e.translationX) > width * COMMIT_FRACTION;
+      const fast = Math.abs(e.velocityX) > COMMIT_VELOCITY;
+      if (far || fast) {
+        commitPage(Math.sign(e.translationX || e.velocityX) * dir);
+      } else {
+        tx.set(withSpring(0, SPRING));
+      }
+    },
+  });
 
   const values: CarouselValues = useMemo(() => ({ center, tx, op, dir, width }), [center, tx, op, dir, width]);
 
