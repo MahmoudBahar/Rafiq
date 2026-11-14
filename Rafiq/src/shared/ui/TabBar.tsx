@@ -47,6 +47,13 @@ const ITEMS: readonly Item[] = [
 
 const LABEL_SIZE = 12.5;
 const LABEL_LINE = 19;
+/**
+ * Centring the label's line box on the pill leaves the letters low: IBM Plex
+ * Sans Arabic sets its baseline at 71% of the line (ascent 1.085, descent 0.415
+ * of the size), and these labels have no descenders, so their bodies sit about
+ * 0.22 of the size below the pill's centre. Lifted by that much.
+ */
+const LABEL_LIFT = 1.5;
 /** An intrinsic-width RTL label on Android can measure a hair short and clip. */
 const LABEL_SLACK = 2;
 /** The settle after arrival, as a fraction of the travel clock. */
@@ -326,7 +333,7 @@ const styles = StyleSheet.create({
   cap: { position: 'absolute', top: 0, ...physicalLeft(0), width: PILL_H, height: PILL_H, borderRadius: PILL_H / 2 },
   mid: { position: 'absolute', top: 0, ...physicalLeft(0), width: MID_BASE, height: PILL_H },
   icon: { position: 'absolute', top: BAR_PAD + (PILL_H - ICON) / 2, ...physicalLeft(0), width: ICON, height: ICON },
-  label: { position: 'absolute', top: BAR_PAD + (PILL_H - LABEL_LINE) / 2 },
+  label: { position: 'absolute', top: BAR_PAD + (PILL_H - LABEL_LINE) / 2 - LABEL_LIFT },
   hit: { position: 'absolute', top: 0, bottom: 0 },
   hitUnmeasured: { width: 0 },
 });

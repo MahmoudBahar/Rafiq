@@ -91,6 +91,15 @@ export function ZekrPage({ zekr, page, owner, count, offset, glow, said, stage: 
             <Text size={13.5} color={c.ts} lineHeight={24}>
               {toArabicIndic(zekr.virtue)}
             </Text>
+            {/* The hadith's own source closes the card under a hairline, so the bare collection name reads
+                as a citation rather than a stray last word. */}
+            {zekr.virtueReference ? (
+              <View style={[styles.virtueSource, { borderTopColor: c.selbr }]}>
+                <Text size={12} color={c.tm}>
+                  {toArabicIndic(zekr.virtueReference)}
+                </Text>
+              </View>
+            ) : null}
           </Animated.View>
         ) : null}
         <View style={styles.foot} />
@@ -124,5 +133,6 @@ const styles = StyleSheet.create({
   text: { alignSelf: 'stretch', gap: 14 },
   wide: { alignSelf: 'stretch' },
   virtue: { alignSelf: 'stretch', gap: 4, borderWidth: 1, borderRadius: radius.lg, paddingVertical: 12, paddingHorizontal: 16 },
+  virtueSource: { marginTop: 6, paddingTop: 8, borderTopWidth: 1 },
   foot: { height: 8 },
 });
