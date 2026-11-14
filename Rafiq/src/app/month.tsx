@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,7 +91,7 @@ export default function MonthScreen() {
 
   const openDay = useCallback((date: Date) => router.navigate({ pathname: '/', params: { day: isoDate(date) } }), [router]);
 
-  const listRef = useRef<ScrollView>(null);
+  const listRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrollToToday = () => {
     if (todayIndex > 2) listRef.current?.scrollTo({ y: ROW_H * (todayIndex - 2), animated: false });
   };

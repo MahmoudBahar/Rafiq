@@ -135,7 +135,7 @@ export interface TabBarProps extends BottomTabBarProps {
  * during the animation: the pill is two round caps and a scaled strip, icons
  * and labels only translate and fade.
  */
-export function TabBar({ state, navigation, onComingSoon }: TabBarProps) {
+export function TabBar({ state, emitter, navigateToTab, onComingSoon }: TabBarProps) {
   const { c } = useTheme();
   const { reduced } = useMotion();
   const insets = useSafeAreaInsets();
@@ -215,8 +215,8 @@ export function TabBar({ state, navigation, onComingSoon }: TabBarProps) {
     if (item.key !== routeName) click();
     const route = state.routes.find((r) => r.name === item.key);
     if (!route) return;
-    const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-    if (item.key !== routeName && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+    const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+    if (item.key !== routeName && !event.defaultPrevented) navigateToTab(route.key);
   };
 
   return (

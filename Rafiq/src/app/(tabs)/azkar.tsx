@@ -1,7 +1,7 @@
 import { BlurTargetView, BlurView } from "expo-blur";
 import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   BackHandler,
   Pressable,
@@ -150,7 +150,7 @@ export default function AzkarScreen() {
   // The blur's strength is fixed and its layer fades in: Android re-renders the target per frame
   // either way, and a changing radius on top of that stutters.
   const blurFade = useAnimatedStyle(() => ({ opacity: k.get() }));
-  const blurTarget = useRef<View>(null);
+  const blurTarget = useRef<ComponentRef<typeof View>>(null);
 
   const rows: DrawerRow[] = NEW_SET_ORDER.map((set) => {
     const standing = standingOf(progress[set]);
