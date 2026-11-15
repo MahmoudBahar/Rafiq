@@ -380,7 +380,7 @@ export default function AzkarReaderScreen() {
     const slid = Math.min(1, Math.abs(t) / pageW);
     const f = Math.min(1, Math.max(0, (slid - 0.3) / 0.4));
     return { opacity: cur + (next - cur) * f };
-  }, [virtueOn, center, tx, dir, pageW]);
+  });
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
   const overStyle = useAnimatedStyle(() => ({ opacity: overOp.get() }));
   // The band's ink moves between the two skies with the same mix as the gradient on top.
