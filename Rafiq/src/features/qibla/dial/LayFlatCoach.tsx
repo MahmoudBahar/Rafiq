@@ -94,7 +94,6 @@ export function LayFlatCoach({ t, edgeUp, repaint, active, size }: LayFlatCoachP
       quarter.set(next);
       held.set(reduced ? next : withTiming(next, { duration: TURN_MS, easing: Easing.out(Easing.cubic) }));
     },
-    [reduced],
   );
 
   useEffect(() => {

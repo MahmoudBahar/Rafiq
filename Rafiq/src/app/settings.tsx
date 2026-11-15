@@ -1,6 +1,6 @@
 import { BlurTargetView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrayerAzkarTune } from '@/features/azkar/PrayerAzkarTune';
@@ -34,7 +34,7 @@ export default function SettingsScreen() {
   const { locating, error, locate } = useLocate();
 
   const [sheet, setSheet] = useState<'method' | 'city' | null>(null);
-  const blurTarget = useRef<View | null>(null);
+  const blurTarget = useRef<ComponentRef<typeof View>>(null);
   const closeSheet = useCallback(() => setSheet(null), []);
   // Hardware / system back closes the picker instead of popping the screen.
   usePreventBack(sheet !== null, closeSheet);

@@ -1,5 +1,5 @@
 import { BlurTargetView } from 'expo-blur';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Linking, Platform, StyleSheet, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
@@ -21,7 +21,7 @@ const CITY_ITEMS: DrumItem[] = CITIES.map((c) => ({ key: c.name, title: c.name, 
 export default function OnboardingScreen() {
   const [step, setStep] = useState<1 | 2>(1);
   const { update } = useSettings();
-  const blurTarget = useRef<View | null>(null);
+  const blurTarget = useRef<ComponentRef<typeof View>>(null);
   const [wheel, setWheel] = useState(false);
   const [picked, setPicked] = useState(DEFAULT_CITY);
   const openWheel = useCallback(() => setWheel(true), []);

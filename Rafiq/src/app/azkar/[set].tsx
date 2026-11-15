@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GestureDetector, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -212,23 +212,21 @@ export default function AzkarReaderScreen() {
   );
 
   const itemIndex = page?.index ?? -1;
-  const tap = useMemo(
-    () =>
-      Gesture.Tap()
-        .maxDistance(12)
-        .maxDuration(280)
-        .onEnd((_e, ok) => {
-          if (!ok || locked.get()) return;
-          const next = count.get() + 1;
-          if (next > target.get()) return;
-          count.set(next);
-          const done = next === target.get();
-          const stageDone = next === stageEnd.get();
-          if (done || stageDone) locked.set(true);
-          scheduleOnRN(onCount, index, itemIndex, next, done, stageDone);
-        }),
-    [count, index, itemIndex, locked, onCount, stageEnd, target],
-  );
+  const tap = useTapGesture({
+    maxDistance: 12,
+    maxDuration: 280,
+    onDeactivate: (e) => {
+      'worklet';
+      if (e.canceled || locked.get()) return;
+      const next = count.get() + 1;
+      if (next > target.get()) return;
+      count.set(next);
+      const done = next === target.get();
+      const stageDone = next === stageEnd.get();
+      if (done || stageDone) locked.set(true);
+      scheduleOnRN(onCount, index, itemIndex, next, done, stageDone);
+    },
+  });
   // TalkBack and VoiceOver activate through this instead of the gesture.
   const countFromA11y = () => {
     if (!zekr || zekr.kind === 'surahs' || said >= zekr.count || locked.get()) return;
@@ -382,7 +380,7 @@ export default function AzkarReaderScreen() {
     const slid = Math.min(1, Math.abs(t) / pageW);
     const f = Math.min(1, Math.max(0, (slid - 0.3) / 0.4));
     return { opacity: cur + (next - cur) * f };
-  }, [virtueOn, center, tx, dir, pageW]);
+  });
   const bodyStyle = useAnimatedStyle(() => ({ opacity: bodyOp.get() }));
   const overStyle = useAnimatedStyle(() => ({ opacity: overOp.get() }));
   // The band's ink moves between the two skies with the same mix as the gradient on top.

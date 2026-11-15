@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Gesture } from 'react-native-gesture-handler';
+import { usePanGesture } from 'react-native-gesture-handler';
 import {
   Easing,
   useAnimatedReaction,
@@ -70,28 +70,28 @@ export function useAzkarDrawer(travel: number) {
     [reduced, y],
   );
 
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetY([-8, 8])
-        .failOffsetX([-12, 12])
-        .onStart(() => {
-          startY.set(y.get());
-          touching.set(true);
-        })
-        .onUpdate((e) => {
-          const t = travelSv.get();
-          const raw = startY.get() + e.translationY;
-          y.set(raw < -t ? -t + (raw + t) * RUBBER : raw > 0 ? raw * RUBBER : raw);
-        })
-        .onEnd((e) => {
-          touching.set(false);
-          const t = travelSv.get();
-          const projected = y.get() + e.velocityY * PROJECT_S;
-          settle(projected < -t / 2 ? -t : 0, e.velocityY);
-        }),
-    [settle, startY, touching, travelSv, y],
-  );
+  const pan = usePanGesture({
+    activeOffsetY: [-8, 8],
+    failOffsetX: [-12, 12],
+    onActivate: () => {
+      'worklet';
+      startY.set(y.get());
+      touching.set(true);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      const t = travelSv.get();
+      const raw = startY.get() + e.translationY;
+      y.set(raw < -t ? -t + (raw + t) * RUBBER : raw > 0 ? raw * RUBBER : raw);
+    },
+    onDeactivate: (e) => {
+      'worklet';
+      touching.set(false);
+      const t = travelSv.get();
+      const projected = y.get() + e.velocityY * PROJECT_S;
+      settle(projected < -t / 2 ? -t : 0, e.velocityY);
+    },
+  });
 
   const toggle = useCallback(() => {
     scheduleOnUI(() => {

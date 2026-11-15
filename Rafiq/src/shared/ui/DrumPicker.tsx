@@ -1,7 +1,7 @@
 import { BlurView } from 'expo-blur';
-import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useState, type ComponentRef, type RefObject } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -39,7 +39,7 @@ export interface DrumPickerProps {
   /** Fires once per focused-index change while the wheel moves (the tick haptic is built in). */
   onFocusChange?: (index: number) => void;
   /** Android: ref of the `BlurTargetView` wrapping the content behind the picker. */
-  blurTarget?: RefObject<View | null>;
+  blurTarget?: RefObject<ComponentRef<typeof View> | null>;
 }
 
 const ITEM_H = 60;
@@ -186,81 +186,81 @@ export function DrumPicker({
     );
   }, [visible, closing, reduced, openIndex, dim, panelOp, panelScale, scrollY, armed, finishClose, finishOpen]);
 
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetY([-6, 6])
-        .failOffsetX([-14, 14])
-        .onBegin(() => {
-          // Touching a moving wheel catches it.
-          cancelAnimation(scrollY);
-          dragStart.set(scrollY.get());
-          overEdge.set(false);
-          dragged.set(false);
-          armed.set(true);
-        })
-        .onUpdate((e) => {
-          dragged.set(true);
-          const raw = dragStart.get() - e.translationY * DRAG_GAIN;
-          let y: number;
-          if (raw < 0) {
-            y = raw * RUBBER;
-          } else if (raw > maxY) {
-            y = maxY + (raw - maxY) * RUBBER;
-          } else {
-            y = reduced ? raw : raw - COG_AMPLITUDE * Math.sin((TAU * raw) / ITEM_H);
-          }
-          const outside = raw < 0 || raw > maxY;
-          if (outside && !overEdge.get()) {
-            overEdge.set(true);
-            scheduleOnRN(stop);
-          } else if (!outside && overEdge.get()) {
-            overEdge.set(false);
-          }
-          scrollY.set(y);
-        })
-        .onEnd((e) => {
-          const y = scrollY.get();
-          const v = -e.velocityY; // px/s along scrollY
-          if (y < 0 || y > maxY) {
-            const edge = y < 0 ? 0 : maxY;
-            if (reduced) {
-              scrollY.set(edge);
-              scheduleOnRN(land, edge / ITEM_H);
-              return;
-            }
-            scrollY.set(
-              withSpring(edge, { ...EDGE_SPRING, velocity: v }, (finished) => {
-                'worklet';
-                if (finished) scheduleOnRN(land, edge / ITEM_H);
-              }),
-            );
-            return;
-          }
-          // Projected stop under exponential decay, clamped to a sane flick, snapped to a row.
-          const vms = v / 1000;
-          let dist = vms / (1 - DECAY_PER_MS);
-          dist = Math.max(-MAX_FLICK_ROWS * ITEM_H, Math.min(MAX_FLICK_ROWS * ITEM_H, dist));
-          const target = Math.max(0, Math.min(maxY, Math.round((y + dist) / ITEM_H) * ITEM_H));
-          const index = target / ITEM_H;
-          if (reduced) {
-            scrollY.set(target);
-            scheduleOnRN(land, index);
-            return;
-          }
-          const done = (finished?: boolean) => {
+  const pan = usePanGesture({
+    activeOffsetY: [-6, 6],
+    failOffsetX: [-14, 14],
+    onBegin: () => {
+      'worklet';
+      // Touching a moving wheel catches it.
+      cancelAnimation(scrollY);
+      dragStart.set(scrollY.get());
+      overEdge.set(false);
+      dragged.set(false);
+      armed.set(true);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      dragged.set(true);
+      const raw = dragStart.get() - e.translationY * DRAG_GAIN;
+      let y: number;
+      if (raw < 0) {
+        y = raw * RUBBER;
+      } else if (raw > maxY) {
+        y = maxY + (raw - maxY) * RUBBER;
+      } else {
+        y = reduced ? raw : raw - COG_AMPLITUDE * Math.sin((TAU * raw) / ITEM_H);
+      }
+      const outside = raw < 0 || raw > maxY;
+      if (outside && !overEdge.get()) {
+        overEdge.set(true);
+        scheduleOnRN(stop);
+      } else if (!outside && overEdge.get()) {
+        overEdge.set(false);
+      }
+      scrollY.set(y);
+    },
+    onDeactivate: (e) => {
+      'worklet';
+      const y = scrollY.get();
+      const v = -e.velocityY; // px/s along scrollY
+      if (y < 0 || y > maxY) {
+        const edge = y < 0 ? 0 : maxY;
+        if (reduced) {
+          scrollY.set(edge);
+          scheduleOnRN(land, edge / ITEM_H);
+          return;
+        }
+        scrollY.set(
+          withSpring(edge, { ...EDGE_SPRING, velocity: v }, (finished) => {
             'worklet';
-            if (finished) scheduleOnRN(land, index);
-          };
-          if (Math.abs(target - y) < ITEM_H) {
-            scrollY.set(withSpring(target, { ...SNAP_SPRING, velocity: v }, done));
-          } else {
-            const duration = Math.max(240, Math.min(800, 200 + Math.abs(target - y) * 1.1));
-            scrollY.set(withTiming(target, { duration, easing: Easing.out(Easing.poly(4)) }, done));
-          }
-        }),
-    [armed, dragStart, dragged, land, maxY, overEdge, reduced, scrollY],
-  );
+            if (finished) scheduleOnRN(land, edge / ITEM_H);
+          }),
+        );
+        return;
+      }
+      // Projected stop under exponential decay, clamped to a sane flick, snapped to a row.
+      const vms = v / 1000;
+      let dist = vms / (1 - DECAY_PER_MS);
+      dist = Math.max(-MAX_FLICK_ROWS * ITEM_H, Math.min(MAX_FLICK_ROWS * ITEM_H, dist));
+      const target = Math.max(0, Math.min(maxY, Math.round((y + dist) / ITEM_H) * ITEM_H));
+      const index = target / ITEM_H;
+      if (reduced) {
+        scrollY.set(target);
+        scheduleOnRN(land, index);
+        return;
+      }
+      const done = (finished?: boolean) => {
+        'worklet';
+        if (finished) scheduleOnRN(land, index);
+      };
+      if (Math.abs(target - y) < ITEM_H) {
+        scrollY.set(withSpring(target, { ...SNAP_SPRING, velocity: v }, done));
+      } else {
+        const duration = Math.max(240, Math.min(800, 200 + Math.abs(target - y) * 1.1));
+        scrollY.set(withTiming(target, { duration, easing: Easing.out(Easing.poly(4)) }, done));
+      }
+    },
+  });
 
   const focused = useDerivedValue(() => {
     const idx = Math.round(scrollY.get() / ITEM_H);

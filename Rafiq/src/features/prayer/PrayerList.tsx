@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ComponentRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { formatTime12 } from '@/shared/lib/arabic';
 import { radius } from '@/shared/theme/tokens';
@@ -47,7 +47,7 @@ interface RowProps {
 
 function Row({ time: p, isNext, hidden, onPress }: RowProps) {
   const { c } = useTheme();
-  const box = useRef<View>(null);
+  const box = useRef<ComponentRef<typeof View>>(null);
   const nameColor = isNext ? c.herotext : p.isPrayer ? c.tp : c.tm;
   const timeColor = isNext ? c.herotext : p.isPrayer ? c.ts : c.tm;
   const weight = isNext ? 'bold' : p.isPrayer ? 'semi' : 'medium';

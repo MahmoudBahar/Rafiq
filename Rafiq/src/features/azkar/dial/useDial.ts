@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { I18nManager, useWindowDimensions } from 'react-native';
-import { Gesture } from 'react-native-gesture-handler';
+import { usePanGesture } from 'react-native-gesture-handler';
 import {
   useAnimatedReaction,
   useDerivedValue,
@@ -66,25 +66,25 @@ export function useDial(clockSide: DialSide) {
     },
   );
 
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-10, 10])
-        .failOffsetY([-16, 16])
-        .onStart(() => {
-          start.set(theta.get());
-          touched.set(true);
-        })
-        .onUpdate((e) => {
-          const raw = start.get() + ((-e.translationX * SKY_DIR) / width) * 180 * DRAG_GAIN;
-          theta.set(raw < 0 ? raw * RUBBER : raw > 180 ? 180 + (raw - 180) * RUBBER : raw);
-        })
-        .onEnd((e) => {
-          const v = ((-e.velocityX * SKY_DIR) / width) * 180 * DRAG_GAIN;
-          settle(theta.get() + v * 0.12 > 90 ? 180 : 0, v);
-        }),
-    [settle, start, theta, touched, width],
-  );
+  const pan = usePanGesture({
+    activeOffsetX: [-10, 10],
+    failOffsetY: [-16, 16],
+    onActivate: () => {
+      'worklet';
+      start.set(theta.get());
+      touched.set(true);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      const raw = start.get() + ((-e.translationX * SKY_DIR) / width) * 180 * DRAG_GAIN;
+      theta.set(raw < 0 ? raw * RUBBER : raw > 180 ? 180 + (raw - 180) * RUBBER : raw);
+    },
+    onDeactivate: (e) => {
+      'worklet';
+      const v = ((-e.velocityX * SKY_DIR) / width) * 180 * DRAG_GAIN;
+      settle(theta.get() + v * 0.12 > 90 ? 180 : 0, v);
+    },
+  });
 
   // The hour moved on (Fajr or Asr passed): follow it, unless the user has turned the dial themselves.
   useEffect(() => {

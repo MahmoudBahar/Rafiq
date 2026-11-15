@@ -405,7 +405,6 @@ export function useQibla(coords: Coords | null, mode: HeadingMode, active: boole
         scheduleOnRN(setRaised, is);
       }
     },
-    [mode, reduced],
   );
 
   return {
