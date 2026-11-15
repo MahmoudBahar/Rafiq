@@ -98,80 +98,86 @@ export function AzkarDrawer({ horizon, travel, values, pan, open, peek, rows, br
   }));
 
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View
-        style={[styles.band, { top: horizon, height: travel + DRAWER_LIP + 200, backgroundColor: c.bg, shadowColor: c.shadow }, band, lift]}
-        accessibilityRole="adjustable"
-        accessibilityLabel="أذكار اليوم الأخرى"
-        accessibilityValue={{ text: open ? 'مفتوح' : 'مغلق' }}
-        accessibilityActions={[{ name: 'activate' }]}
-        onAccessibilityAction={onToggle}
-      >
-        <Text size={11.5} color={c.tm} align="center" style={styles.hint}>
-          {hint}
-        </Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={open ? 'إغلاق' : 'المزيد من الأذكار'} onPress={onToggle} hitSlop={14} style={styles.handleHit}>
-          <Animated.View style={[styles.handle, handle]}>
-            <Animated.View style={[styles.half, styles.halfLeft, barL]} />
-            <Animated.View style={[styles.half, styles.halfRight, barR]} />
+    <Animated.View
+      style={[styles.band, { top: horizon, height: travel + DRAWER_LIP + 200, backgroundColor: c.bg, shadowColor: c.shadow }, band, lift]}
+      accessibilityRole="adjustable"
+      accessibilityLabel="أذكار اليوم الأخرى"
+      accessibilityValue={{ text: open ? 'مفتوح' : 'مغلق' }}
+      accessibilityActions={[{ name: 'activate' }]}
+      onAccessibilityAction={onToggle}
+    >
+      {/* The detector sits inside the band, not around it. Gesture-handler 3 renders a host view for
+          a detector, and Android finds touches through a parent by its children's laid-out frames,
+          not their transforms: around the band, that view kept the closed band's frame, so a tap on
+          the risen rows fell through to the scrim behind and closed the drawer. */}
+      <GestureDetector gesture={pan}>
+        <View style={styles.grip}>
+          <Text size={11.5} color={c.tm} align="center" style={styles.hint}>
+            {hint}
+          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={open ? 'إغلاق' : 'المزيد من الأذكار'} onPress={onToggle} hitSlop={14} style={styles.handleHit}>
+            <Animated.View style={[styles.handle, handle]}>
+              <Animated.View style={[styles.half, styles.halfLeft, barL]} />
+              <Animated.View style={[styles.half, styles.halfRight, barR]} />
+            </Animated.View>
+          </Pressable>
+
+          <Animated.View style={[styles.peek, peekStyle]} pointerEvents={open ? 'none' : 'box-none'}>
+            <View style={styles.texts}>
+              <Display size={24}>{peek.title}</Display>
+              <Text size={11.5} color={c.tm}>
+                {peek.status}
+              </Text>
+            </View>
+            <PressScale accessibilityRole="button" accessibilityLabel={`${peek.action} ${peek.title}`} pressedScale={0.95} onPress={() => onStart(peek.set)} style={[styles.cta, { backgroundColor: c.accent }]}>
+              <Text size={12.5} weight="bold" color="#ffffff" align="center">
+                {peek.action}
+              </Text>
+            </PressScale>
           </Animated.View>
-        </Pressable>
 
-        <Animated.View style={[styles.peek, peekStyle]} pointerEvents={open ? 'none' : 'box-none'}>
-          <View style={styles.texts}>
-            <Display size={24}>{peek.title}</Display>
-            <Text size={11.5} color={c.tm}>
-              {peek.status}
-            </Text>
-          </View>
-          <PressScale accessibilityRole="button" accessibilityLabel={`${peek.action} ${peek.title}`} pressedScale={0.95} onPress={() => onStart(peek.set)} style={[styles.cta, { backgroundColor: c.accent }]}>
-            <Text size={12.5} weight="bold" color="#ffffff" align="center">
-              {peek.action}
-            </Text>
-          </PressScale>
-        </Animated.View>
-
-        {open ? (
-          <View style={styles.rows}>
-            {rows.map((row, i) => (
-              <Animated.View
-                key={row.set}
-                entering={reduced ? undefined : FadeInUp.delay(i * ROW_STAGGER_MS).springify().damping(14).stiffness(170)}
-                exiting={reduced ? undefined : FadeOut.duration(120)}
-              >
-                <PressScale
-                  accessibilityRole="button"
-                  accessibilityLabel={`${row.action} ${row.title}، ${row.status}`}
-                  pressedScale={0.98}
-                  onPress={() => onStart(row.set)}
-                  style={[styles.row, { backgroundColor: c.surface, borderColor: row.lead ? c.accent : c.border }]}
+          {open ? (
+            <View style={styles.rows}>
+              {rows.map((row, i) => (
+                <Animated.View
+                  key={row.set}
+                  entering={reduced ? undefined : FadeInUp.delay(i * ROW_STAGGER_MS).springify().damping(14).stiffness(170)}
+                  exiting={reduced ? undefined : FadeOut.duration(120)}
                 >
-                  <View style={styles.texts}>
-                    <View style={styles.titleRow}>
-                      {row.lead ? <Ember color={c.accent} /> : null}
-                      <Display size={22}>{row.title}</Display>
+                  <PressScale
+                    accessibilityRole="button"
+                    accessibilityLabel={`${row.action} ${row.title}، ${row.status}`}
+                    pressedScale={0.98}
+                    onPress={() => onStart(row.set)}
+                    style={[styles.row, { backgroundColor: c.surface, borderColor: row.lead ? c.accent : c.border }]}
+                  >
+                    <View style={styles.texts}>
+                      <View style={styles.titleRow}>
+                        {row.lead ? <Ember color={c.accent} /> : null}
+                        <Display size={22}>{row.title}</Display>
+                      </View>
+                      <Text size={11.5} color={c.tm}>
+                        {row.status}
+                      </Text>
+                      <View style={styles.segments} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                        {row.flags.map((f, j) => (
+                          <View key={j} style={[styles.segment, { backgroundColor: f ? c.accent : c.selbr }]} />
+                        ))}
+                      </View>
                     </View>
-                    <Text size={11.5} color={c.tm}>
-                      {row.status}
-                    </Text>
-                    <View style={styles.segments} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                      {row.flags.map((f, j) => (
-                        <View key={j} style={[styles.segment, { backgroundColor: f ? c.accent : c.selbr }]} />
-                      ))}
+                    <View style={[styles.cta, styles.ghost, { borderColor: c.selbr }]}>
+                      <Text size={12.5} weight="bold" color={c.tp} align="center">
+                        {row.action}
+                      </Text>
                     </View>
-                  </View>
-                  <View style={[styles.cta, styles.ghost, { borderColor: c.selbr }]}>
-                    <Text size={12.5} weight="bold" color={c.tp} align="center">
-                      {row.action}
-                    </Text>
-                  </View>
-                </PressScale>
-              </Animated.View>
-            ))}
-          </View>
-        ) : null}
-      </Animated.View>
-    </GestureDetector>
+                  </PressScale>
+                </Animated.View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </GestureDetector>
+    </Animated.View>
   );
 }
 
@@ -199,10 +205,10 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopStartRadius: 32,
     borderTopEndRadius: 32,
-    paddingHorizontal: 18,
     shadowOffset: { width: 0, height: -6 },
     shadowRadius: 18,
   },
+  grip: { flex: 1, paddingHorizontal: 18 },
   hint: { alignSelf: 'stretch', marginTop: 12 },
   handleHit: { alignSelf: 'center', width: 44, height: 22, marginTop: 4, alignItems: 'center', justifyContent: 'center' },
   handle: { width: 44, height: 22 },
