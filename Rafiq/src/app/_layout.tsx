@@ -16,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ReduceMotion, ReducedMotionConfig, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DaylightProvider } from '@/features/prayer/DaylightProvider';
+import { useAutoLocation } from '@/features/prayer/useAutoLocation';
 import { useMotion, useSystemReducedMotion } from '@/shared/lib/motion';
 import { SettingsProvider, useSettings } from '@/shared/storage/settings';
 import { useTheme } from '@/shared/theme/useTheme';
@@ -73,6 +74,7 @@ function RootStack() {
   // (app setting, or the device switch flipped since launch) differs from it.
   const atLaunch = useReducedMotion();
   useSystemReducedMotion();
+  useAutoLocation();
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(c.bg);

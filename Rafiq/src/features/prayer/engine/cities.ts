@@ -130,3 +130,13 @@ export function nearestCity(coords: Coords, maxKm = 40): NearCity | null {
   }
   return best;
 }
+
+/**
+ * Whether a new device fix is far enough from the stored one to be worth
+ * saving. Fixes wander by tens of metres while the phone sits still; the times
+ * only change with the nearest listed city and the Qibla bearing barely turns
+ * within a kilometre.
+ */
+export function hasMoved(prev: Coords | null, next: Coords, minKm = 1): boolean {
+  return !prev || distanceKm(prev, next) > minKm;
+}
