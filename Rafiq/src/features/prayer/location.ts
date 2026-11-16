@@ -42,10 +42,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 const hasArabic = (s: string | null | undefined): s is string => !!s && /[\u0600-\u06FF]/.test(s);
 
-async function getFix(): Promise<Coords> {
+/**
+ * `quiet` keeps Android from raising its "turn on location accuracy" dialog,
+ * which it does by default when the network provider is off.
+ */
+async function getFix(quiet = false): Promise<Coords> {
   const last = await Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }).catch(() => null);
   const current = await withTimeout(
-    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: !quiet }),
     FIX_TIMEOUT_MS,
   ).catch(() => null);
   const pos = current ?? last;
@@ -96,7 +100,7 @@ export async function refreshLocation(prev: Coords | null): Promise<ResolvedLoca
   try {
     const perm = await Location.getForegroundPermissionsAsync();
     if (!perm.granted || !(await servicesOn())) return 'unavailable';
-    const coords = await getFix();
+    const coords = await getFix(true);
     return hasMoved(prev, coords) ? await label(coords) : 'unmoved';
   } catch {
     return 'unavailable';
