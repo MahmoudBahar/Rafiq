@@ -143,11 +143,8 @@ export function hasMoved(prev: Coords | null, next: Coords, minKm = 1): boolean 
   return !prev || distanceKm(prev, next) > minKm;
 }
 
-/** A device fix as the refresh sees it. */
+/** A fix taken just now, with its own uncertainty radius. */
 export interface Fix extends Coords {
-  /** Taken now, as opposed to the system's cached last-known position. */
-  fresh: boolean;
-  /** The fix's own uncertainty radius. */
   accuracyKm: number;
 }
 
@@ -155,10 +152,8 @@ export interface Fix extends Coords {
  * - `moved`: the fix replaces the saved one.
  * - `relabel`: same place, but the saved name is not the one it should carry.
  * - `unmoved`: nothing to do.
- * - `stale`: only a cached position was to be had and it says "same place",
- *   which a phone that has just landed would say too. Not an answer.
  */
-export type FixVerdict = 'moved' | 'relabel' | 'unmoved' | 'stale';
+export type FixVerdict = 'moved' | 'relabel' | 'unmoved';
 
 /**
  * What a new fix means for the saved place. A move smaller than the fix's own
@@ -168,7 +163,6 @@ export type FixVerdict = 'moved' | 'relabel' | 'unmoved' | 'stale';
  */
 export function judgeFix(saved: { coords: Coords | null; city: string | null }, fix: Fix): FixVerdict {
   if (!saved.coords || hasMoved(saved.coords, fix, Math.max(1, fix.accuracyKm))) return 'moved';
-  if (!fix.fresh) return 'stale';
   const near = nearestCity(saved.coords);
   const named = near ? saved.city === near.city.name : saved.city !== null && saved.city !== UNKNOWN_PLACE;
   return named ? 'unmoved' : 'relabel';
@@ -176,7 +170,7 @@ export function judgeFix(saved: { coords: Coords | null; city: string | null }, 
 
 const RETRY_DELAYS_MS = [30_000, 60_000, 120_000, 300_000];
 
-/** How long to wait before retry number `attempt` (0-based) of a missed fix; null = stop until the next foreground. */
-export function retryDelay(attempt: number): number | null {
-  return RETRY_DELAYS_MS[attempt] ?? null;
+/** How long to wait after miss number `misses` (1 = the first) before asking again; it settles at the last step. */
+export function retryDelay(misses: number): number {
+  return RETRY_DELAYS_MS[Math.min(Math.max(misses, 1), RETRY_DELAYS_MS.length) - 1];
 }

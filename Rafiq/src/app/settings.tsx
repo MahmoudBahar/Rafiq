@@ -1,14 +1,14 @@
 import { BlurTargetView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrayerAzkarTune } from '@/features/azkar/PrayerAzkarTune';
 import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } from '@/features/prayer/engine';
 import { FineTune } from '@/features/prayer/FineTune';
 import { IqamaTune } from '@/features/prayer/IqamaTune';
 import { useLocate } from '@/features/prayer/useLocate';
-import { useLocationBlocked } from '@/features/prayer/useLocationBlocked';
+import { useLocationAccess } from '@/features/prayer/useLocationAccess';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
@@ -41,7 +41,9 @@ export default function SettingsScreen() {
   usePreventBack(sheet !== null, closeSheet);
 
   const manual = settings.locationMode === 'manual';
-  const blocked = useLocationBlocked(!manual, locating);
+  // Auto is on but the OS has taken the permission back: the quiet refresh cannot say so itself.
+  const access = useLocationAccess(!manual && Platform.OS !== 'web', locating);
+  const lostAccess = !locating && (access === 'askable' || access === 'blocked');
   const city = settings.city ?? DEFAULT_CITY;
   const asr = timeFor('asr', cfg, new Date());
   const near = !manual && settings.coords ? nearestCity(settings.coords) : null;
@@ -96,11 +98,18 @@ export default function SettingsScreen() {
                 })
               }
             />
-            {error ? (
+            {lostAccess && access === 'blocked' ? (
+              // Asking again would be refused without a prompt, so this outranks the error a tap just earned.
+              <Pressable accessibilityRole="link" onPress={() => Linking.openSettings()} hitSlop={8}>
+                <Text size={12} color={c.tm} style={styles.caption}>
+                  إذن الموقع متوقف، فلن يتحدّث موقعك تلقائياً. اضغط هنا لفتح إعدادات الجهاز والسماح به.
+                </Text>
+              </Pressable>
+            ) : error ? (
               <Text size={12} color={c.tm} style={styles.caption}>
                 {error}
               </Text>
-            ) : blocked && !locating ? (
+            ) : lostAccess ? (
               <Text size={12} color={c.tm} style={styles.caption}>
                 إذن الموقع متوقف، فلن يتحدّث موقعك تلقائياً. اضغط «تحديد الموقع تلقائياً» للسماح من جديد.
               </Text>

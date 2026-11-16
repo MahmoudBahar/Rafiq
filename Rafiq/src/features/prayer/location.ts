@@ -43,19 +43,21 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 const hasArabic = (s: string | null | undefined): s is string => !!s && /[\u0600-\u06FF]/.test(s);
 
 /**
- * `quiet` keeps Android from raising its "turn on location accuracy" dialog,
- * which it does by default when the network provider is off.
+ * The tapped flow takes the system's cached position when a fresh fix will not
+ * come: the user is waiting and can see the answer. The quiet one does not: a
+ * cached position can be a quarter of an hour and a train ride old, and nobody
+ * would be looking when it replaced the saved place. `quiet` also keeps
+ * Android from raising its "turn on location accuracy" dialog, which it does
+ * by default when the network provider is off.
  */
 async function getFix(quiet = false): Promise<Fix> {
-  const last = await withTimeout(
-    Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }),
-    QUICK_TIMEOUT_MS,
-  ).catch(() => null);
+  const last = quiet
+    ? null
+    : await withTimeout(Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }), QUICK_TIMEOUT_MS).catch(
+        () => null,
+      );
   const current = await withTimeout(
-    Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-      mayShowUserSettingsDialog: !quiet,
-    }),
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: !quiet }),
     FIX_TIMEOUT_MS,
   ).catch(() => null);
   const pos = current ?? last;
@@ -63,7 +65,6 @@ async function getFix(quiet = false): Promise<Fix> {
   return {
     latitude: pos.coords.latitude,
     longitude: pos.coords.longitude,
-    fresh: !!current,
     accuracyKm: (pos.coords.accuracy ?? 0) / 1000,
   };
 }
@@ -94,10 +95,11 @@ async function label(coords: Coords): Promise<ResolvedLocation> {
   return { city, country, ...coords };
 }
 
-let answeredAt = 0;
+// Monotonic, so a clock set backwards cannot hold the refresh off.
+let answeredAt = -Infinity;
 
 /** Milliseconds since the device last gave a usable answer, by a tap or by the quiet refresh. */
-export const sinceLastAnswer = () => Date.now() - answeredAt;
+export const sinceLastAnswer = () => performance.now() - answeredAt;
 
 /** Foreground permission (asking if needed) → device fix → place label. Throws a `LocationError`. */
 export async function resolveLocation(): Promise<ResolvedLocation> {
@@ -106,14 +108,17 @@ export async function resolveLocation(): Promise<ResolvedLocation> {
   if (!(await servicesOn())) throw new LocationError('unavailable');
   const { latitude, longitude } = await getFix();
   const place = await label({ latitude, longitude });
-  answeredAt = Date.now();
+  answeredAt = performance.now();
   return place;
 }
 
-/** Whether the app may read the location right now, without asking. Null when that cannot be told. */
-export async function locationAllowed(): Promise<boolean | null> {
+/** `askable` = not granted, but the OS would still show its prompt; `blocked` = only the system settings can grant it. */
+export type LocationAccess = 'granted' | 'askable' | 'blocked';
+
+/** Where the location permission stands right now, without asking. Null when that cannot be told. */
+export async function locationAccess(): Promise<LocationAccess | null> {
   return withTimeout(Location.getForegroundPermissionsAsync(), QUICK_TIMEOUT_MS)
-    .then((perm) => perm.granted)
+    .then((perm): LocationAccess => (perm.granted ? 'granted' : perm.canAskAgain ? 'askable' : 'blocked'))
     .catch(() => null);
 }
 
@@ -125,8 +130,8 @@ export interface SavedPlace {
 
 /**
  * The quiet version, for when nobody asked: it never prompts and never throws.
- * `denied` = no permission; `unavailable` = services off or no fix worth
- * trusting; `unmoved` = the saved place still stands, so nothing is geocoded.
+ * `denied` = no permission; `unavailable` = services off or no fresh fix;
+ * `unmoved` = the saved place still stands, so nothing is geocoded.
  * A place comes back when the device has moved, or when it has not but the
  * saved name needed mending.
  */
@@ -134,17 +139,16 @@ export async function refreshLocation(
   saved: SavedPlace,
 ): Promise<ResolvedLocation | 'unmoved' | 'unavailable' | 'denied'> {
   try {
-    const allowed = await locationAllowed();
-    if (allowed === false) return 'denied';
-    if (allowed === null || !(await withTimeout(servicesOn(), QUICK_TIMEOUT_MS))) return 'unavailable';
-    const { fresh, accuracyKm, ...coords } = await getFix(true);
-    const verdict = judgeFix(saved, { ...coords, fresh, accuracyKm });
-    if (verdict === 'stale') return 'unavailable';
-    answeredAt = Date.now();
+    const access = await locationAccess();
+    if (access === null || !(await withTimeout(servicesOn(), QUICK_TIMEOUT_MS))) return 'unavailable';
+    if (access !== 'granted') return 'denied';
+    const { accuracyKm, ...coords } = await getFix(true);
+    const verdict = judgeFix(saved, { ...coords, accuracyKm });
+    answeredAt = performance.now();
     if (verdict === 'unmoved') return 'unmoved';
-    if (verdict === 'moved') return await label(coords);
+    if (verdict === 'moved' || !saved.coords) return await label(coords);
     // Same place, better name: the saved fix stays as it is.
-    const place = await label(saved.coords ?? coords);
+    const place = await label(saved.coords);
     return place.city === saved.city && place.country === saved.country ? 'unmoved' : place;
   } catch {
     return 'unavailable';

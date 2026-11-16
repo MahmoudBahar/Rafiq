@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UNKNOWN_PLACE, hasMoved, judgeFix, nearestCity, retryDelay, type Fix } from './cities';
+import { UNKNOWN_PLACE, distanceKm, hasMoved, judgeFix, nearestCity, retryDelay, type Fix } from './cities';
 import type { Coords } from './types';
 
 const CAIRO: Coords = { latitude: 30.0444, longitude: 31.2357 };
@@ -46,13 +46,13 @@ describe('hasMoved', () => {
     const there = north(CAIRO, 1);
     expect(hasMoved(CAIRO, there, 1.01)).toBe(false);
     expect(hasMoved(CAIRO, there, 0.99)).toBe(true);
+    expect(hasMoved(CAIRO, ALEXANDRIA, distanceKm(CAIRO, ALEXANDRIA))).toBe(false);
   });
 });
 
 describe('judgeFix', () => {
   const fix = (at: Coords, over: Partial<Fix> = {}): Fix => ({
     ...at,
-    fresh: true,
     accuracyKm: 0.02,
     ...over,
   });
@@ -66,13 +66,16 @@ describe('judgeFix', () => {
     expect(judgeFix(inCairo, fix(north(CAIRO, 0.3)))).toBe('unmoved');
   });
 
-  it('sees a trip to another city, fresh or cached', () => {
+  it('sees a trip to another city', () => {
     expect(judgeFix(inCairo, fix(ALEXANDRIA))).toBe('moved');
-    expect(judgeFix(inCairo, fix(ALEXANDRIA, { fresh: false }))).toBe('moved');
   });
 
-  it('does not trust a cached fix that says nothing changed', () => {
-    expect(judgeFix(inCairo, fix(CAIRO, { fresh: false }))).toBe('stale');
+  it('falls back to the kilometre when the fix does not know how sure it is', () => {
+    // Android reports 0 for unknown, iOS -1 for invalid.
+    for (const accuracyKm of [0, -0.001]) {
+      expect(judgeFix(inCairo, fix(north(CAIRO, 0.5), { accuracyKm }))).toBe('unmoved');
+      expect(judgeFix(inCairo, fix(north(CAIRO, 1.5), { accuracyKm }))).toBe('moved');
+    }
   });
 
   it('ignores a jump smaller than the fix is sure of', () => {
@@ -94,10 +97,8 @@ describe('judgeFix', () => {
 });
 
 describe('retryDelay', () => {
-  it('backs off, then gives up until the next foreground', () => {
-    const delays = [0, 1, 2, 3].map((n) => retryDelay(n));
-    expect(delays.every((d) => d !== null)).toBe(true);
-    expect([...delays].sort((a, b) => a! - b!)).toEqual(delays);
-    expect(retryDelay(4)).toBeNull();
+  it('backs off to five minutes and stays there', () => {
+    expect([1, 2, 3, 4, 5, 50].map(retryDelay)).toEqual([30_000, 60_000, 120_000, 300_000, 300_000, 300_000]);
+    expect(retryDelay(0)).toBe(30_000);
   });
 });
