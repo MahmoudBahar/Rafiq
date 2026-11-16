@@ -23,6 +23,8 @@ const FIX_TIMEOUT_MS = 10_000;
 const GEOCODE_TIMEOUT_MS = 5_000;
 const LAST_KNOWN_MAX_AGE_MS = 15 * 60_000;
 const QUICK_TIMEOUT_MS = 5_000;
+/** The quiet refresh takes nothing older: iOS may answer a request with a position it already had. */
+const FRESH_FIX_MAX_AGE_MS = 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -61,7 +63,9 @@ async function getFix(quiet = false): Promise<Fix> {
     FIX_TIMEOUT_MS,
   ).catch(() => null);
   const pos = current ?? last;
-  if (!pos) throw new LocationError('unavailable');
+  if (!pos || (quiet && Math.abs(Date.now() - pos.timestamp) > FRESH_FIX_MAX_AGE_MS)) {
+    throw new LocationError('unavailable');
+  }
   return {
     latitude: pos.coords.latitude,
     longitude: pos.coords.longitude,
@@ -95,11 +99,16 @@ async function label(coords: Coords): Promise<ResolvedLocation> {
   return { city, country, ...coords };
 }
 
-// Monotonic, so a clock set backwards cannot hold the refresh off.
+// Wall-clock time on purpose: the monotonic clock stops while the phone sleeps,
+// and a phone asleep in a pocket for the length of a trip is the case this is for.
 let answeredAt = -Infinity;
 
 /** Milliseconds since the device last gave a usable answer, by a tap or by the quiet refresh. */
-export const sinceLastAnswer = () => performance.now() - answeredAt;
+export const sinceLastAnswer = () => {
+  const elapsed = Date.now() - answeredAt;
+  // A clock set backwards must not hold the refresh off.
+  return elapsed < 0 ? Infinity : elapsed;
+};
 
 /** Foreground permission (asking if needed) → device fix → place label. Throws a `LocationError`. */
 export async function resolveLocation(): Promise<ResolvedLocation> {
@@ -108,18 +117,22 @@ export async function resolveLocation(): Promise<ResolvedLocation> {
   if (!(await servicesOn())) throw new LocationError('unavailable');
   const { latitude, longitude } = await getFix();
   const place = await label({ latitude, longitude });
-  answeredAt = performance.now();
+  answeredAt = Date.now();
   return place;
 }
 
-/** `askable` = not granted, but the OS would still show its prompt; `blocked` = only the system settings can grant it. */
-export type LocationAccess = 'granted' | 'askable' | 'blocked';
-
-/** Where the location permission stands right now, without asking. Null when that cannot be told. */
-export async function locationAccess(): Promise<LocationAccess | null> {
-  return withTimeout(Location.getForegroundPermissionsAsync(), QUICK_TIMEOUT_MS)
-    .then((perm): LocationAccess => (perm.granted ? 'granted' : perm.canAskAgain ? 'askable' : 'blocked'))
-    .catch(() => null);
+/**
+ * Whether the app holds the location permission right now, without asking.
+ * Null when that cannot be told, which includes location services being off:
+ * iOS then reports every app as denied.
+ */
+export async function locationAllowed(): Promise<boolean | null> {
+  try {
+    if (!(await withTimeout(servicesOn(), QUICK_TIMEOUT_MS))) return null;
+    return (await withTimeout(Location.getForegroundPermissionsAsync(), QUICK_TIMEOUT_MS)).granted;
+  } catch {
+    return null;
+  }
 }
 
 export interface SavedPlace {
@@ -139,12 +152,12 @@ export async function refreshLocation(
   saved: SavedPlace,
 ): Promise<ResolvedLocation | 'unmoved' | 'unavailable' | 'denied'> {
   try {
-    const access = await locationAccess();
-    if (access === null || !(await withTimeout(servicesOn(), QUICK_TIMEOUT_MS))) return 'unavailable';
-    if (access !== 'granted') return 'denied';
+    const allowed = await locationAllowed();
+    if (allowed === null) return 'unavailable';
+    if (!allowed) return 'denied';
     const { accuracyKm, ...coords } = await getFix(true);
     const verdict = judgeFix(saved, { ...coords, accuracyKm });
-    answeredAt = performance.now();
+    answeredAt = Date.now();
     if (verdict === 'unmoved') return 'unmoved';
     if (verdict === 'moved' || !saved.coords) return await label(coords);
     // Same place, better name: the saved fix stays as it is.

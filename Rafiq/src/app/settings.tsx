@@ -8,7 +8,7 @@ import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } fro
 import { FineTune } from '@/features/prayer/FineTune';
 import { IqamaTune } from '@/features/prayer/IqamaTune';
 import { useLocate } from '@/features/prayer/useLocate';
-import { useLocationAccess } from '@/features/prayer/useLocationAccess';
+import { useLocationLost } from '@/features/prayer/useLocationLost';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
@@ -32,7 +32,7 @@ export default function SettingsScreen() {
   const { c } = useTheme();
   const { settings, update } = useSettings();
   const cfg = usePrayerConfig();
-  const { locating, error, locate } = useLocate();
+  const { locating, error, cannotAskAgain, locate } = useLocate();
 
   const [sheet, setSheet] = useState<'method' | 'city' | null>(null);
   const blurTarget = useRef<ComponentRef<typeof View>>(null);
@@ -42,8 +42,7 @@ export default function SettingsScreen() {
 
   const manual = settings.locationMode === 'manual';
   // Auto is on but the OS has taken the permission back: the quiet refresh cannot say so itself.
-  const access = useLocationAccess(!manual && Platform.OS !== 'web', locating);
-  const lostAccess = !locating && (access === 'askable' || access === 'blocked');
+  const lostAccess = useLocationLost(!manual && Platform.OS !== 'web', locating) && !locating;
   const city = settings.city ?? DEFAULT_CITY;
   const asr = timeFor('asr', cfg, new Date());
   const near = !manual && settings.coords ? nearestCity(settings.coords) : null;
@@ -98,9 +97,14 @@ export default function SettingsScreen() {
                 })
               }
             />
-            {lostAccess && access === 'blocked' ? (
-              // Asking again would be refused without a prompt, so this outranks the error a tap just earned.
-              <Pressable accessibilityRole="link" onPress={() => Linking.openSettings()} hitSlop={8}>
+            {lostAccess && cannotAskAgain ? (
+              // The tap was refused without a prompt: only the device settings can grant it now.
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => Linking.openSettings().catch(() => {})}
+                hitSlop={8}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
                 <Text size={12} color={c.tm} style={styles.caption}>
                   إذن الموقع متوقف، فلن يتحدّث موقعك تلقائياً. اضغط هنا لفتح إعدادات الجهاز والسماح به.
                 </Text>
@@ -290,6 +294,7 @@ const styles = StyleSheet.create({
   },
   methodTexts: { flex: 1, gap: 1 },
   caption: { paddingHorizontal: 4 },
+  pressed: { opacity: 0.6 },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',

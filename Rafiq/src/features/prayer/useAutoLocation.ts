@@ -40,8 +40,10 @@ export function useAutoLocation(): void {
       // Answered lately: the next foreground asks again, not a timer. A tap on
       // "locate me" counts as an answer too, so turning auto on does not fetch twice.
       if (sinceLastAnswer() < MIN_GAP_MS) return;
-      const wait = notBefore - performance.now();
-      if (wait > 0) {
+      // Wall-clock time, so hours asleep in a pocket count. A wait longer than
+      // any this hook sets means the clock was moved; it is not honoured.
+      const wait = notBefore - Date.now();
+      if (wait > 0 && wait <= MIN_GAP_MS) {
         if (!resting) timer = setTimeout(run, wait);
         return;
       }
@@ -59,11 +61,13 @@ export function useAutoLocation(): void {
         const delay = retryDelay(++misses);
         resting = delay === null;
         if (resting) misses = 0;
-        notBefore = performance.now() + (delay ?? MIN_GAP_MS);
+        notBefore = Date.now() + (delay ?? MIN_GAP_MS);
       } else {
         misses = 0;
-        // A tap may have saved a place of its own while this fix was on its way; that one is newer.
-        if (found !== 'unmoved' && latest.current.coords === asked.coords) {
+        // A tap may have saved a place of its own while this fix was on its way (that one is newer),
+        // or picked a city by hand.
+        const current = latest.current;
+        if (found !== 'unmoved' && current.locationMode === 'auto' && current.coords === asked.coords) {
           update({
             city: found.city,
             country: found.country,
