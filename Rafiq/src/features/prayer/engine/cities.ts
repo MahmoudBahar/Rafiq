@@ -99,6 +99,8 @@ export const CITIES: readonly City[] = [
 
 export const DEFAULT_CITY = CITIES[0].name;
 export const COUNTRY = 'مصر';
+/** The label of a place no geocoder could name. */
+export const UNKNOWN_PLACE = 'موقعي';
 
 /** Falls back to the default city so the engine always has coordinates. */
 export function cityByName(name: string | null): City {
@@ -139,4 +141,42 @@ export function nearestCity(coords: Coords, maxKm = 40): NearCity | null {
  */
 export function hasMoved(prev: Coords | null, next: Coords, minKm = 1): boolean {
   return !prev || distanceKm(prev, next) > minKm;
+}
+
+/** A device fix as the refresh sees it. */
+export interface Fix extends Coords {
+  /** Taken now, as opposed to the system's cached last-known position. */
+  fresh: boolean;
+  /** The fix's own uncertainty radius. */
+  accuracyKm: number;
+}
+
+/**
+ * - `moved`: the fix replaces the saved one.
+ * - `relabel`: same place, but the saved name is not the one it should carry.
+ * - `unmoved`: nothing to do.
+ * - `stale`: only a cached position was to be had and it says "same place",
+ *   which a phone that has just landed would say too. Not an answer.
+ */
+export type FixVerdict = 'moved' | 'relabel' | 'unmoved' | 'stale';
+
+/**
+ * What a new fix means for the saved place. A move smaller than the fix's own
+ * uncertainty is not a move (iOS approximate location wanders by kilometres).
+ * A saved name is wrong when it is not the nearest listed city's (the list
+ * changed) or when it is the placeholder of a geocode that failed.
+ */
+export function judgeFix(saved: { coords: Coords | null; city: string | null }, fix: Fix): FixVerdict {
+  if (!saved.coords || hasMoved(saved.coords, fix, Math.max(1, fix.accuracyKm))) return 'moved';
+  if (!fix.fresh) return 'stale';
+  const near = nearestCity(saved.coords);
+  const named = near ? saved.city === near.city.name : saved.city !== null && saved.city !== UNKNOWN_PLACE;
+  return named ? 'unmoved' : 'relabel';
+}
+
+const RETRY_DELAYS_MS = [30_000, 60_000, 120_000, 300_000];
+
+/** How long to wait before retry number `attempt` (0-based) of a missed fix; null = stop until the next foreground. */
+export function retryDelay(attempt: number): number | null {
+  return RETRY_DELAYS_MS[attempt] ?? null;
 }

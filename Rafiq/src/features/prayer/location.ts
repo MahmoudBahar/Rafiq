@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
-import { COUNTRY, hasMoved, nearestCity, type Coords } from './engine';
+import { COUNTRY, UNKNOWN_PLACE, judgeFix, nearestCity, type Coords, type Fix } from './engine';
 
 export interface ResolvedLocation extends Coords {
   city: string;
@@ -22,7 +22,7 @@ export class LocationError extends Error {
 const FIX_TIMEOUT_MS = 10_000;
 const GEOCODE_TIMEOUT_MS = 5_000;
 const LAST_KNOWN_MAX_AGE_MS = 15 * 60_000;
-const UNKNOWN_PLACE = 'موقعي';
+const QUICK_TIMEOUT_MS = 5_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -46,15 +46,26 @@ const hasArabic = (s: string | null | undefined): s is string => !!s && /[\u0600
  * `quiet` keeps Android from raising its "turn on location accuracy" dialog,
  * which it does by default when the network provider is off.
  */
-async function getFix(quiet = false): Promise<Coords> {
-  const last = await Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }).catch(() => null);
+async function getFix(quiet = false): Promise<Fix> {
+  const last = await withTimeout(
+    Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }),
+    QUICK_TIMEOUT_MS,
+  ).catch(() => null);
   const current = await withTimeout(
-    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: !quiet }),
+    Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+      mayShowUserSettingsDialog: !quiet,
+    }),
     FIX_TIMEOUT_MS,
   ).catch(() => null);
   const pos = current ?? last;
   if (!pos) throw new LocationError('unavailable');
-  return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+  return {
+    latitude: pos.coords.latitude,
+    longitude: pos.coords.longitude,
+    fresh: !!current,
+    accuracyKm: (pos.coords.accuracy ?? 0) / 1000,
+  };
 }
 
 async function geocode(coords: Coords): Promise<Location.LocationGeocodedAddress | null> {
@@ -83,25 +94,58 @@ async function label(coords: Coords): Promise<ResolvedLocation> {
   return { city, country, ...coords };
 }
 
+let answeredAt = 0;
+
+/** Milliseconds since the device last gave a usable answer, by a tap or by the quiet refresh. */
+export const sinceLastAnswer = () => Date.now() - answeredAt;
+
 /** Foreground permission (asking if needed) → device fix → place label. Throws a `LocationError`. */
 export async function resolveLocation(): Promise<ResolvedLocation> {
   const perm = await Location.requestForegroundPermissionsAsync();
   if (!perm.granted) throw new LocationError('denied', perm.canAskAgain);
   if (!(await servicesOn())) throw new LocationError('unavailable');
-  return label(await getFix());
+  const { latitude, longitude } = await getFix();
+  const place = await label({ latitude, longitude });
+  answeredAt = Date.now();
+  return place;
+}
+
+/** Whether the app may read the location right now, without asking. Null when that cannot be told. */
+export async function locationAllowed(): Promise<boolean | null> {
+  return withTimeout(Location.getForegroundPermissionsAsync(), QUICK_TIMEOUT_MS)
+    .then((perm) => perm.granted)
+    .catch(() => null);
+}
+
+export interface SavedPlace {
+  coords: Coords | null;
+  city: string | null;
+  country: string | null;
 }
 
 /**
  * The quiet version, for when nobody asked: it never prompts and never throws.
- * `unavailable` = no permission, services off or no fix; `unmoved` = a fix
- * that sits where `prev` did, so it is not geocoded.
+ * `denied` = no permission; `unavailable` = services off or no fix worth
+ * trusting; `unmoved` = the saved place still stands, so nothing is geocoded.
+ * A place comes back when the device has moved, or when it has not but the
+ * saved name needed mending.
  */
-export async function refreshLocation(prev: Coords | null): Promise<ResolvedLocation | 'unmoved' | 'unavailable'> {
+export async function refreshLocation(
+  saved: SavedPlace,
+): Promise<ResolvedLocation | 'unmoved' | 'unavailable' | 'denied'> {
   try {
-    const perm = await Location.getForegroundPermissionsAsync();
-    if (!perm.granted || !(await servicesOn())) return 'unavailable';
-    const coords = await getFix(true);
-    return hasMoved(prev, coords) ? await label(coords) : 'unmoved';
+    const allowed = await locationAllowed();
+    if (allowed === false) return 'denied';
+    if (allowed === null || !(await withTimeout(servicesOn(), QUICK_TIMEOUT_MS))) return 'unavailable';
+    const { fresh, accuracyKm, ...coords } = await getFix(true);
+    const verdict = judgeFix(saved, { ...coords, fresh, accuracyKm });
+    if (verdict === 'stale') return 'unavailable';
+    answeredAt = Date.now();
+    if (verdict === 'unmoved') return 'unmoved';
+    if (verdict === 'moved') return await label(coords);
+    // Same place, better name: the saved fix stays as it is.
+    const place = await label(saved.coords ?? coords);
+    return place.city === saved.city && place.country === saved.country ? 'unmoved' : place;
   } catch {
     return 'unavailable';
   }

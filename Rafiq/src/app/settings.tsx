@@ -8,6 +8,7 @@ import { CITIES, DEFAULT_CITY, METHODS, METHOD_BY_ID, nearestCity, timeFor } fro
 import { FineTune } from '@/features/prayer/FineTune';
 import { IqamaTune } from '@/features/prayer/IqamaTune';
 import { useLocate } from '@/features/prayer/useLocate';
+import { useLocationBlocked } from '@/features/prayer/useLocationBlocked';
 import { usePrayerConfig } from '@/features/prayer/usePrayerConfig';
 import { formatTime12, toArabicIndic } from '@/shared/lib/arabic';
 import { usePreventBack } from '@/shared/lib/usePreventBack';
@@ -40,6 +41,7 @@ export default function SettingsScreen() {
   usePreventBack(sheet !== null, closeSheet);
 
   const manual = settings.locationMode === 'manual';
+  const blocked = useLocationBlocked(!manual, locating);
   const city = settings.city ?? DEFAULT_CITY;
   const asr = timeFor('asr', cfg, new Date());
   const near = !manual && settings.coords ? nearestCity(settings.coords) : null;
@@ -97,6 +99,10 @@ export default function SettingsScreen() {
             {error ? (
               <Text size={12} color={c.tm} style={styles.caption}>
                 {error}
+              </Text>
+            ) : blocked && !locating ? (
+              <Text size={12} color={c.tm} style={styles.caption}>
+                إذن الموقع متوقف، فلن يتحدّث موقعك تلقائياً. اضغط «تحديد الموقع تلقائياً» للسماح من جديد.
               </Text>
             ) : null}
             {manual ? (
