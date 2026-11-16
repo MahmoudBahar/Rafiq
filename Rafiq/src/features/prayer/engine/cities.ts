@@ -168,9 +168,9 @@ export function judgeFix(saved: { coords: Coords | null; city: string | null }, 
   return named ? 'unmoved' : 'relabel';
 }
 
-const RETRY_DELAYS_MS = [30_000, 60_000, 120_000, 300_000];
+const RETRY_DELAYS_MS = [30_000, 60_000, 120_000, 300_000, 300_000];
 
-/** How long to wait after miss number `misses` (1 = the first) before asking again; it settles at the last step. */
-export function retryDelay(misses: number): number {
-  return RETRY_DELAYS_MS[Math.min(Math.max(misses, 1), RETRY_DELAYS_MS.length) - 1];
+/** How long to wait after miss number `misses` (1 = the first) before asking again; null once the five retries are spent. */
+export function retryDelay(misses: number): number | null {
+  return RETRY_DELAYS_MS[misses - 1] ?? null;
 }

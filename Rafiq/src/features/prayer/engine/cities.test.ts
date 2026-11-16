@@ -97,8 +97,9 @@ describe('judgeFix', () => {
 });
 
 describe('retryDelay', () => {
-  it('backs off to five minutes and stays there', () => {
-    expect([1, 2, 3, 4, 5, 50].map(retryDelay)).toEqual([30_000, 60_000, 120_000, 300_000, 300_000, 300_000]);
-    expect(retryDelay(0)).toBe(30_000);
+  it('backs off over five retries, then stops', () => {
+    expect([1, 2, 3, 4, 5].map(retryDelay)).toEqual([30_000, 60_000, 120_000, 300_000, 300_000]);
+    expect(retryDelay(6)).toBeNull();
+    expect(retryDelay(50)).toBeNull();
   });
 });

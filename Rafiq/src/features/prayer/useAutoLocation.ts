@@ -8,12 +8,12 @@ import { refreshLocation, sinceLastAnswer } from './location';
 const MIN_GAP_MS = 5 * 60_000;
 
 /**
- * Keeps auto mode honest: on launch, on every return to the foreground and
- * every few minutes while the app stays open, the device is asked where it
- * is, and a fix that has moved replaces the saved one. It is silent
- * throughout: no prompt, no error, and the saved place stays whenever a fix
- * cannot be had. A missed fix is asked for again on a backoff that a trip to
- * the background does not reset. Manual mode is never touched.
+ * Keeps auto mode honest: on launch and on every return to the foreground the
+ * device is asked where it is, and a fix that has moved replaces the saved
+ * one. It is silent throughout: no prompt, no error, and the saved place
+ * stays whenever a fix cannot be had. A missed fix is asked for again up to
+ * five times while the app is open, on a backoff that a trip to the
+ * background does not restart. Manual mode is never touched.
  */
 export function useAutoLocation(): void {
   const { settings, update } = useSettings();
@@ -29,18 +29,23 @@ export function useAutoLocation(): void {
     let stopped = false;
     let misses = 0;
     let notBefore = 0;
+    // The retries are spent: nothing more until a foreground that comes after `notBefore`.
+    let resting = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
-    // One entry point: it asks when asking is due, and otherwise sets the timer for when it will be.
+    // One entry point: it asks when asking is due, and sets the timer when a retry is owed.
     const run = async () => {
       clearTimeout(timer);
       if (busy || stopped || AppState.currentState === 'background') return;
-      // A tap on "locate me" counts as an answer too, so turning auto on does not fetch twice.
-      const wait = Math.max(notBefore - performance.now(), MIN_GAP_MS - sinceLastAnswer());
+      // Answered lately: the next foreground asks again, not a timer. A tap on
+      // "locate me" counts as an answer too, so turning auto on does not fetch twice.
+      if (sinceLastAnswer() < MIN_GAP_MS) return;
+      const wait = notBefore - performance.now();
       if (wait > 0) {
-        timer = setTimeout(run, wait);
+        if (!resting) timer = setTimeout(run, wait);
         return;
       }
+      resting = false;
 
       busy = true;
       const asked = latest.current;
@@ -51,7 +56,10 @@ export function useAutoLocation(): void {
       if (found === 'denied') return;
       if (found === 'unavailable') {
         // Indoors, or just off a plane.
-        notBefore = performance.now() + retryDelay(++misses);
+        const delay = retryDelay(++misses);
+        resting = delay === null;
+        if (resting) misses = 0;
+        notBefore = performance.now() + (delay ?? MIN_GAP_MS);
       } else {
         misses = 0;
         // A tap may have saved a place of its own while this fix was on its way; that one is newer.
